@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+    branches: 
+    - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install latest nightly
+      uses: actions-rs/toolchain@v1
+      with:
+          toolchain: nightly
+          components: rustfmt
+
+    - name: Check the code formatting with rustfmt
+      run: cargo +nightly fmt -- --check
+
+    - name: Install latest stable
+      uses: actions-rs/toolchain@v1
+      with:
+          toolchain: stable
+          default: true
+          components: clippy
+
+    - name: Ensure there are no warnings with Clippy
+      run: cargo clippy --all-features -- -Dwarnings
+    
+    - name: Run tests
+      run: cargo test --all-features

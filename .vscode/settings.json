@@ -1,0 +1,20 @@
+{
+    "editor.rulers": [
+        120
+    ],
+    // https://rust-analyzer.github.io/manual.html
+    "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.rustfmt.extraArgs": [
+        "+nightly"
+    ],
+    "rust-analyzer.procMacro.ignored": {
+        "async-trait": [
+            "async_trait"
+        ],
+    },
+    "[rust]": {
+        "editor.defaultFormatter": "rust-lang.rust-analyzer"
+    },
+    "evenBetterToml.taplo.configFile.enabled": true,
+    "evenBetterToml.taplo.configFile.path": ".taplo.toml"
+}

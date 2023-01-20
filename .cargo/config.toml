@@ -1,0 +1,6 @@
+# https://doc.rust-lang.org/cargo/reference/config.html
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
