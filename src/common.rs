@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{self, Event};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use regex::{CaptureMatches, Captures, Regex};
 use tui::{backend::Backend, layout::Rect, text::Text, widgets::ListState, Frame, Terminal};
 use unicode_width::UnicodeWidthStr;
@@ -75,12 +75,24 @@ pub trait Widget {
         Self: Sized,
     {
         loop {
+            // Draw UI
             terminal.draw(|f| {
                 let area = area(f);
                 self.render(f, area, inline, theme);
             })?;
 
-            if let Some(res) = self.process_event(event::read()?)? {
+            // Exit on Ctrl+C
+            let event = event::read()?;
+            if let Event::Key(k) = &event {
+                if let KeyCode::Char(c) = k.code {
+                    if c == 'c' && k.modifiers.contains(KeyModifiers::CONTROL) {
+                        return Ok(WidgetOutput::empty());
+                    }
+                }
+            }
+
+            // Process event by widget
+            if let Some(res) = self.process_event(event)? {
                 return Ok(res);
             }
         }
