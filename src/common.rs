@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use regex::{CaptureMatches, Captures, Regex};
 use tui::{backend::Backend, layout::Rect, text::Text, widgets::ListState, Frame, Terminal};
 use unicode_width::UnicodeWidthStr;
@@ -81,9 +81,13 @@ pub trait Widget {
                 self.render(f, area, inline, theme);
             })?;
 
-            // Exit on Ctrl+C
             let event = event::read()?;
             if let Event::Key(k) = &event {
+                // Ignore release & repeat events, we're only counting Press
+                if k.kind != KeyEventKind::Press {
+                    continue;
+                }
+                // Exit on Ctrl+C
                 if let KeyCode::Char(c) = k.code {
                     if c == 'c' && k.modifiers.contains(KeyModifiers::CONTROL) {
                         return Ok(WidgetOutput::empty());
