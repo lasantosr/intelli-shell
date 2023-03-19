@@ -23,7 +23,8 @@ RUN groupadd --gid $USER_GID $USERNAME \
     && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
     && chmod 0440 /etc/sudoers.d/$USERNAME \
     && chown -R $USERNAME:$USERNAME /usr/local/cargo \
-    && chown -R $USERNAME:$USERNAME /usr/local/rustup
+    && chown -R $USERNAME:$USERNAME /usr/local/rustup \
+    && chsh -s /bin/bash $USERNAME
 USER $USERNAME
 
 # Source artifact to be ready to execute
