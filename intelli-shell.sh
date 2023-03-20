@@ -42,7 +42,7 @@ elif [[ -n "$BASH" ]]; then
     # bash
     # https://www.gnu.org/software/bash/manual/html_node/Bash-Builtins.html#index-bind
 
-    function intelli_search {
+    function _intelli_search {
         # Temp file for output
         tmp_file=$(mktemp -t intelli-shell.XXXXXXXX)
         # Exec command
@@ -55,7 +55,7 @@ elif [[ -n "$BASH" ]]; then
         READLINE_POINT=${#READLINE_LINE}
     }
 
-    function intelli_save {
+    function _intelli_save {
         # Temp file for output
         tmp_file=$(mktemp -t intelli-shell.XXXXXXXX)
         # Exec command
@@ -69,6 +69,6 @@ elif [[ -n "$BASH" ]]; then
     }
 
     if [[ "${INTELLI_SKIP_ESC_BIND:-0}" == "0" ]]; then bind '"\e": kill-whole-line'; fi
-    bind -x '"'"$intelli_search_key"'":intelli_search'
-    bind -x '"'"$intelli_save_key"'":intelli_save'
+    bind -x '"'"$intelli_search_key"'":_intelli_search'
+    bind -x '"'"$intelli_save_key"'":_intelli_save'
 fi

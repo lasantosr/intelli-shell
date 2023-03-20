@@ -29,6 +29,8 @@ pub struct SaveCommandWidget<'s> {
     description: Option<String>,
     /// Current command description for UI
     current_description: String,
+    /// Cursor position
+    cursor_offset: usize,
 }
 
 impl<'s> SaveCommandWidget<'s> {
@@ -38,6 +40,7 @@ impl<'s> SaveCommandWidget<'s> {
             command,
             description,
             current_description: Default::default(),
+            cursor_offset: 0,
         }
     }
 
@@ -62,22 +65,36 @@ impl<'s> Widget for SaveCommandWidget<'s> {
     }
 
     fn peek(&mut self) -> Result<Option<WidgetOutput>> {
-        match &self.description {
-            Some(d) => Ok(Some(Self::insert_command(self.storage, &self.command, d)?)),
-            None => Ok(None),
+        if self.command.is_empty() {
+            Ok(Some(WidgetOutput::message("A command must be typed first!")))
+        } else {
+            match &self.description {
+                Some(d) => Ok(Some(Self::insert_command(self.storage, &self.command, d)?)),
+                None => Ok(None),
+            }
         }
     }
 
     fn render<B: Backend>(&mut self, frame: &mut Frame<B>, area: Rect, inline: bool, theme: Theme) {
         // Display description prompt
+        let mut description_offset = self.cursor_offset;
         let max_width = area.width as usize - 1 - (2 * (!inline as usize));
         let text_inline = format!("Description: {}", self.current_description);
         let description_text = if inline {
+            description_offset += 13;
             OverflowText::new(max_width, &text_inline)
         } else {
             OverflowText::new(max_width, &self.current_description)
         };
-        let description_text_width = description_text.width() as u16;
+        let description_text_width = description_text.width();
+        if text_inline.len() > description_text_width {
+            let overflow = text_inline.len() as i32 - description_text_width as i32;
+            if overflow < description_offset as i32 {
+                description_offset -= overflow as usize;
+            } else {
+                description_offset = 0;
+            }
+        }
         let mut description_input = Paragraph::new(description_text).style(Style::default().fg(theme.main));
         if !inline {
             description_input = description_input.block(Block::default().borders(Borders::ALL).title(" Description "));
@@ -87,7 +104,7 @@ impl<'s> Widget for SaveCommandWidget<'s> {
         // Make the cursor visible and ask tui-rs to put it at the specified coordinates after rendering
         frame.set_cursor(
             // Put cursor past the end of the input text
-            area.x + description_text_width + (!inline as u16),
+            area.x + description_offset as u16 + (!inline as u16),
             // Move one line down, from the border to the input line
             area.y + (!inline as u16),
         );
@@ -107,10 +124,29 @@ impl<'s> Widget for SaveCommandWidget<'s> {
                     }
                 }
                 KeyCode::Char(c) => {
-                    self.current_description.push(c);
+                    self.current_description.insert(self.cursor_offset, c);
+                    self.cursor_offset += 1;
                 }
                 KeyCode::Backspace => {
-                    self.current_description.pop();
+                    if !self.current_description.is_empty() {
+                        self.current_description.remove(self.cursor_offset - 1);
+                        self.cursor_offset -= 1;
+                    }
+                }
+                KeyCode::Delete => {
+                    if !self.current_description.is_empty() && self.cursor_offset < self.current_description.len() {
+                        self.current_description.remove(self.cursor_offset);
+                    }
+                }
+                KeyCode::Right => {
+                    if self.cursor_offset < self.current_description.len() {
+                        self.cursor_offset += 1;
+                    }
+                }
+                KeyCode::Left => {
+                    if self.cursor_offset > 0 {
+                        self.cursor_offset -= 1;
+                    }
                 }
                 KeyCode::Esc => {
                     // Exit without saving

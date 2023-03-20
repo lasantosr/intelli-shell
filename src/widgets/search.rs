@@ -23,6 +23,8 @@ pub struct SearchWidget<'s> {
     storage: &'s mut SqliteStorage,
     /// Current value of the filter box
     filter: String,
+    /// Current cursor offset
+    cursor_offset: usize,
     /// Command list of results
     commands: StatefulList<Command>,
 }
@@ -32,6 +34,7 @@ impl<'s> SearchWidget<'s> {
         let commands = storage.find_commands(&filter)?;
         Ok(Self {
             commands: StatefulList::with_items(commands),
+            cursor_offset: filter.len(),
             filter,
             storage,
         })
@@ -44,7 +47,14 @@ impl<'s> Widget for SearchWidget<'s> {
     }
 
     fn peek(&mut self) -> Result<Option<WidgetOutput>> {
-        if self.commands.len() == 1 {
+        if self.storage.is_empty()? {
+            let message = indoc::indoc! { r#"
+                There are no stored commands yet!
+                    - Try to bookmark some command with 'Ctrl + B'
+                    - Or execute 'intelli-shell fetch' to download a bunch of tldr's useful commands"# 
+            };
+            Ok(Some(WidgetOutput::message(message)))
+        } else if self.commands.len() == 1 {
             Ok(self.commands.current().map(|c| c.cmd.clone()).map(WidgetOutput::output))
         } else {
             Ok(None)
@@ -70,14 +80,24 @@ impl<'s> Widget for SearchWidget<'s> {
         let body = chunks[1];
 
         // Display filter
+        let mut filter_offset = self.cursor_offset;
         let max_width = header.width as usize - 1 - (2 * (!inline as usize));
         let text_inline = format!("(filter): {}", self.filter);
         let filter_text = if inline {
+            filter_offset += 10;
             OverflowText::new(max_width, &text_inline)
         } else {
             OverflowText::new(max_width, &self.filter)
         };
-        let filter_text_width = filter_text.width() as u16;
+        let filter_text_width = filter_text.width();
+        if text_inline.len() > filter_text_width {
+            let overflow = text_inline.len() as i32 - filter_text_width as i32;
+            if overflow < filter_offset as i32 {
+                filter_offset -= overflow as usize;
+            } else {
+                filter_offset = 0;
+            }
+        }
         let mut filter_input = Paragraph::new(filter_text).style(Style::default().fg(theme.main));
         if !inline {
             filter_input = filter_input.block(Block::default().borders(Borders::ALL).title(" Filter "));
@@ -87,7 +107,7 @@ impl<'s> Widget for SearchWidget<'s> {
         // Make the cursor visible and ask tui-rs to put it at the specified coordinates after rendering
         frame.set_cursor(
             // Put cursor past the end of the input text
-            header.x + filter_text_width + (!inline as u16),
+            header.x + filter_offset as u16 + (!inline as u16),
             // Move one line down, from the border to the input line
             header.y + (!inline as u16),
         );
@@ -147,12 +167,32 @@ impl<'s> Widget for SearchWidget<'s> {
                     }
                 }
                 KeyCode::Char(c) => {
-                    self.filter.push(c);
+                    self.filter.insert(self.cursor_offset, c);
+                    self.cursor_offset += 1;
                     self.commands.update_items(self.storage.find_commands(&self.filter)?);
                 }
                 KeyCode::Backspace => {
-                    self.filter.pop();
-                    self.commands.update_items(self.storage.find_commands(&self.filter)?);
+                    if !self.filter.is_empty() {
+                        self.filter.remove(self.cursor_offset - 1);
+                        self.cursor_offset -= 1;
+                        self.commands.update_items(self.storage.find_commands(&self.filter)?);
+                    }
+                }
+                KeyCode::Delete => {
+                    if !self.filter.is_empty() && self.cursor_offset < self.filter.len() {
+                        self.filter.remove(self.cursor_offset);
+                        self.commands.update_items(self.storage.find_commands(&self.filter)?);
+                    }
+                }
+                KeyCode::Right => {
+                    if self.cursor_offset < self.filter.len() {
+                        self.cursor_offset += 1;
+                    }
+                }
+                KeyCode::Left => {
+                    if self.cursor_offset > 0 {
+                        self.cursor_offset -= 1;
+                    }
                 }
                 KeyCode::Down => {
                     self.commands.next();

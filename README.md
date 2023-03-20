@@ -69,7 +69,7 @@ You can customize key bindings using environment variables: `INTELLI_SEARCH_HOTK
 ## Wishlist
 
 - [ ] Labels support to store most used labels and select them using a dedicated UI
-- [ ] Pull / Push user bookmarks using some public / private Git repo
+- [ ] Sync user bookmarks using some public / private Git repo
 - [ ] Support for more terminals, like PowerShell
 
 ## Alternatives

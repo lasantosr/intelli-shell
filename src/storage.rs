@@ -218,6 +218,17 @@ impl SqliteStorage {
         }
     }
 
+    /// Determines if the store is empty (no commands stored)
+    pub fn is_empty(&self) -> Result<bool> {
+        Ok(self.len()? == 0)
+    }
+
+    /// Returns the number of stored commands
+    pub fn len(&self) -> Result<u64> {
+        let mut stmt = self.conn.prepare(r#"SELECT COUNT(*) FROM command"#)?;
+        Ok(stmt.query_row([], |r| r.get(0))?)
+    }
+
     /// Get commands matching a category
     pub fn get_commands(&self, category: impl AsRef<str>) -> Result<Vec<Command>> {
         let category = category.as_ref();
@@ -225,7 +236,8 @@ impl SqliteStorage {
         let mut stmt = self.conn.prepare(
             r#"SELECT rowid, category, alias, cmd, description, usage 
             FROM command
-            WHERE category = ?"#,
+            WHERE category = ?
+            ORDER BY usage DESC"#,
         )?;
 
         let commands = stmt
@@ -241,7 +253,7 @@ impl SqliteStorage {
     pub fn find_commands(&self, search: impl AsRef<str>) -> Result<Vec<Command>> {
         let search = search.as_ref();
         if search.is_empty() {
-            return Ok(Default::default());
+            return self.get_commands(USER_CATEGORY);
         }
         let flat_search = flatten_str(search);
 
