@@ -54,7 +54,7 @@ impl<'s> Widget for SearchWidget<'s> {
                     - Or execute 'intelli-shell fetch' to download a bunch of tldr's useful commands"# 
             };
             Ok(Some(WidgetOutput::message(message)))
-        } else if self.commands.len() == 1 {
+        } else if !self.filter.is_empty() && self.commands.len() == 1 {
             Ok(self.commands.current().map(|c| c.cmd.clone()).map(WidgetOutput::output))
         } else {
             Ok(None)
