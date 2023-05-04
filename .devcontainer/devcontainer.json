@@ -10,7 +10,12 @@
                 "tamasfe.even-better-toml",
                 "vadimcn.vscode-lldb",
                 "eamodio.gitlens",
-                "usernamehw.errorlens"
+                "usernamehw.errorlens",
+                "aaron-bond.better-comments",
+                "oderwat.indent-rainbow",
+                "gruntfuggly.todo-tree",
+                "yzhang.markdown-all-in-one",
+                "davidanson.vscode-markdownlint"
             ],
             "settings": {
                 "terminal.integrated.defaultProfile.linux": "bash",

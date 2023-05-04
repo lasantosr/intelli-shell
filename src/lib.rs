@@ -1,3 +1,19 @@
+//! Like IntelliSense, but for shells!
+//!
+//! ![intelli-shell demo](https://github.com/lasantosr/intelli-shell/raw/HEAD/assets/intellishell.gif)
+//!
+//! IntelliShell acts like a bookmark store for commands, so you don't have to keep your history clean in order to be
+//! able to find something useful with `ctrl + R`.
+//!
+//! # Features
+//!
+//! - Standalone binaries
+//! - Search UI to autocomplete currently typed command
+//!   - Full Text Search in both command and description
+//! - Inline and full-screen interfaces
+//! - Fetch command to parse and store [tldr](https://github.com/tldr-pages/tldr) pages (Thanks to them!)
+//! - Portability. You can use bookmarked commands in any supported shell, as well as exporting and importing elsewhere.
+
 #![forbid(unsafe_code)]
 
 pub mod model;
