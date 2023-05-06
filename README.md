@@ -7,7 +7,7 @@ Like IntelliSense, but for shells!
 IntelliShell acts like a bookmark store for commands, so you don't have to keep your history clean in order to be able
 to find something useful with `ctrl + R`.
 
-It currently works on Bash and Zsh and should be compatible with most Linux, Windows and MacOS.
+It currently works on Bash, Zsh and Fish and should be compatible with most Linux, Windows and MacOS.
 
 ## TL;DR
 
@@ -60,10 +60,23 @@ mkdir -p ~/.local/share/intelli-shell
 curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.sh > ~/.local/share/intelli-shell/intelli-shell.sh
 ```
 
+Or, if using fish:
+
+```sh
+mkdir -p ~/.local/share/intelli-shell
+curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.fish > ~/.local/share/intelli-shell/intelli-shell.fish
+```
+
 After that, you should edit your `~/.bashrc`, `~/.zshrc` or `~/.bash_profile` to source it:
 
 ```sh
 source ~/.local/share/intelli-shell/intelli-shell.sh
+```
+
+Or, if using fish you should edit `~/.config/fish/config.fish`:
+
+```sh
+source ~/.local/share/intelli-shell/intelli-shell.fish
 ```
 
 ## Usage
