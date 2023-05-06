@@ -1,8 +1,9 @@
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use itertools::Itertools;
 use regex::{CaptureMatches, Captures, Regex};
 use tui::{backend::Backend, layout::Rect, text::Text, widgets::ListState, Frame, Terminal};
-use unicode_width::UnicodeWidthStr;
+use unicode_segmentation::UnicodeSegmentation;
 use unidecode::unidecode;
 
 use crate::theme::Theme;
@@ -12,12 +13,12 @@ pub fn flatten_str(s: impl AsRef<str>) -> String {
     unidecode(s.as_ref()).to_lowercase()
 }
 
-pub struct WidgetOutput {
+pub struct WidgetOutput<T: ToString> {
     pub message: Option<String>,
-    pub output: Option<String>,
+    pub output: Option<T>,
 }
-impl WidgetOutput {
-    pub fn new(message: impl Into<String>, output: impl Into<String>) -> Self {
+impl<T: ToString> WidgetOutput<T> {
+    pub fn new(message: impl Into<String>, output: impl Into<T>) -> Self {
         Self {
             message: Some(message.into()),
             output: Some(output.into()),
@@ -38,22 +39,41 @@ impl WidgetOutput {
         }
     }
 
-    pub fn output(output: impl Into<String>) -> Self {
+    pub fn output(output: impl Into<T>) -> Self {
         Self {
             output: Some(output.into()),
             message: None,
         }
     }
+
+    pub fn map<F: FnOnce(T) -> O, O: ToString>(self, f: F) -> WidgetOutput<O> {
+        let Self { message, output } = self;
+        WidgetOutput {
+            message,
+            output: output.map(f),
+        }
+    }
+}
+
+pub trait ResultExt<E> {
+    fn map_output_str(self) -> Result<WidgetOutput<String>, E>;
+}
+impl<T: ToString, E> ResultExt<E> for Result<WidgetOutput<T>, E> {
+    fn map_output_str(self) -> Result<WidgetOutput<String>, E> {
+        self.map(|w| w.map(|o| o.to_string()))
+    }
 }
 
 /// Trait to display Widgets on the shell
 pub trait Widget {
+    type Output: ToString;
+
     /// Minimum height needed to render the widget
     fn min_height(&self) -> usize;
 
     /// Peeks into the result to check wether the UI should be shown ([None]) or we can give a straight result
     /// ([Some])
-    fn peek(&mut self) -> Result<Option<WidgetOutput>> {
+    fn peek(&mut self) -> Result<Option<WidgetOutput<Self::Output>>> {
         Ok(None)
     }
 
@@ -63,12 +83,18 @@ pub trait Widget {
     }
 
     /// Process user input event and return [Some] to end user interaction or [None] to keep waiting for user input
-    fn process_event(&mut self, _event: Event) -> Result<Option<WidgetOutput>> {
+    fn process_event(&mut self, _event: Event) -> Result<Option<WidgetOutput<Self::Output>>> {
         unimplemented!()
     }
 
     /// Run this widget `render` and `process_event` until we've got a result
-    fn show<B, F>(mut self, terminal: &mut Terminal<B>, inline: bool, theme: Theme, mut area: F) -> Result<WidgetOutput>
+    fn show<B, F>(
+        mut self,
+        terminal: &mut Terminal<B>,
+        inline: bool,
+        theme: Theme,
+        mut area: F,
+    ) -> Result<WidgetOutput<Self::Output>>
     where
         B: Backend,
         F: FnMut(&Frame<B>) -> Rect,
@@ -110,11 +136,14 @@ impl OverflowText {
     /// The `text` is not expected to contain any newlines
     #[allow(clippy::new_ret_no_self)]
     pub fn new(max_width: usize, text: &str) -> Text<'_> {
-        let text_width = text.width();
+        let text_width = text.len_chars();
 
         if text_width > max_width {
             let overflow = text_width - max_width;
-            let text_visible = &text[overflow..];
+            let mut text_visible = text.to_owned();
+            for _ in 0..overflow {
+                text_visible.remove_safe(0);
+            }
             Text::raw(text_visible)
         } else {
             Text::raw(text)
@@ -167,24 +196,32 @@ impl<T> StatefulList<T> {
     /// Selects the next item on the list
     pub fn next(&mut self) {
         if let Some(selected) = self.state.selected() {
-            let i = if selected >= self.items.len() - 1 {
-                0
+            if self.items.is_empty() {
+                self.state.select(None);
             } else {
-                selected + 1
-            };
-            self.state.select(Some(i));
+                let i = if selected >= self.items.len() - 1 {
+                    0
+                } else {
+                    selected + 1
+                };
+                self.state.select(Some(i));
+            }
         }
     }
 
     /// Selects the previous item on the list
     pub fn previous(&mut self) {
         if let Some(selected) = self.state.selected() {
-            let i = if selected == 0 {
-                self.items.len() - 1
+            if self.items.is_empty() {
+                self.state.select(None);
             } else {
-                selected - 1
-            };
-            self.state.select(Some(i));
+                let i = if selected == 0 {
+                    self.items.len() - 1
+                } else {
+                    selected - 1
+                };
+                self.state.select(Some(i));
+            }
         }
     }
 
@@ -208,11 +245,23 @@ impl<T> StatefulList<T> {
 
     /// Deletes the currently selected item and returns it
     pub fn delete_current(&mut self) -> Option<T> {
-        if let Some(selected) = self.state.selected() {
+        let deleted = if let Some(selected) = self.state.selected() {
             Some(self.items.remove(selected))
         } else {
             None
+        };
+
+        if self.items.is_empty() {
+            self.state.select(None);
+        } else if let Some(selected) = self.state.selected() {
+            if selected > self.items.len() - 1 {
+                self.state.select(Some(self.items.len() - 1));
+            }
+        } else {
+            self.state.select(Some(0));
         }
+
+        deleted
     }
 }
 
@@ -268,5 +317,53 @@ impl<'r, 't> Iterator for SplitCaptures<'r, 't> {
                 Some(SplitItem::Unmatched(unmatched))
             }
         }
+    }
+}
+
+/// String utilities to work with [grapheme clusters](https://doc.rust-lang.org/book/ch08-02-strings.html#bytes-and-scalar-values-and-grapheme-clusters-oh-my)
+pub trait StringExt {
+    /// Inserts a char at a given char index position.
+    ///
+    /// Unlike [`String::insert`](String::insert), the index is char-based, not byte-based.
+    fn insert_safe(&mut self, char_index: usize, c: char);
+
+    /// Removes a char at a given char index position.
+    ///
+    /// Unlike [`String::remove`](String::remove), the index is char-based, not byte-based.
+    fn remove_safe(&mut self, char_index: usize);
+}
+pub trait StrExt {
+    /// Returns the number of characters.
+    ///
+    /// Unlike [`String::len`](String::len), the number is char-based, not byte-based.
+    fn len_chars(&self) -> usize;
+}
+
+impl StringExt for String {
+    fn insert_safe(&mut self, char_index: usize, new_char: char) {
+        let mut v = self.graphemes(true).map(ToOwned::to_owned).collect_vec();
+        v.insert(char_index, new_char.to_string());
+        *self = v.join("");
+    }
+
+    fn remove_safe(&mut self, char_index: usize) {
+        *self = self
+            .graphemes(true)
+            .enumerate()
+            .filter_map(|(i, c)| if i != char_index { Some(c) } else { None })
+            .collect_vec()
+            .join("");
+    }
+}
+
+impl StrExt for String {
+    fn len_chars(&self) -> usize {
+        self.graphemes(true).count()
+    }
+}
+
+impl StrExt for str {
+    fn len_chars(&self) -> usize {
+        self.graphemes(true).count()
     }
 }

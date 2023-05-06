@@ -19,11 +19,13 @@ impl<'a> FetchWidget<'a> {
 }
 
 impl<'a> Widget for FetchWidget<'a> {
+    type Output = String;
+
     fn min_height(&self) -> usize {
         1
     }
 
-    fn peek(&mut self) -> Result<Option<WidgetOutput>> {
+    fn peek(&mut self) -> Result<Option<WidgetOutput<Self::Output>>> {
         let mut commands = scrape_tldr_github(self.category.as_deref())?;
         let new = self.storage.insert_commands(&mut commands)?;
 

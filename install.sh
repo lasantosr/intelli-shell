@@ -47,6 +47,7 @@ then
   echo -e '\n# IntelliShell' >> ~/$rcfile
   echo "INTELLI_HOME=$INTELLI_HOME" >> ~/$rcfile
   echo '# export INTELLI_SEARCH_HOTKEY=\C-@' >> ~/$rcfile
+  echo '# export INTELLI_LABEL_HOTKEY=C-l' >> ~/$rcfile
   echo '# export INTELLI_SAVE_HOTKEY=C-b' >> ~/$rcfile
   echo '# export INTELLI_SKIP_ESC_BIND=0' >> ~/$rcfile
   echo 'alias intelli-shell="$INTELLI_HOME/bin/intelli-shell"' >> ~/$rcfile

@@ -10,8 +10,8 @@ use tui::{
 };
 
 use crate::{
-    common::{OverflowText, StatefulList, Widget},
-    model::Command,
+    common::{OverflowText, StatefulList, StrExt, StringExt, Widget},
+    model::{Command, MaybeCommand},
     storage::SqliteStorage,
     theme::Theme,
     WidgetOutput,
@@ -34,7 +34,7 @@ impl<'s> SearchWidget<'s> {
         let commands = storage.find_commands(&filter)?;
         Ok(Self {
             commands: StatefulList::with_items(commands),
-            cursor_offset: filter.len(),
+            cursor_offset: filter.len_chars(),
             filter,
             storage,
         })
@@ -42,11 +42,13 @@ impl<'s> SearchWidget<'s> {
 }
 
 impl<'s> Widget for SearchWidget<'s> {
+    type Output = MaybeCommand;
+
     fn min_height(&self) -> usize {
         (self.commands.len() + 1).clamp(4, 15)
     }
 
-    fn peek(&mut self) -> Result<Option<WidgetOutput>> {
+    fn peek(&mut self) -> Result<Option<WidgetOutput<Self::Output>>> {
         if self.storage.is_empty()? {
             let message = indoc::indoc! { r#"
                 There are no stored commands yet!
@@ -90,8 +92,8 @@ impl<'s> Widget for SearchWidget<'s> {
             OverflowText::new(max_width, &self.filter)
         };
         let filter_text_width = filter_text.width();
-        if text_inline.len() > filter_text_width {
-            let overflow = text_inline.len() as i32 - filter_text_width as i32;
+        if text_inline.len_chars() > filter_text_width {
+            let overflow = text_inline.len_chars() as i32 - filter_text_width as i32;
             if overflow < filter_offset as i32 {
                 filter_offset -= overflow as usize;
             } else {
@@ -145,7 +147,7 @@ impl<'s> Widget for SearchWidget<'s> {
         frame.render_stateful_widget(commands, body, state);
     }
 
-    fn process_event(&mut self, event: Event) -> Result<Option<WidgetOutput>> {
+    fn process_event(&mut self, event: Event) -> Result<Option<WidgetOutput<Self::Output>>> {
         if let Event::Key(key) = event {
             let has_ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
             match key.code {
@@ -159,7 +161,7 @@ impl<'s> Widget for SearchWidget<'s> {
                     if let Some(cmd) = self.commands.current_mut() {
                         cmd.increment_usage();
                         self.storage.update_command(cmd)?;
-                        return Ok(Some(WidgetOutput::output(cmd.cmd.clone())));
+                        return Ok(Some(WidgetOutput::output(cmd.clone())));
                     } else if self.filter.is_empty() {
                         return Ok(Some(WidgetOutput::empty()));
                     } else {
@@ -167,25 +169,25 @@ impl<'s> Widget for SearchWidget<'s> {
                     }
                 }
                 KeyCode::Char(c) => {
-                    self.filter.insert(self.cursor_offset, c);
+                    self.filter.insert_safe(self.cursor_offset, c);
                     self.cursor_offset += 1;
                     self.commands.update_items(self.storage.find_commands(&self.filter)?);
                 }
                 KeyCode::Backspace => {
-                    if !self.filter.is_empty() {
-                        self.filter.remove(self.cursor_offset - 1);
+                    if !self.filter.is_empty() && self.cursor_offset > 0 {
+                        self.filter.remove_safe(self.cursor_offset - 1);
                         self.cursor_offset -= 1;
                         self.commands.update_items(self.storage.find_commands(&self.filter)?);
                     }
                 }
                 KeyCode::Delete => {
-                    if !self.filter.is_empty() && self.cursor_offset < self.filter.len() {
-                        self.filter.remove(self.cursor_offset);
+                    if !self.filter.is_empty() && self.cursor_offset < self.filter.len_chars() {
+                        self.filter.remove_safe(self.cursor_offset);
                         self.commands.update_items(self.storage.find_commands(&self.filter)?);
                     }
                 }
                 KeyCode::Right => {
-                    if self.cursor_offset < self.filter.len() {
+                    if self.cursor_offset < self.filter.len_chars() {
                         self.cursor_offset += 1;
                     }
                 }

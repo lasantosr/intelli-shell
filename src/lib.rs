@@ -8,9 +8,10 @@
 //! # Features
 //!
 //! - Standalone binaries
-//! - Search UI to autocomplete currently typed command
+//! - Autocomplete currently typed command
 //!   - Full Text Search in both command and description
-//! - Inline and full-screen interfaces
+//! - Find & replace labels of currently typed command
+//! - Non-intrusive (inline) and full-screen interfaces
 //! - Fetch command to parse and store [tldr](https://github.com/tldr-pages/tldr) pages (Thanks to them!)
 //! - Portability. You can use bookmarked commands in any supported shell, as well as exporting and importing elsewhere.
 
@@ -26,4 +27,4 @@ mod common;
 #[cfg(feature = "tldr")]
 mod tldr;
 
-pub use common::{Widget, WidgetOutput};
+pub use common::{ResultExt, Widget, WidgetOutput};

@@ -7,12 +7,16 @@ use std::{
 use anyhow::{anyhow, Context, Result};
 use directories::ProjectDirs;
 use iter_flow::Iterflow;
+use itertools::Itertools;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use rusqlite::{Connection, OptionalExtension, Row};
+use rusqlite::{params_from_iter, Connection, Error, ErrorCode, OptionalExtension, Row};
 use rusqlite_migration::{Migrations, M};
 
-use crate::{common::flatten_str, model::Command};
+use crate::{
+    common::flatten_str,
+    model::{Command, LabelSuggestion},
+};
 
 /// Database migrations
 static MIGRATIONS: Lazy<Migrations> = Lazy::new(|| {
@@ -27,6 +31,15 @@ static MIGRATIONS: Lazy<Migrations> = Lazy::new(|| {
             );"#,
         ),
         M::up(r#"CREATE VIRTUAL TABLE command_fts USING fts5(flat_cmd, flat_description);"#),
+        M::up(
+            r#"CREATE TABLE label_suggestion (
+                flat_root_cmd TEXT NOT NULL,
+                flat_label TEXT NOT NULL,
+                suggestion TEXT NOT NULL,
+                usage INTEGER DEFAULT 0,
+                PRIMARY KEY (flat_root_cmd, flat_label, suggestion)
+            );"#,
+        ),
     ])
 });
 
@@ -55,7 +68,7 @@ impl SqliteStorage {
             conn: Self::initialize_connection(
                 Connection::open(path.join("storage.db3")).context("Error opening SQLite connection")?,
             )
-                .context("Error initializing SQLite connection")?,
+            .context("Error initializing SQLite connection")?,
         })
     }
 
@@ -193,9 +206,21 @@ impl SqliteStorage {
         }
     }
 
-    /// Deletes an existing command
+    /// Updates an existing command by incrementing its usage by one
     ///
     /// Returns wether the command exists and was updated or not.
+    pub fn increment_command_usage(&mut self, command_id: i64) -> Result<bool> {
+        let updated = self
+            .conn
+            .execute(r#"UPDATE command SET usage = usage + 1 WHERE rowid = ?"#, [command_id])
+            .context("Error updating command usage")?;
+
+        Ok(updated == 1)
+    }
+
+    /// Deletes an existing command
+    ///
+    /// Returns wether the command exists and was deleted or not.
     pub fn delete_command(&mut self, command_id: i64) -> Result<bool> {
         let tx = self.conn.transaction()?;
 
@@ -216,17 +241,6 @@ impl SqliteStorage {
         } else {
             Ok(false)
         }
-    }
-
-    /// Determines if the store is empty (no commands stored)
-    pub fn is_empty(&self) -> Result<bool> {
-        Ok(self.len()? == 0)
-    }
-
-    /// Returns the number of stored commands
-    pub fn len(&self) -> Result<u64> {
-        let mut stmt = self.conn.prepare(r#"SELECT COUNT(*) FROM command"#)?;
-        Ok(stmt.query_row([], |r| r.get(0))?)
     }
 
     /// Get commands matching a category
@@ -272,23 +286,60 @@ impl SqliteStorage {
             return Ok(vec![cmd]);
         }
 
-        let flat_search = ALLOWED_FTS_REGEX.replace(&flat_search, "");
+        let flat_search = ALLOWED_FTS_REGEX.replace_all(&flat_search, "");
+        let flat_search = flat_search.trim();
+        if flat_search.is_empty() || flat_search == " " {
+            return self.get_commands(USER_CATEGORY);
+        }
 
         let mut stmt = self.conn.prepare(
-            r#"SELECT c.rowid, c.category, c.alias, c.cmd, c.description, c.usage 
-            FROM command_fts s
-            JOIN command c ON s.rowid = c.rowid
-            WHERE command_fts MATCH :match
-            ORDER BY 
-                (CASE WHEN s.flat_cmd LIKE :like THEN 2 WHEN s.flat_description LIKE :like THEN 1 ELSE 0 END) DESC, 
-                usage DESC, 
-                (CASE WHEN c.category = 'user' THEN 1 ELSE 0 END) DESC"#,
+            r#"
+                    SELECT DISTINCT rowid, category, alias, cmd, description, usage 
+                    FROM (
+                        SELECT c.rowid, c.category, c.alias, c.cmd, c.description, c.usage, 2 as ord
+                        FROM command_fts s
+                        JOIN command c ON s.rowid = c.rowid
+                        WHERE command_fts MATCH :match_ordered
+                    
+                        UNION ALL
+                        
+                        SELECT c.rowid, c.category, c.alias, c.cmd, c.description, c.usage, 1 as ord
+                        FROM command_fts s
+                        JOIN command c ON s.rowid = c.rowid
+                        WHERE command_fts MATCH :match_simple
+
+                        UNION ALL
+                        
+                        SELECT c.rowid, c.category, c.alias, c.cmd, c.description, c.usage, 0 as ord
+                        FROM command_fts s
+                        JOIN command c ON s.rowid = c.rowid
+                        WHERE s.flat_cmd GLOB :glob
+                    )
+                    ORDER BY ord DESC, usage DESC, (CASE WHEN category = 'user' THEN 1 ELSE 0 END) DESC
+                "#,
         )?;
+
+        let match_ordered = format!(
+            "^{}",
+            flat_search
+                .split_whitespace()
+                .map(|token| format!("{token}*"))
+                .join(" + ")
+        );
+        let match_simple = flat_search
+            .split_whitespace()
+            .map(|token| format!("{token}*"))
+            .join(" ");
+        let glob = flat_search
+            .split_whitespace()
+            .map(|token| format!("*{token}*"))
+            .join(" ");
 
         let commands = stmt
             .query(&[
-                (":match", &format!("{flat_search}*")),
-                (":like", &format!("{flat_search}%")),
+                (":match_ordered", &match_ordered),
+                (":match_simple", &match_simple),
+                (":glob", &glob),
             ])?
             .mapped(command_from_row)
             .finish_vec()
@@ -338,6 +389,141 @@ impl SqliteStorage {
 
         Ok(new)
     }
+
+    /// Determines if the store is empty (no commands stored)
+    pub fn is_empty(&self) -> Result<bool> {
+        Ok(self.len()? == 0)
+    }
+
+    /// Returns the number of stored commands
+    pub fn len(&self) -> Result<u64> {
+        let mut stmt = self.conn.prepare(r#"SELECT COUNT(*) FROM command"#)?;
+        Ok(stmt.query_row([], |r| r.get(0))?)
+    }
+
+    /// Inserts a label suggestion if it doesn't exists.
+    ///
+    /// Returns wether the suggestion was inserted or not (already existed)
+    pub fn insert_label_suggestion(&mut self, suggestion: &LabelSuggestion) -> Result<bool> {
+        if suggestion.flat_label == suggestion.suggestion {
+            return Ok(false);
+        }
+
+        let inserted = match self.conn.execute(
+            r#"INSERT INTO label_suggestion (flat_root_cmd, flat_label, suggestion, usage) VALUES (?, ?, ?, ?)"#,
+            (
+                &suggestion.flat_root_cmd,
+                &suggestion.flat_label,
+                &suggestion.suggestion,
+                suggestion.usage,
+            ),
+        ) {
+            Ok(i) => i,
+            Err(Error::SqliteFailure(err, msg)) => match err.code {
+                ErrorCode::ConstraintViolation => return Ok(false),
+                _ => {
+                    return Err(
+                        anyhow::Error::new(Error::SqliteFailure(err, msg)).context("Error inserting label suggestion")
+                    );
+                }
+            },
+            Err(err) => {
+                return Err(anyhow::Error::new(err).context("Error inserting label suggestion"));
+            }
+        };
+
+        Ok(inserted == 1)
+    }
+
+    /// Updates an existing label suggestion
+    ///
+    /// Returns wether the suggestion exists and was updated or not.
+    pub fn update_label_suggestion(&mut self, suggestion: &LabelSuggestion) -> Result<bool> {
+        let updated = self.conn
+            .execute(
+                r#"UPDATE label_suggestion SET usage = ? WHERE flat_root_cmd = ? AND flat_label = ? AND suggestion = ?"#,
+                (
+                    suggestion.usage,
+                    &suggestion.flat_root_cmd,
+                    &suggestion.flat_label,
+                    &suggestion.suggestion,
+                ),
+            )
+            .context("Error updating label suggestion")?;
+
+        Ok(updated == 1)
+    }
+
+    /// Deletes an existing label suggestion
+    ///
+    /// Returns wether the suggestion exists and was deleted or not.
+    pub fn delete_label_suggestion(&mut self, suggestion: &LabelSuggestion) -> Result<bool> {
+        let deleted = self
+            .conn
+            .execute(
+                r#"DELETE FROM label_suggestion WHERE flat_root_cmd = ? AND flat_label = ? AND suggestion = ?"#,
+                (
+                    &suggestion.flat_root_cmd,
+                    &suggestion.flat_label,
+                    &suggestion.suggestion,
+                ),
+            )
+            .context("Error deleting label suggestion")?;
+
+        Ok(deleted == 1)
+    }
+
+    /// Finds label suggestions for the given root command and label
+    pub fn find_suggestions_for(
+        &mut self,
+        root_cmd: impl AsRef<str>,
+        label: impl AsRef<str>,
+    ) -> Result<Vec<LabelSuggestion>> {
+        let flat_root_cmd = flatten_str(root_cmd.as_ref());
+        let label = label.as_ref();
+        let mut parameters = label.split('|').map(flatten_str).collect_vec();
+        parameters.insert(0, flatten_str(label));
+
+        const QUERY: &str = r#"
+            SELECT * FROM (
+                SELECT 
+                    s.flat_root_cmd, 
+                    s.flat_label, 
+                    s.suggestion, 
+                    s.usage, 
+                    q.sum_usage,
+                    RANK () OVER ( 
+                        PARTITION BY s.suggestion
+                        ORDER BY LENGTH(s.flat_label) DESC
+                    ) rank 
+                FROM label_suggestion s
+                JOIN (
+                    SELECT flat_root_cmd, suggestion, SUM(usage) as sum_usage
+                    FROM label_suggestion
+                    WHERE flat_root_cmd = ?1 AND flat_label IN (#LABELS#)
+                    GROUP BY flat_root_cmd, suggestion
+                ) q ON s.flat_root_cmd = q.flat_root_cmd AND s.suggestion = q.suggestion
+            )
+            WHERE rank = 1
+            ORDER BY 
+                sum_usage DESC, 
+                (CASE WHEN flat_label = ?2 THEN 1 ELSE 0 END) DESC
+        "#;
+
+        let mut stmt = self
+            .conn
+            .prepare(&QUERY.replace("#LABELS#", &parameters.iter().map(|_| "?").join(",")))?;
+
+        parameters.insert(0, flat_root_cmd);
+
+        let suggestions = stmt
+            .query(params_from_iter(parameters.iter()))?
+            .mapped(label_suggestion_from_row)
+            .finish_vec()
+            .context("Error querying label suggestions")?;
+
+        Ok(suggestions)
+    }
 }
 
 /// Maps a [Command] from a [Row]
@@ -349,6 +535,16 @@ fn command_from_row(row: &Row<'_>) -> rusqlite::Result<Command> {
         cmd: row.get(3)?,
         description: row.get(4)?,
         usage: row.get(5)?,
+    })
+}
+
+/// Maps a [LabelSuggestion] from a [Row]
+fn label_suggestion_from_row(row: &Row<'_>) -> rusqlite::Result<LabelSuggestion> {
+    Ok(LabelSuggestion {
+        flat_root_cmd: row.get(0)?,
+        flat_label: row.get(1)?,
+        suggestion: row.get(2)?,
+        usage: row.get(3)?,
     })
 }
 

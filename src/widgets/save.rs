@@ -10,7 +10,7 @@ use tui::{
 
 use crate::{
     common::OverflowText,
-    model::Command,
+    model::{Command, MaybeCommand},
     storage::{SqliteStorage, USER_CATEGORY},
     theme::Theme,
     Widget, WidgetOutput,
@@ -49,22 +49,24 @@ impl<'s> SaveCommandWidget<'s> {
         storage: &mut SqliteStorage,
         command: impl Into<String>,
         description: impl Into<String>,
-    ) -> Result<WidgetOutput> {
+    ) -> Result<WidgetOutput<MaybeCommand>> {
         let cmd = command.into();
-        let mut command = Command::new(USER_CATEGORY, &cmd, description);
+        let mut command = Command::new(USER_CATEGORY, cmd, description);
         Ok(match storage.insert_command(&mut command)? {
-            true => WidgetOutput::new("Command was saved successfully", cmd),
-            false => WidgetOutput::new("Command already existed, so it was updated", cmd),
+            true => WidgetOutput::new("Command was saved successfully", command),
+            false => WidgetOutput::new("Command already existed, so it was updated", command),
         })
     }
 }
 
 impl<'s> Widget for SaveCommandWidget<'s> {
+    type Output = MaybeCommand;
+
     fn min_height(&self) -> usize {
         1
     }
 
-    fn peek(&mut self) -> Result<Option<WidgetOutput>> {
+    fn peek(&mut self) -> Result<Option<WidgetOutput<Self::Output>>> {
         if self.command.is_empty() {
             Ok(Some(WidgetOutput::message("A command must be typed first!")))
         } else {
@@ -110,7 +112,7 @@ impl<'s> Widget for SaveCommandWidget<'s> {
         );
     }
 
-    fn process_event(&mut self, event: Event) -> Result<Option<WidgetOutput>> {
+    fn process_event(&mut self, event: Event) -> Result<Option<WidgetOutput<Self::Output>>> {
         if let Event::Key(key) = event {
             match key.code {
                 KeyCode::Enter | KeyCode::Tab => {

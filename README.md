@@ -26,9 +26,10 @@ It currently works on Bash and Zsh and should be compatible with most Linux, Win
 ## Features
 
 - Standalone binaries
-- Search UI to autocomplete currently typed command
+- Autocomplete currently typed command
   - Full Text Search in both command and description
-- Inline and full-screen interfaces
+- Find & replace labels of currently typed command
+- Non-intrusive (inline) and full-screen interfaces
 - Fetch command to parse and store [tldr](https://github.com/tldr-pages/tldr) pages (Thanks to them!)
 - Portability. You can use bookmarked commands in any supported shell, as well as exporting and importing elsewhere.
 
@@ -76,17 +77,19 @@ You can view supported actions by running `intelli-shell -h`. Most used standalo
 
 ### Hotkeys
 
-- `Ctrl + space` to open search UI with the current line pre-populated as the filter
-  - When navigating commands, the currently selected command can be deleted with `Ctrl + d`
-- `Ctrl + b` to bookmark the currently typed command
-- `esc` to clean current line, this binding can be skipped if `INTELLI_SKIP_ESC_BIND=1`
+- `ctrl + b` bookmark currently typed command
+- `ctrl + space` show suggestions for current line
+- `ctrl + l` replace labels of currently typed command
+- `esc` clean current line, this binding can be skipped if `INTELLI_SKIP_ESC_BIND=1`
 
-You can customize key bindings using environment variables: `INTELLI_SEARCH_HOTKEY` and `INTELLI_SAVE_HOTKEY`
+**Note:** When navigating items, selected line can be deleted with `ctrl + d`
+
+You can customize key bindings using environment variables: `INTELLI_SAVE_HOTKEY`, `INTELLI_SEARCH_HOTKEY` and `INTELLI_LABEL_HOTKEY`
 
 ## Wishlist
 
-- [ ] Labels support to store most used labels and select them using a dedicated UI
-- [ ] Usability improvements to manage stored commands
+- [x] Labels support to store most used labels and select them using a dedicated UI
+- [ ] Usability improvements to manage stored commands (including aliases)
 - [ ] Sync user bookmarks using some public / private Git repo
 - [ ] Support for more terminals, like PowerShell
 

@@ -1,6 +1,7 @@
 # Default bindings
 intelli_search_key="${INTELLI_SEARCH_HOTKEY:-\C-@}"
 intelli_save_key="${INTELLI_SAVE_HOTKEY:-\C-b}"
+intelli_label_key="${INTELLI_LABEL_HOTKEY:-\C-l}"
 
 if [[ -n "$ZSH_VERSION" ]]; then
     # zshell
@@ -31,12 +32,27 @@ if [[ -n "$ZSH_VERSION" ]]; then
         BUFFER="$INTELLI_OUTPUT"
         zle end-of-line
     }
+
+    function _intelli_label {
+        # Temp file for output
+        tmp_file=$(mktemp -t intelli-shell.XXXXXXXX)
+        # Exec command
+        intelli-shell --inline --inline-extra-line --file-output="$tmp_file" label "$BUFFER"
+        # Capture output
+        INTELLI_OUTPUT=$(<$tmp_file)
+        rm -f $tmp_file
+        # Rewrite line
+        BUFFER="$INTELLI_OUTPUT"
+        zle end-of-line
+    }
     
     if [[ "${INTELLI_SKIP_ESC_BIND:-0}" == "0" ]]; then bindkey "\e" kill-whole-line; fi
     zle -N _intelli_search
     zle -N _intelli_save
+    zle -N _intelli_label
     bindkey "$intelli_search_key" _intelli_search 
     bindkey "$intelli_save_key" _intelli_save
+    bindkey "$intelli_label_key" _intelli_label
     
 elif [[ -n "$BASH" ]]; then
     # bash
@@ -68,7 +84,21 @@ elif [[ -n "$BASH" ]]; then
         READLINE_POINT=${#READLINE_LINE}
     }
 
+    function _intelli_label {
+        # Temp file for output
+        tmp_file=$(mktemp -t intelli-shell.XXXXXXXX)
+        # Exec command
+        intelli-shell --inline --file-output="$tmp_file" label "$READLINE_LINE"
+        # Capture output
+        INTELLI_OUTPUT=$(<$tmp_file)
+        rm -f $tmp_file
+        # Rewrite line
+        READLINE_LINE="$INTELLI_OUTPUT"
+        READLINE_POINT=${#READLINE_LINE}
+    }
+
     if [[ "${INTELLI_SKIP_ESC_BIND:-0}" == "0" ]]; then bind '"\e": kill-whole-line'; fi
     bind -x '"'"$intelli_search_key"'":_intelli_search'
     bind -x '"'"$intelli_save_key"'":_intelli_save'
+    bind -x '"'"$intelli_label_key"'":_intelli_label'
 fi
