@@ -53,8 +53,8 @@ impl<'s> SaveCommandWidget<'s> {
         let cmd = command.into();
         let mut command = Command::new(USER_CATEGORY, cmd, description);
         Ok(match storage.insert_command(&mut command)? {
-            true => WidgetOutput::new("Command was saved successfully", command),
-            false => WidgetOutput::new("Command already existed, so it was updated", command),
+            true => WidgetOutput::new(" -> Command was saved successfully", command),
+            false => WidgetOutput::new(" -> Command already existed, so it was updated", command),
         })
     }
 }
@@ -68,7 +68,7 @@ impl<'s> Widget for SaveCommandWidget<'s> {
 
     fn peek(&mut self) -> Result<Option<WidgetOutput<Self::Output>>> {
         if self.command.is_empty() {
-            Ok(Some(WidgetOutput::message("A command must be typed first!")))
+            Ok(Some(WidgetOutput::message(" -> A command must be typed first!")))
         } else {
             match &self.description {
                 Some(d) => Ok(Some(Self::insert_command(self.storage, &self.command, d)?)),

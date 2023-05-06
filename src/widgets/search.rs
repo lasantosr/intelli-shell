@@ -51,7 +51,7 @@ impl<'s> Widget for SearchWidget<'s> {
     fn peek(&mut self) -> Result<Option<WidgetOutput<Self::Output>>> {
         if self.storage.is_empty()? {
             let message = indoc::indoc! { r#"
-                There are no stored commands yet!
+                -> There are no stored commands yet!
                     - Try to bookmark some command with 'Ctrl + B'
                     - Or execute 'intelli-shell fetch' to download a bunch of tldr's useful commands"# 
             };

@@ -510,9 +510,16 @@ impl SqliteStorage {
                 (CASE WHEN flat_label = ?2 THEN 1 ELSE 0 END) DESC
         "#;
 
-        let mut stmt = self
-            .conn
-            .prepare(&QUERY.replace("#LABELS#", &parameters.iter().map(|_| "?").join(",")))?;
+        let mut stmt = self.conn.prepare(
+            &QUERY.replace(
+                "#LABELS#",
+                &parameters
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("?{}", i + 2))
+                    .join(","),
+            ),
+        )?;
 
         parameters.insert(0, flat_root_cmd);
 

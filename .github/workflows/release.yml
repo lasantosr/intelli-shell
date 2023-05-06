@@ -57,7 +57,7 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          tar czvf intelli-shell-${{ matrix.target }}.tar.gz intelli-shell.sh -C target/${{ matrix.target }}/release intelli-shell
+          tar czvf intelli-shell-${{ matrix.target }}.tar.gz intelli-shell.sh intelli-shell.fish -C target/${{ matrix.target }}/release intelli-shell
         
       - name: Release
         uses: softprops/action-gh-release@v1

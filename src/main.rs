@@ -145,18 +145,18 @@ fn run(cli: Args) -> Result<()> {
                 LabelWidget::new(&mut storage, labeled_command)?,
             )
             .map_output_str(),
-            None => Ok(WidgetOutput::new("The command contains no labels!", command)),
+            None => Ok(WidgetOutput::new(" -> The command contains no labels!", command)),
         },
         Actions::Export { file } => {
             let file_path = file.as_deref().unwrap_or("user_commands.txt");
             let exported = storage.export(USER_CATEGORY, file_path)?;
             Ok(WidgetOutput::message(format!(
-                "Successfully exported {exported} commands to '{file_path}'"
+                " -> Successfully exported {exported} commands to '{file_path}'"
             )))
         }
         Actions::Import { file } => {
             let new = storage.import(USER_CATEGORY, file)?;
-            Ok(WidgetOutput::message(format!("Imported {new} new commands")))
+            Ok(WidgetOutput::message(format!(" -> Imported {new} new commands")))
         }
         #[cfg(feature = "tldr")]
         Actions::Fetch { category } => exec(

@@ -14,7 +14,7 @@ It currently works on Bash and Zsh and should be compatible with most Linux, Win
 1. Install the binaries:
 
    ```sh
-   curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.sh | $SHELL
+   curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.sh | bash
    ```
 
 2. Bookmark your first command by typing it on a terminal and using `ctrl + b`
@@ -42,7 +42,7 @@ Remember to bookmark some commands or fetch them after the installation!
 To install using prebuilt binaries:
 
 ```sh
-curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.sh | $SHELL
+curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.sh | bash
 ```
 
 ### From source code
@@ -90,8 +90,10 @@ You can customize key bindings using environment variables: `INTELLI_SAVE_HOTKEY
 
 - [x] Labels support to store most used labels and select them using a dedicated UI
 - [ ] Usability improvements to manage stored commands (including aliases)
+- [ ] Support for more terminals
+  - [x] [Fish](https://fishshell.com/)
+- [ ] Deploy to package managers
 - [ ] Sync user bookmarks using some public / private Git repo
-- [ ] Support for more terminals, like PowerShell
 
 ## Alternatives
 

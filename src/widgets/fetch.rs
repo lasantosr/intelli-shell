@@ -30,9 +30,11 @@ impl<'a> Widget for FetchWidget<'a> {
         let new = self.storage.insert_commands(&mut commands)?;
 
         if new == 0 {
-            Ok(Some(WidgetOutput::message("No new commands to retrieve".to_owned())))
+            Ok(Some(WidgetOutput::message(
+                " -> No new commands to retrieve".to_owned(),
+            )))
         } else {
-            Ok(Some(WidgetOutput::message(format!("Retrieved {new} new commands"))))
+            Ok(Some(WidgetOutput::message(format!(" -> Retrieved {new} new commands"))))
         }
     }
 }

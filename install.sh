@@ -1,3 +1,5 @@
+#!/bin/bash
+
 set -eo pipefail
 
 # Retrieve default shell
@@ -35,23 +37,55 @@ curl -Lsf https://github.com/lasantosr/intelli-shell/releases/latest/download/in
 echo "Successfully installed IntelliShell at: $INTELLI_HOME"
 
 # Update rc
-if [[ "$os" = 'apple-darwin' ]] && [[ "$shell" = 'bash' ]];
-then
-  rcfile=".bash_profile"
-else
-  rcfile=".${shell}rc"
-fi
-sourced=$(cat ~/$rcfile | { grep -E '^source.*intelli-shell\.sh' || test $? = 1; })
-if [[ -z "$sourced" ]];
-then
-  echo -e '\n# IntelliShell' >> ~/$rcfile
-  echo "INTELLI_HOME=$INTELLI_HOME" >> ~/$rcfile
-  echo '# export INTELLI_SEARCH_HOTKEY=\C-@' >> ~/$rcfile
-  echo '# export INTELLI_LABEL_HOTKEY=C-l' >> ~/$rcfile
-  echo '# export INTELLI_SAVE_HOTKEY=C-b' >> ~/$rcfile
-  echo '# export INTELLI_SKIP_ESC_BIND=0' >> ~/$rcfile
-  echo 'alias intelli-shell="$INTELLI_HOME/bin/intelli-shell"' >> ~/$rcfile
-  echo 'source $INTELLI_HOME/bin/intelli-shell.sh' >> ~/$rcfile
+files=()
+function update_rc () {
+  if [ -f "$1" ]; then
+    sourced=$(cat $1 | { grep -E '.*intelli-shell.*' || test $? = 1; })
+  else
+    sourced=
+  fi
+  if [[ -z "$sourced" ]];
+  then
+    files+=("$1")
+    echo -e '\n# IntelliShell' >> "$1"
+    echo "INTELLI_HOME=$INTELLI_HOME" >> "$1"
+    echo '# export INTELLI_SEARCH_HOTKEY=\C-@' >> "$1"
+    echo '# export INTELLI_LABEL_HOTKEY=C-l' >> "$1"
+    echo '# export INTELLI_SAVE_HOTKEY=C-b' >> "$1"
+    echo '# export INTELLI_SKIP_ESC_BIND=0' >> "$1"
+    echo 'alias intelli-shell="$INTELLI_HOME/bin/intelli-shell"' >> "$1"
+    echo 'source $INTELLI_HOME/bin/intelli-shell.sh' >> "$1"
+  fi
+}
 
-  echo "Please restart the terminal or re-source ~/$rcfile, where further customizations can be made"
+update_rc "$HOME/.bashrc"
+if [[ -f "$HOME/.bash_profile" ]]; then
+  update_rc "$HOME/.bash_profile"
+fi
+if [[ -f "/bin/zsh" ]]; then
+  update_rc "$HOME/.zshrc"
+fi
+if [[ -f "/usr/bin/fish" ]]; then
+  config="$HOME/.config/fish/config.fish"
+  if [ -f "$config" ]; then
+    sourced=$(cat $config | { grep -E '.*intelli-shell.*' || test $? = 1; })
+  else
+    sourced=
+  fi
+  if [[ -z "$sourced" ]];
+  then
+    files+=("$config")
+    echo -e '\n# IntelliShell' >> "$config"
+    echo "set INTELLI_HOME $INTELLI_HOME" >> "$config"
+    echo '# set INTELLI_SEARCH_HOTKEY \cr' >> "$config"
+    echo '# set INTELLI_LABEL_HOTKEY \cl' >> "$config"
+    echo '# set INTELLI_SAVE_HOTKEY \cb' >> "$config"
+    echo '# set INTELLI_SKIP_ESC_BIND 0' >> "$config"
+    echo 'source $INTELLI_HOME/bin/intelli-shell.fish' >> "$config"
+    # TODO include fish on tar.gz, bindings, test from each terminal
+  fi
+fi
+
+if [ ${#files[@]} -ne 0 ]; then
+  echo "The following files were updated: ${files[@]}"
 fi

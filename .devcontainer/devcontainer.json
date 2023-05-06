@@ -14,6 +14,7 @@
                 "aaron-bond.better-comments",
                 "oderwat.indent-rainbow",
                 "gruntfuggly.todo-tree",
+                "skyapps.fish-vscode",
                 "yzhang.markdown-all-in-one",
                 "davidanson.vscode-markdownlint"
             ],
@@ -25,6 +26,9 @@
                     },
                     "zsh": {
                         "path": "/bin/zsh"
+                    },
+                    "fish": {
+                        "path": "/usr/bin/fish"
                     }
                 },
                 "files.watcherExclude": {
