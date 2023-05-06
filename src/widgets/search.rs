@@ -157,6 +157,18 @@ impl<'s> Widget for SearchWidget<'s> {
                         self.storage.delete_command(cmd.id)?;
                     }
                 }
+                KeyCode::Char(c) if has_ctrl && c == 'j' => {
+                    self.commands.next();
+                }
+                KeyCode::Down => {
+                    self.commands.next();
+                }
+                KeyCode::Char(c) if has_ctrl && c == 'k' => {
+                    self.commands.previous();
+                }
+                KeyCode::Up => {
+                    self.commands.previous();
+                }
                 KeyCode::Enter | KeyCode::Tab => {
                     if let Some(cmd) = self.commands.current_mut() {
                         cmd.increment_usage();
@@ -195,12 +207,6 @@ impl<'s> Widget for SearchWidget<'s> {
                     if self.cursor_offset > 0 {
                         self.cursor_offset -= 1;
                     }
-                }
-                KeyCode::Down => {
-                    self.commands.next();
-                }
-                KeyCode::Up => {
-                    self.commands.previous();
                 }
                 KeyCode::Esc => {
                     if self.filter.is_empty() {

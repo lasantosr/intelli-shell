@@ -211,6 +211,18 @@ impl<'s> Widget for LabelWidget<'s> {
                         }
                     }
                 }
+                KeyCode::Char(c) if has_ctrl && c == 'j' => {
+                    self.suggestions.next();
+                }
+                KeyCode::Down => {
+                    self.suggestions.next();
+                }
+                KeyCode::Char(c) if has_ctrl && c == 'k' => {
+                    self.suggestions.previous();
+                }
+                KeyCode::Up => {
+                    self.suggestions.previous();
+                }
                 KeyCode::Enter | KeyCode::Tab => {
                     if let Some(suggestion) = self.suggestions.current_mut() {
                         match suggestion {
@@ -309,12 +321,6 @@ impl<'s> Widget for LabelWidget<'s> {
                             *offset -= 1;
                         }
                     }
-                }
-                KeyCode::Down => {
-                    self.suggestions.next();
-                }
-                KeyCode::Up => {
-                    self.suggestions.previous();
                 }
                 KeyCode::Esc => {
                     return Ok(Some(WidgetOutput::output(self.command.clone())));
