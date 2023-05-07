@@ -16,6 +16,7 @@ if [[ -n "$ZSH_VERSION" ]]; then
         INTELLI_OUTPUT=$(<$tmp_file)
         rm -f $tmp_file
         # Rewrite line
+        zle reset-prompt
         BUFFER="$INTELLI_OUTPUT"
         zle end-of-line
     }
@@ -29,6 +30,7 @@ if [[ -n "$ZSH_VERSION" ]]; then
         INTELLI_OUTPUT=$(<$tmp_file)
         rm -f $tmp_file
         # Rewrite line
+        zle reset-prompt
         BUFFER="$INTELLI_OUTPUT"
         zle end-of-line
     }
@@ -42,6 +44,7 @@ if [[ -n "$ZSH_VERSION" ]]; then
         INTELLI_OUTPUT=$(<$tmp_file)
         rm -f $tmp_file
         # Rewrite line
+        zle reset-prompt
         BUFFER="$INTELLI_OUTPUT"
         zle end-of-line
     }
