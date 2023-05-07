@@ -44,6 +44,7 @@ RUN echo "alias intelli-shell=/workspaces/intelli-shell/target/debug/intelli-she
 RUN echo "source /workspaces/intelli-shell/intelli-shell.sh" >> ~/.zshrc
 RUN echo "alias ll='ls -alF'" >> ~/.zshrc
 
+RUN mkdir -p ~/.config/fish
 RUN echo "# IntelliShell debug" >> ~/.config/fish/config.fish
 RUN echo "set INTELLI_HOME /workspaces/intelli-shell" >> ~/.config/fish/config.fish
 RUN echo "source /workspaces/intelli-shell/intelli-shell.fish" >> ~/.config/fish/config.fish

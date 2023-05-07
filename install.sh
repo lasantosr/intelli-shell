@@ -70,6 +70,7 @@ if [[ -f "/usr/bin/fish" ]]; then
   if [ -f "$config" ]; then
     sourced=$(cat $config | { grep -E '.*intelli-shell.*' || test $? = 1; })
   else
+    mkdir -p "$HOME/.config/fish"
     sourced=
   fi
   if [[ -z "$sourced" ]];
