@@ -15,11 +15,11 @@ use crossterm::{
     QueueableCommand,
 };
 use intelli_shell::{
-    model::{AsLabeledCommand, MaybeCommand},
+    model::AsLabeledCommand,
     storage::{SqliteStorage, USER_CATEGORY},
     theme::{self, Theme},
     widgets::{LabelWidget, SaveCommandWidget, SearchWidget},
-    ResultExt, Widget, WidgetOutput,
+    Widget, WidgetOutput,
 };
 use once_cell::sync::OnceCell;
 use tui::{backend::CrosstermBackend, layout::Rect, Terminal};
@@ -89,7 +89,7 @@ enum Actions {
 
 static PANIC_INFO: OnceCell<String> = OnceCell::new();
 
-fn main() -> Result<()> {
+fn main() {
     // Parse arguments
     let cli = Args::parse();
 
@@ -99,52 +99,40 @@ fn main() -> Result<()> {
     }));
 
     // Run program
-    if panic::catch_unwind(|| run(cli)).is_err() {
-        disable_raw_mode()?;
-        if let Some(panic_info) = PANIC_INFO.get() {
-            println!("{panic_info}");
+    match panic::catch_unwind(|| run(cli)) {
+        Ok(Ok(_)) => (),
+        Ok(Err(err)) => eprintln!(" -> Error: {err}"),
+        Err(_) => {
+            disable_raw_mode().unwrap();
+            if let Some(panic_info) = PANIC_INFO.get() {
+                println!("{panic_info}");
+            }
         }
     }
-
-    Ok(())
 }
 
 fn run(cli: Args) -> Result<()> {
     // Prepare storage
-    let mut storage = SqliteStorage::new()?;
+    let storage = SqliteStorage::new()?;
 
     // Execute command
     let res = match cli.action {
         Actions::Save { command, description } => exec(
             cli.inline,
             cli.inline_extra_line,
-            SaveCommandWidget::new(&mut storage, command, description),
-        )
-        .map_output_str(),
+            SaveCommandWidget::new(&storage, command, description),
+        ),
         Actions::Search { filter } => exec(
             cli.inline,
             cli.inline_extra_line,
-            SearchWidget::new(&mut storage, filter.unwrap_or_default())?,
-        )
-        .and_then(|out| {
-            if let Some(cmd) = &out.output {
-                if let Some(cmd) = match &cmd {
-                    MaybeCommand::Persisted(cmd) => cmd.as_labeled_command(),
-                    MaybeCommand::Unpersisted(cmd) => cmd.as_labeled_command(),
-                } {
-                    return exec(cli.inline, cli.inline_extra_line, LabelWidget::new(&mut storage, cmd)?)
-                        .map_output_str();
-                }
-            }
-            Ok(out).map_output_str()
-        }),
+            SearchWidget::new(&storage, filter.unwrap_or_default())?,
+        ),
         Actions::Label { command } => match command.as_labeled_command() {
             Some(labeled_command) => exec(
                 cli.inline,
                 cli.inline_extra_line,
-                LabelWidget::new(&mut storage, labeled_command)?,
-            )
-            .map_output_str(),
+                LabelWidget::new(&storage, labeled_command)?,
+            ),
             None => Ok(WidgetOutput::new(" -> The command contains no labels!", command)),
         },
         Actions::Export { file } => {
@@ -162,9 +150,8 @@ fn run(cli: Args) -> Result<()> {
         Actions::Fetch { category } => exec(
             cli.inline,
             cli.inline_extra_line,
-            intelli_shell::widgets::FetchWidget::new(category, &mut storage),
-        )
-        .map_output_str(),
+            intelli_shell::widgets::FetchWidget::new(category, &storage),
+        ),
     }?;
 
     // Print any message received
@@ -185,7 +172,7 @@ fn run(cli: Args) -> Result<()> {
     Ok(())
 }
 
-fn exec<W>(inline: bool, inline_extra_line: bool, widget: W) -> Result<WidgetOutput<W::Output>>
+fn exec<W>(inline: bool, inline_extra_line: bool, widget: W) -> Result<WidgetOutput>
 where
     W: Widget,
 {
@@ -197,7 +184,7 @@ where
     }
 }
 
-fn exec_alt_screen<W>(mut widget: W, theme: Theme) -> Result<WidgetOutput<W::Output>>
+fn exec_alt_screen<W>(mut widget: W, theme: Theme) -> Result<WidgetOutput>
 where
     W: Widget,
 {
@@ -227,7 +214,7 @@ where
     res
 }
 
-fn exec_inline<W>(mut widget: W, theme: Theme, extra_line: bool) -> Result<WidgetOutput<W::Output>>
+fn exec_inline<W>(mut widget: W, theme: Theme, extra_line: bool) -> Result<WidgetOutput>
 where
     W: Widget,
 {

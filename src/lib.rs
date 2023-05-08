@@ -27,4 +27,4 @@ mod common;
 #[cfg(feature = "tldr")]
 mod tldr;
 
-pub use common::{ResultExt, Widget, WidgetOutput};
+pub use common::{Widget, WidgetOutput};

@@ -33,26 +33,3 @@ impl Display for Command {
         write!(f, "{}", self.cmd)
     }
 }
-
-pub enum MaybeCommand {
-    Persisted(Command),
-    Unpersisted(String),
-}
-impl Display for MaybeCommand {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MaybeCommand::Persisted(p) => write!(f, "{p}"),
-            MaybeCommand::Unpersisted(u) => write!(f, "{u}"),
-        }
-    }
-}
-impl From<Command> for MaybeCommand {
-    fn from(value: Command) -> Self {
-        Self::Persisted(value)
-    }
-}
-impl<T: Into<String>> From<T> for MaybeCommand {
-    fn from(value: T) -> Self {
-        Self::Unpersisted(value.into())
-    }
-}

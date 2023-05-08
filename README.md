@@ -95,7 +95,7 @@ You can view supported actions by running `intelli-shell -h`. Most used standalo
 - `ctrl + l` replace labels of currently typed command
 - `esc` clean current line, this binding can be skipped if `INTELLI_SKIP_ESC_BIND=1`
 
-**Note:** When navigating items, selected line can be deleted with `ctrl + d`
+**Note:** When navigating items, selected suggestion can be deleted with `ctrl + d`
 
 You can customize key bindings using environment variables: `INTELLI_SAVE_HOTKEY`, `INTELLI_SEARCH_HOTKEY` and `INTELLI_LABEL_HOTKEY`
 
@@ -105,6 +105,7 @@ You can customize key bindings using environment variables: `INTELLI_SAVE_HOTKEY
 - [ ] Usability improvements to manage stored commands (including aliases)
 - [ ] Support for more terminals
   - [x] [Fish](https://fishshell.com/)
+- [ ] Export also labels and UI to filter what to export
 - [ ] Deploy to package managers
 - [ ] Sync user bookmarks using some public / private Git repo
 

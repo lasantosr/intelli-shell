@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use crossterm::event::{Event, KeyCode, KeyModifiers};
+use crossterm::event::Event;
 use itertools::Itertools;
 use tui::{
     backend::Backend,
@@ -11,7 +11,7 @@ use tui::{
 };
 
 use crate::{
-    common::{StatefulList, StrExt, StringExt},
+    common::{EditableText, InputWidget, StatefulList},
     model::{CommandPart, LabelSuggestion, LabeledCommand},
     storage::SqliteStorage,
     theme::Theme,
@@ -21,9 +21,9 @@ use crate::{
 /// Widget to complete [LabeledCommand]
 pub struct LabelWidget<'s> {
     /// Storage
-    storage: &'s mut SqliteStorage,
+    storage: &'s SqliteStorage,
     /// Command
-    command: LabeledCommand<'s>,
+    command: LabeledCommand,
     /// Current label index
     current_label_ix: usize,
     /// Current label name
@@ -33,18 +33,18 @@ pub struct LabelWidget<'s> {
 }
 
 enum Suggestion {
-    New(String, usize),
+    New(EditableText),
     Label(String),
     Persisted(LabelSuggestion),
 }
 
 impl<'s> LabelWidget<'s> {
-    pub fn new(storage: &'s mut SqliteStorage, command: LabeledCommand<'s>) -> Result<Self> {
+    pub fn new(storage: &'s SqliteStorage, command: LabeledCommand) -> Result<Self> {
         let (current_label_ix, current_label) = command
             .next_label()
             .ok_or_else(|| anyhow::anyhow!("Command doesn't have labels"))?;
         let current_label = current_label.to_owned();
-        let suggestions = Self::suggestion_items_for(storage, command.root, &current_label, "", 0)?;
+        let suggestions = Self::suggestion_items_for(storage, &command.root, &current_label, EditableText::default())?;
         Ok(Self {
             storage,
             command,
@@ -55,34 +55,31 @@ impl<'s> LabelWidget<'s> {
     }
 
     fn suggestion_items_for(
-        storage: &mut SqliteStorage,
+        storage: &SqliteStorage,
         root_cmd: &str,
         label: &str,
-        filter: &str,
-        filter_ix: usize,
+        new_suggestion: EditableText,
     ) -> Result<Vec<Suggestion>> {
         let mut suggestions = storage
             .find_suggestions_for(root_cmd, label)?
             .into_iter()
             .map(Suggestion::Persisted)
             .collect_vec();
-        suggestions.insert(0, Suggestion::New(filter.to_owned(), filter_ix));
         let mut from_label = label.split('|').map(|l| Suggestion::Label(l.to_owned())).collect_vec();
         suggestions.append(&mut from_label);
-        if !filter.is_empty() {
+        if !new_suggestion.as_str().is_empty() {
             suggestions.retain(|s| match s {
-                Suggestion::New(_, _) => true,
-                Suggestion::Label(l) => l.starts_with(filter),
-                Suggestion::Persisted(s) => s.suggestion.starts_with(filter),
+                Suggestion::New(_) => true,
+                Suggestion::Label(l) => l.contains(new_suggestion.as_str()),
+                Suggestion::Persisted(s) => s.suggestion.contains(new_suggestion.as_str()),
             })
         }
+        suggestions.insert(0, Suggestion::New(new_suggestion));
         Ok(suggestions)
     }
 }
 
 impl<'s> Widget for LabelWidget<'s> {
-    type Output = LabeledCommand<'s>;
-
     fn min_height(&self) -> usize {
         (self.suggestions.len() + 1).clamp(4, 15)
     }
@@ -117,7 +114,7 @@ impl<'s> Widget for LabelWidget<'s> {
                 if first_label || current_width <= max_width {
                     let was_first_label = first_label;
                     let span = match p {
-                        CommandPart::Text(t) => Span::raw(*t),
+                        CommandPart::Text(t) => Span::raw(t),
                         CommandPart::Label(l) => {
                             let style = if first_label {
                                 first_label = false;
@@ -157,9 +154,9 @@ impl<'s> Widget for LabelWidget<'s> {
         let suggestions: Vec<ListItem> = suggestions
             .iter()
             .map(|c| match c {
-                Suggestion::New(value, _) => ListItem::new(Spans::from(vec![
+                Suggestion::New(value) => ListItem::new(Spans::from(vec![
                     Span::styled(NEW_LABEL_PREFIX, Style::default().add_modifier(Modifier::ITALIC)),
-                    Span::raw(value),
+                    Span::raw(value.as_str()),
                 ])),
                 Suggestion::Label(value) => ListItem::new(value.clone()),
                 Suggestion::Persisted(e) => ListItem::new(e.suggestion.clone()),
@@ -184,14 +181,14 @@ impl<'s> Widget for LabelWidget<'s> {
         }
         frame.render_stateful_widget(suggestions, body, state);
 
-        if let Some(Suggestion::New(_, offset)) = self.suggestions.current() {
+        if let Some(Suggestion::New(t)) = self.suggestions.current() {
             // Make the cursor visible and ask tui-rs to put it at the specified coordinates after rendering
             frame.set_cursor(
                 // Put cursor at the input text offset
                 body.x
                     + HIGHLIGHT_SYMBOL_PREFIX.len() as u16
                     + NEW_LABEL_PREFIX.len() as u16
-                    + *offset as u16
+                    + t.offset() as u16
                     + (!inline as u16),
                 // Move one line down, from the border to the input line
                 body.y + (!inline as u16),
@@ -199,136 +196,130 @@ impl<'s> Widget for LabelWidget<'s> {
         }
     }
 
-    fn process_event(&mut self, event: Event) -> Result<Option<WidgetOutput<Self::Output>>> {
-        if let Event::Key(key) = event {
-            let has_ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-            match key.code {
-                // `ctrl + d` - Delete
-                KeyCode::Char(c) if has_ctrl && c == 'd' => {
-                    if let Some(Suggestion::Persisted(_)) = self.suggestions.current() {
-                        if let Some(Suggestion::Persisted(suggestion)) = self.suggestions.delete_current() {
-                            self.storage.delete_label_suggestion(&suggestion)?;
-                        }
-                    }
-                }
-                KeyCode::Char(c) if has_ctrl && c == 'j' => {
-                    self.suggestions.next();
-                }
-                KeyCode::Down => {
-                    self.suggestions.next();
-                }
-                KeyCode::Char(c) if has_ctrl && c == 'k' => {
-                    self.suggestions.previous();
-                }
-                KeyCode::Up => {
-                    self.suggestions.previous();
-                }
-                KeyCode::Enter | KeyCode::Tab => {
-                    if let Some(suggestion) = self.suggestions.current_mut() {
-                        match suggestion {
-                            Suggestion::New(value, _) => {
-                                if !value.is_empty() {
-                                    let suggestion =
-                                        self.command.new_suggestion_for(&self.current_label, value.clone());
-                                    self.storage.insert_label_suggestion(&suggestion)?;
-                                }
-                                self.command.set_next_label(value.clone());
-                            }
-                            Suggestion::Label(value) => {
-                                self.command.set_next_label(value.clone());
-                            }
-                            Suggestion::Persisted(suggestion) => {
-                                suggestion.increment_usage();
-                                self.storage.update_label_suggestion(suggestion)?;
-                                self.command.set_next_label(&suggestion.suggestion);
-                            }
-                        }
-                        match self.command.next_label() {
-                            Some((ix, label)) => {
-                                self.current_label_ix = ix;
-                                self.current_label = label.to_owned();
+    fn process_raw_event(&mut self, event: Event) -> Result<Option<WidgetOutput>> {
+        self.process_event(event)
+    }
+}
 
-                                let suggestions =
-                                    Self::suggestion_items_for(self.storage, self.command.root, label, "", 0)?;
-                                self.suggestions = StatefulList::with_items(suggestions);
-                            }
-                            None => {
-                                return Ok(Some(WidgetOutput::output(self.command.clone())));
-                            }
-                        }
-                    } else {
-                        bail!("Expected at least one suggestion")
-                    }
-                }
-                KeyCode::Char(c) => {
-                    if let Some(Suggestion::New(suggestion, offset)) = self.suggestions.current_mut() {
-                        suggestion.insert_safe(*offset, c);
-                        *offset += 1;
-                        let offset = *offset;
-                        let suggestion = suggestion.clone();
-                        self.suggestions.update_items(Self::suggestion_items_for(
-                            self.storage,
-                            self.command.root,
-                            &self.current_label,
-                            &suggestion,
-                            offset,
-                        )?);
-                    }
-                }
-                KeyCode::Backspace => {
-                    if let Some(Suggestion::New(suggestion, offset)) = self.suggestions.current_mut() {
-                        if !suggestion.is_empty() && *offset > 0 {
-                            suggestion.remove_safe(*offset - 1);
-                            *offset -= 1;
-                            let offset = *offset;
-                            let suggestion = suggestion.clone();
-                            self.suggestions.update_items(Self::suggestion_items_for(
-                                self.storage,
-                                self.command.root,
-                                &self.current_label,
-                                &suggestion,
-                                offset,
-                            )?);
-                        }
-                    }
-                }
-                KeyCode::Delete => {
-                    if let Some(Suggestion::New(suggestion, offset)) = self.suggestions.current_mut() {
-                        if !suggestion.is_empty() && *offset < suggestion.len_chars() {
-                            suggestion.remove_safe(*offset);
-                            let offset = *offset;
-                            let suggestion = suggestion.clone();
-                            self.suggestions.update_items(Self::suggestion_items_for(
-                                self.storage,
-                                self.command.root,
-                                &self.current_label,
-                                &suggestion,
-                                offset,
-                            )?);
-                        }
-                    }
-                }
-                KeyCode::Right => {
-                    if let Some(Suggestion::New(suggestion, offset)) = self.suggestions.current_mut() {
-                        if *offset < suggestion.len_chars() {
-                            *offset += 1;
-                        }
-                    }
-                }
-                KeyCode::Left => {
-                    if let Some(Suggestion::New(_, offset)) = self.suggestions.current_mut() {
-                        if *offset > 0 {
-                            *offset -= 1;
-                        }
-                    }
-                }
-                KeyCode::Esc => {
-                    return Ok(Some(WidgetOutput::output(self.command.clone())));
-                }
-                _ => (),
+impl<'s> InputWidget for LabelWidget<'s> {
+    fn move_up(&mut self) {
+        self.suggestions.previous()
+    }
+
+    fn move_down(&mut self) {
+        self.suggestions.next()
+    }
+
+    fn move_left(&mut self) {
+        if let Some(Suggestion::New(suggestion)) = self.suggestions.current_mut() {
+            suggestion.move_left()
+        }
+    }
+
+    fn move_right(&mut self) {
+        if let Some(Suggestion::New(suggestion)) = self.suggestions.current_mut() {
+            suggestion.move_right()
+        }
+    }
+
+    fn prev(&mut self) {
+        self.suggestions.previous()
+    }
+
+    fn next(&mut self) {
+        self.suggestions.next()
+    }
+
+    fn insert_text(&mut self, text: String) -> Result<()> {
+        if let Some(Suggestion::New(suggestion)) = self.suggestions.current_mut() {
+            suggestion.insert_text(text);
+            let suggestion = suggestion.clone();
+            self.suggestions.update_items(Self::suggestion_items_for(
+                self.storage,
+                &self.command.root,
+                &self.current_label,
+                suggestion,
+            )?);
+        }
+        Ok(())
+    }
+
+    fn insert_char(&mut self, c: char) -> Result<()> {
+        if let Some(Suggestion::New(suggestion)) = self.suggestions.current_mut() {
+            suggestion.insert_char(c);
+            let suggestion = suggestion.clone();
+            self.suggestions.update_items(Self::suggestion_items_for(
+                self.storage,
+                &self.command.root,
+                &self.current_label,
+                suggestion,
+            )?);
+        }
+        Ok(())
+    }
+
+    fn delete_char(&mut self, backspace: bool) -> Result<()> {
+        if let Some(Suggestion::New(suggestion)) = self.suggestions.current_mut() {
+            if suggestion.delete_char(backspace) {
+                let suggestion = suggestion.clone();
+                self.suggestions.update_items(Self::suggestion_items_for(
+                    self.storage,
+                    &self.command.root,
+                    &self.current_label,
+                    suggestion,
+                )?);
             }
         }
-        // Continue waiting for input
-        Ok(None)
+        Ok(())
+    }
+
+    fn delete_current(&mut self) -> Result<()> {
+        if let Some(Suggestion::Persisted(_)) = self.suggestions.current() {
+            if let Some(Suggestion::Persisted(suggestion)) = self.suggestions.delete_current() {
+                self.storage.delete_label_suggestion(&suggestion)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn accept_current(&mut self) -> Result<Option<WidgetOutput>> {
+        if let Some(suggestion) = self.suggestions.current_mut() {
+            match suggestion {
+                Suggestion::New(value) => {
+                    if !value.as_str().is_empty() {
+                        let suggestion = self.command.new_suggestion_for(&self.current_label, value.as_str());
+                        self.storage.insert_label_suggestion(&suggestion)?;
+                    }
+                    self.command.set_next_label(value.as_str());
+                }
+                Suggestion::Label(value) => {
+                    self.command.set_next_label(value.clone());
+                }
+                Suggestion::Persisted(suggestion) => {
+                    suggestion.increment_usage();
+                    self.storage.update_label_suggestion(suggestion)?;
+                    self.command.set_next_label(&suggestion.suggestion);
+                }
+            }
+            match self.command.next_label() {
+                Some((ix, label)) => {
+                    self.current_label_ix = ix;
+                    self.current_label = label.to_owned();
+
+                    let suggestions =
+                        Self::suggestion_items_for(self.storage, &self.command.root, label, EditableText::default())?;
+                    self.suggestions = StatefulList::with_items(suggestions);
+
+                    Ok(None)
+                }
+                None => Ok(Some(WidgetOutput::output(self.command.to_string()))),
+            }
+        } else {
+            bail!("Expected at least one suggestion")
+        }
+    }
+
+    fn exit(&mut self) -> Result<WidgetOutput> {
+        Ok(WidgetOutput::output(self.command.to_string()))
     }
 }

@@ -2,6 +2,7 @@ use core::slice;
 use std::{
     fs,
     io::{BufRead, BufReader, BufWriter, Write},
+    sync::Mutex,
 };
 
 use anyhow::{anyhow, Context, Result};
@@ -51,7 +52,7 @@ static ALLOWED_FTS_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"[^a-zA-Z0-9 ]
 
 /// SQLite-based storage
 pub struct SqliteStorage {
-    conn: Connection,
+    conn: Mutex<Connection>,
 }
 
 impl SqliteStorage {
@@ -65,18 +66,22 @@ impl SqliteStorage {
         fs::create_dir_all(&path).context("Could't create data dir")?;
 
         Ok(Self {
-            conn: Self::initialize_connection(
-                Connection::open(path.join("storage.db3")).context("Error opening SQLite connection")?,
-            )
-            .context("Error initializing SQLite connection")?,
+            conn: Mutex::new(
+                Self::initialize_connection(
+                    Connection::open(path.join("storage.db3")).context("Error opening SQLite connection")?,
+                )
+                .context("Error initializing SQLite connection")?,
+            ),
         })
     }
 
     /// Builds a new in-memory SQLite storage for testing purposes
     pub fn new_in_memory() -> Result<Self> {
         Ok(Self {
-            conn: Self::initialize_connection(Connection::open_in_memory()?)
-                .context("Error initializing SQLite connection")?,
+            conn: Mutex::new(
+                Self::initialize_connection(Connection::open_in_memory()?)
+                    .context("Error initializing SQLite connection")?,
+            ),
         })
     }
 
@@ -103,7 +108,7 @@ impl SqliteStorage {
     /// If the command already exist on the database, its description will be updated.
     ///
     /// Returns wether the command was inserted or not (updated)
-    pub fn insert_command(&mut self, command: &mut Command) -> Result<bool> {
+    pub fn insert_command(&self, command: &mut Command) -> Result<bool> {
         Ok(self.insert_commands(slice::from_mut(command))? == 1)
     }
 
@@ -112,10 +117,11 @@ impl SqliteStorage {
     /// If any command already exist on the database, its description will be updated.
     ///
     /// Returns the number of commands inserted (the rest are updated)
-    pub fn insert_commands(&mut self, commands: &mut [Command]) -> Result<u64> {
+    pub fn insert_commands(&self, commands: &mut [Command]) -> Result<u64> {
         let mut res = 0;
 
-        let tx = self.conn.transaction()?;
+        let mut conn = self.conn.lock().expect("poisoned lock");
+        let tx = conn.transaction()?;
 
         {
             let mut stmt_cmd = tx.prepare(
@@ -172,8 +178,9 @@ impl SqliteStorage {
     /// Updates an existing command
     ///
     /// Returns wether the command exists and was updated or not.
-    pub fn update_command(&mut self, command: &Command) -> Result<bool> {
-        let tx = self.conn.transaction()?;
+    pub fn update_command(&self, command: &Command) -> Result<bool> {
+        let mut conn = self.conn.lock().expect("poisoned lock");
+        let tx = conn.transaction()?;
 
         let updated = tx
             .execute(
@@ -209,9 +216,9 @@ impl SqliteStorage {
     /// Updates an existing command by incrementing its usage by one
     ///
     /// Returns wether the command exists and was updated or not.
-    pub fn increment_command_usage(&mut self, command_id: i64) -> Result<bool> {
-        let updated = self
-            .conn
+    pub fn increment_command_usage(&self, command_id: i64) -> Result<bool> {
+        let conn = self.conn.lock().expect("poisoned lock");
+        let updated = conn
             .execute(r#"UPDATE command SET usage = usage + 1 WHERE rowid = ?"#, [command_id])
             .context("Error updating command usage")?;
 
@@ -221,8 +228,9 @@ impl SqliteStorage {
     /// Deletes an existing command
     ///
     /// Returns wether the command exists and was deleted or not.
-    pub fn delete_command(&mut self, command_id: i64) -> Result<bool> {
-        let tx = self.conn.transaction()?;
+    pub fn delete_command(&self, command_id: i64) -> Result<bool> {
+        let mut conn = self.conn.lock().expect("poisoned lock");
+        let tx = conn.transaction()?;
 
         let deleted = tx
             .execute(r#"DELETE FROM command WHERE rowid = ?"#, [command_id])
@@ -247,7 +255,8 @@ impl SqliteStorage {
     pub fn get_commands(&self, category: impl AsRef<str>) -> Result<Vec<Command>> {
         let category = category.as_ref();
 
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock().expect("poisoned lock");
+        let mut stmt = conn.prepare(
             r#"SELECT rowid, category, alias, cmd, description, usage 
             FROM command
             WHERE category = ?
@@ -271,8 +280,8 @@ impl SqliteStorage {
         }
         let flat_search = flatten_str(search);
 
-        let alias_cmd = self
-            .conn
+        let conn = self.conn.lock().expect("poisoned lock");
+        let alias_cmd = conn
             .query_row(
                 r#"SELECT rowid, category, alias, cmd, description, usage 
                 FROM command
@@ -289,10 +298,11 @@ impl SqliteStorage {
         let flat_search = ALLOWED_FTS_REGEX.replace_all(&flat_search, "");
         let flat_search = flat_search.trim();
         if flat_search.is_empty() || flat_search == " " {
+            drop(conn);
             return self.get_commands(USER_CATEGORY);
         }
 
-        let mut stmt = self.conn.prepare(
+        let mut stmt = conn.prepare(
             r#"
                     SELECT DISTINCT rowid, category, alias, cmd, description, usage 
                     FROM (
@@ -372,15 +382,18 @@ impl SqliteStorage {
     /// ## Returns
     ///
     /// The number of newly inserted commands
-    pub fn import(&mut self, category: impl AsRef<str>, file_path: String) -> Result<u64> {
+    pub fn import(&self, category: impl AsRef<str>, file_path: String) -> Result<u64> {
         let category = category.as_ref();
         let file = fs::File::open(file_path).context("Error opening file")?;
         let r = BufReader::new(file);
         let mut commands = r
             .lines()
             .map_err(anyhow::Error::from)
+            .filter_ok(|line| !line.is_empty() && !line.starts_with('#'))
             .and_then(|line| {
-                let (cmd, description) = line.split_once(" ## ").ok_or_else(|| anyhow!("Unexpected format"))?;
+                let (cmd, description) = line
+                    .split_once(" ## ")
+                    .ok_or_else(|| anyhow!("Unexpected file format"))?;
                 Ok::<_, anyhow::Error>(Command::new(category, cmd, description))
             })
             .finish_vec()?;
@@ -397,19 +410,21 @@ impl SqliteStorage {
 
     /// Returns the number of stored commands
     pub fn len(&self) -> Result<u64> {
-        let mut stmt = self.conn.prepare(r#"SELECT COUNT(*) FROM command"#)?;
+        let conn = self.conn.lock().expect("poisoned lock");
+        let mut stmt = conn.prepare(r#"SELECT COUNT(*) FROM command"#)?;
         Ok(stmt.query_row([], |r| r.get(0))?)
     }
 
     /// Inserts a label suggestion if it doesn't exists.
     ///
     /// Returns wether the suggestion was inserted or not (already existed)
-    pub fn insert_label_suggestion(&mut self, suggestion: &LabelSuggestion) -> Result<bool> {
+    pub fn insert_label_suggestion(&self, suggestion: &LabelSuggestion) -> Result<bool> {
         if suggestion.flat_label == suggestion.suggestion {
             return Ok(false);
         }
 
-        let inserted = match self.conn.execute(
+        let conn = self.conn.lock().expect("poisoned lock");
+        let inserted = match conn.execute(
             r#"INSERT INTO label_suggestion (flat_root_cmd, flat_label, suggestion, usage) VALUES (?, ?, ?, ?)"#,
             (
                 &suggestion.flat_root_cmd,
@@ -438,8 +453,9 @@ impl SqliteStorage {
     /// Updates an existing label suggestion
     ///
     /// Returns wether the suggestion exists and was updated or not.
-    pub fn update_label_suggestion(&mut self, suggestion: &LabelSuggestion) -> Result<bool> {
-        let updated = self.conn
+    pub fn update_label_suggestion(&self, suggestion: &LabelSuggestion) -> Result<bool> {
+        let conn = self.conn.lock().expect("poisoned lock");
+        let updated = conn
             .execute(
                 r#"UPDATE label_suggestion SET usage = ? WHERE flat_root_cmd = ? AND flat_label = ? AND suggestion = ?"#,
                 (
@@ -457,9 +473,9 @@ impl SqliteStorage {
     /// Deletes an existing label suggestion
     ///
     /// Returns wether the suggestion exists and was deleted or not.
-    pub fn delete_label_suggestion(&mut self, suggestion: &LabelSuggestion) -> Result<bool> {
-        let deleted = self
-            .conn
+    pub fn delete_label_suggestion(&self, suggestion: &LabelSuggestion) -> Result<bool> {
+        let conn = self.conn.lock().expect("poisoned lock");
+        let deleted = conn
             .execute(
                 r#"DELETE FROM label_suggestion WHERE flat_root_cmd = ? AND flat_label = ? AND suggestion = ?"#,
                 (
@@ -475,7 +491,7 @@ impl SqliteStorage {
 
     /// Finds label suggestions for the given root command and label
     pub fn find_suggestions_for(
-        &mut self,
+        &self,
         root_cmd: impl AsRef<str>,
         label: impl AsRef<str>,
     ) -> Result<Vec<LabelSuggestion>> {
@@ -510,7 +526,8 @@ impl SqliteStorage {
                 (CASE WHEN flat_label = ?2 THEN 1 ELSE 0 END) DESC
         "#;
 
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock().expect("poisoned lock");
+        let mut stmt = conn.prepare(
             &QUERY.replace(
                 "#LABELS#",
                 &parameters
@@ -557,14 +574,12 @@ fn label_suggestion_from_row(row: &Row<'_>) -> rusqlite::Result<LabelSuggestion>
 
 impl Drop for SqliteStorage {
     fn drop(&mut self) {
+        let conn = self.conn.lock().expect("poisoned lock");
         // Make sure pragma optimize does not take too long
-        self.conn
-            .pragma_update(None, "analysis_limit", "400")
+        conn.pragma_update(None, "analysis_limit", "400")
             .expect("Failed analysis_limit PRAGMA");
         // Gather statistics to improve query optimization
-        self.conn
-            .execute_batch("PRAGMA optimize;")
-            .expect("Failed optimize PRAGMA");
+        conn.execute_batch("PRAGMA optimize;").expect("Failed optimize PRAGMA");
     }
 }
 

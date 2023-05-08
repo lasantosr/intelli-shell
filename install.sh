@@ -89,4 +89,5 @@ fi
 
 if [ ${#files[@]} -ne 0 ]; then
   echo "The following files were updated: ${files[@]}"
+  echo "You might have to re-source your profile or restart your terminal."
 fi

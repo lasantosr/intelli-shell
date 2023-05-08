@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyModifiers};
+use crossterm::event::Event;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -9,9 +9,10 @@ use tui::{
     Frame,
 };
 
+use super::LabelWidget;
 use crate::{
-    common::{OverflowText, StatefulList, StrExt, StringExt, Widget},
-    model::{Command, MaybeCommand},
+    common::{EditableText, InputWidget, OverflowText, StatefulList, StrExt, Widget},
+    model::{AsLabeledCommand, Command},
     storage::SqliteStorage,
     theme::Theme,
     WidgetOutput,
@@ -20,35 +21,44 @@ use crate::{
 /// Widget to search for [Command]
 pub struct SearchWidget<'s> {
     /// Storage
-    storage: &'s mut SqliteStorage,
+    storage: &'s SqliteStorage,
     /// Current value of the filter box
-    filter: String,
-    /// Current cursor offset
-    cursor_offset: usize,
+    filter: EditableText,
     /// Command list of results
     commands: StatefulList<Command>,
+    /// Delegate label widget
+    delegate_label: Option<LabelWidget<'s>>,
 }
 
 impl<'s> SearchWidget<'s> {
-    pub fn new(storage: &'s mut SqliteStorage, filter: String) -> Result<Self> {
+    pub fn new(storage: &'s SqliteStorage, filter: String) -> Result<Self> {
         let commands = storage.find_commands(&filter)?;
         Ok(Self {
             commands: StatefulList::with_items(commands),
-            cursor_offset: filter.len_chars(),
-            filter,
+            filter: EditableText::from_str(filter),
             storage,
+            delegate_label: None,
         })
+    }
+
+    pub fn exit_or_label_replace(&mut self, output: WidgetOutput) -> Result<Option<WidgetOutput>> {
+        if let Some(cmd) = &output.output {
+            if let Some(labeled_cmd) = cmd.as_labeled_command() {
+                let w = LabelWidget::new(self.storage, labeled_cmd)?;
+                self.delegate_label = Some(w);
+                return Ok(None);
+            }
+        }
+        Ok(Some(output))
     }
 }
 
 impl<'s> Widget for SearchWidget<'s> {
-    type Output = MaybeCommand;
-
     fn min_height(&self) -> usize {
         (self.commands.len() + 1).clamp(4, 15)
     }
 
-    fn peek(&mut self) -> Result<Option<WidgetOutput<Self::Output>>> {
+    fn peek(&mut self) -> Result<Option<WidgetOutput>> {
         if self.storage.is_empty()? {
             let message = indoc::indoc! { r#"
                 -> There are no stored commands yet!
@@ -56,14 +66,27 @@ impl<'s> Widget for SearchWidget<'s> {
                     - Or execute 'intelli-shell fetch' to download a bunch of tldr's useful commands"# 
             };
             Ok(Some(WidgetOutput::message(message)))
-        } else if !self.filter.is_empty() && self.commands.len() == 1 {
-            Ok(self.commands.current().map(|c| c.cmd.clone()).map(WidgetOutput::output))
+        } else if !self.filter.as_str().is_empty() && self.commands.len() == 1 {
+            if let Some(command) = self.commands.current_mut() {
+                command.increment_usage();
+                self.storage.update_command(command)?;
+                let cmd = command.cmd.clone();
+                self.exit_or_label_replace(WidgetOutput::output(cmd))
+            } else {
+                Ok(None)
+            }
         } else {
             Ok(None)
         }
     }
 
     fn render<B: Backend>(&mut self, frame: &mut Frame<B>, area: Rect, inline: bool, theme: Theme) {
+        // If there's a delegate active, forward to it
+        if let Some(delegate) = &mut self.delegate_label {
+            delegate.render(frame, area, inline, theme);
+            return;
+        }
+
         // Prepare main layout
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -82,14 +105,14 @@ impl<'s> Widget for SearchWidget<'s> {
         let body = chunks[1];
 
         // Display filter
-        let mut filter_offset = self.cursor_offset;
+        let mut filter_offset = self.filter.offset();
         let max_width = header.width as usize - 1 - (2 * (!inline as usize));
         let text_inline = format!("(filter): {}", self.filter);
         let filter_text = if inline {
             filter_offset += 10;
             OverflowText::new(max_width, &text_inline)
         } else {
-            OverflowText::new(max_width, &self.filter)
+            OverflowText::new(max_width, self.filter.as_str())
         };
         let filter_text_width = filter_text.width();
         if text_inline.len_chars() > filter_text_width {
@@ -147,78 +170,88 @@ impl<'s> Widget for SearchWidget<'s> {
         frame.render_stateful_widget(commands, body, state);
     }
 
-    fn process_event(&mut self, event: Event) -> Result<Option<WidgetOutput<Self::Output>>> {
-        if let Event::Key(key) = event {
-            let has_ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-            match key.code {
-                KeyCode::Char(c) if has_ctrl && c == 'd' => {
-                    // Delete
-                    if let Some(cmd) = self.commands.delete_current() {
-                        self.storage.delete_command(cmd.id)?;
-                    }
-                }
-                KeyCode::Char(c) if has_ctrl && c == 'j' => {
-                    self.commands.next();
-                }
-                KeyCode::Down => {
-                    self.commands.next();
-                }
-                KeyCode::Char(c) if has_ctrl && c == 'k' => {
-                    self.commands.previous();
-                }
-                KeyCode::Up => {
-                    self.commands.previous();
-                }
-                KeyCode::Enter | KeyCode::Tab => {
-                    if let Some(cmd) = self.commands.current_mut() {
-                        cmd.increment_usage();
-                        self.storage.update_command(cmd)?;
-                        return Ok(Some(WidgetOutput::output(cmd.clone())));
-                    } else if self.filter.is_empty() {
-                        return Ok(Some(WidgetOutput::empty()));
-                    } else {
-                        return Ok(Some(WidgetOutput::output(self.filter.clone())));
-                    }
-                }
-                KeyCode::Char(c) => {
-                    self.filter.insert_safe(self.cursor_offset, c);
-                    self.cursor_offset += 1;
-                    self.commands.update_items(self.storage.find_commands(&self.filter)?);
-                }
-                KeyCode::Backspace => {
-                    if !self.filter.is_empty() && self.cursor_offset > 0 {
-                        self.filter.remove_safe(self.cursor_offset - 1);
-                        self.cursor_offset -= 1;
-                        self.commands.update_items(self.storage.find_commands(&self.filter)?);
-                    }
-                }
-                KeyCode::Delete => {
-                    if !self.filter.is_empty() && self.cursor_offset < self.filter.len_chars() {
-                        self.filter.remove_safe(self.cursor_offset);
-                        self.commands.update_items(self.storage.find_commands(&self.filter)?);
-                    }
-                }
-                KeyCode::Right => {
-                    if self.cursor_offset < self.filter.len_chars() {
-                        self.cursor_offset += 1;
-                    }
-                }
-                KeyCode::Left => {
-                    if self.cursor_offset > 0 {
-                        self.cursor_offset -= 1;
-                    }
-                }
-                KeyCode::Esc => {
-                    if self.filter.is_empty() {
-                        return Ok(Some(WidgetOutput::empty()));
-                    } else {
-                        return Ok(Some(WidgetOutput::output(self.filter.clone())));
-                    }
-                }
-                _ => (),
-            }
+    fn process_raw_event(&mut self, event: Event) -> Result<Option<WidgetOutput>> {
+        // If there's a delegate active, forward to it
+        if let Some(delegate) = &mut self.delegate_label {
+            delegate.process_event(event)
+        } else {
+            self.process_event(event)
         }
-        // Continue waiting for input
-        Ok(None)
+    }
+}
+
+impl<'s> InputWidget for SearchWidget<'s> {
+    fn move_up(&mut self) {
+        self.commands.previous()
+    }
+
+    fn move_down(&mut self) {
+        self.commands.next()
+    }
+
+    fn move_left(&mut self) {
+        self.filter.move_left()
+    }
+
+    fn move_right(&mut self) {
+        self.filter.move_right()
+    }
+
+    fn prev(&mut self) {
+        self.commands.previous()
+    }
+
+    fn next(&mut self) {
+        self.commands.next()
+    }
+
+    fn insert_text(&mut self, text: String) -> Result<()> {
+        self.filter.insert_text(text);
+        self.commands
+            .update_items(self.storage.find_commands(self.filter.as_str())?);
+        Ok(())
+    }
+
+    fn insert_char(&mut self, c: char) -> Result<()> {
+        self.filter.insert_char(c);
+        self.commands
+            .update_items(self.storage.find_commands(self.filter.as_str())?);
+        Ok(())
+    }
+
+    fn delete_char(&mut self, backspace: bool) -> Result<()> {
+        if self.filter.delete_char(backspace) {
+            self.commands
+                .update_items(self.storage.find_commands(self.filter.as_str())?);
+        }
+        Ok(())
+    }
+
+    fn delete_current(&mut self) -> Result<()> {
+        if let Some(cmd) = self.commands.delete_current() {
+            self.storage.delete_command(cmd.id)?;
+        }
+        Ok(())
+    }
+
+    fn accept_current(&mut self) -> Result<Option<WidgetOutput>> {
+        if let Some(command) = self.commands.current_mut() {
+            command.increment_usage();
+            self.storage.update_command(command)?;
+            let cmd = command.cmd.clone();
+            self.exit_or_label_replace(WidgetOutput::output(cmd))
+        } else if !self.filter.as_str().is_empty() {
+            self.exit_or_label_replace(WidgetOutput::output(self.filter.as_str()))
+        } else {
+            Ok(Some(WidgetOutput::empty()))
+        }
+    }
+
+    fn exit(&mut self) -> Result<WidgetOutput> {
+        if self.filter.as_str().is_empty() {
+            Ok(WidgetOutput::empty())
+        } else {
+            Ok(WidgetOutput::output(self.filter.as_str()))
+        }
     }
 }

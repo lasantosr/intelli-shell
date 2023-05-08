@@ -24,14 +24,13 @@ impl LabelSuggestion {
 /// A [Command] containing labels
 #[cfg_attr(debug_assertions, derive(Debug))]
 #[derive(Clone)]
-pub struct LabeledCommand<'c> {
-    pub id: Option<i64>,
-    pub root: &'c str,
-    pub parts: Vec<CommandPart<'c>>,
+pub struct LabeledCommand {
+    pub root: String,
+    pub parts: Vec<CommandPart>,
 }
 
-impl<'c> LabeledCommand<'c> {
-    pub fn next_label(&'c self) -> Option<(usize, &'c str)> {
+impl LabeledCommand {
+    pub fn next_label(&self) -> Option<(usize, &str)> {
         let mut ix = 0;
         for part in self.parts.iter() {
             match part {
@@ -52,9 +51,9 @@ impl<'c> LabeledCommand<'c> {
         }
     }
 
-    pub fn new_suggestion_for(&'c self, label: &'c str, suggestion: impl Into<String>) -> LabelSuggestion {
+    pub fn new_suggestion_for(&self, label: impl AsRef<str>, suggestion: impl Into<String>) -> LabelSuggestion {
         LabelSuggestion {
-            flat_root_cmd: flatten_str(self.root),
+            flat_root_cmd: flatten_str(&self.root),
             flat_label: flatten_str(label),
             suggestion: suggestion.into(),
             usage: 1,
@@ -62,7 +61,7 @@ impl<'c> LabeledCommand<'c> {
     }
 }
 
-impl<'c> Display for LabeledCommand<'c> {
+impl Display for LabeledCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         for part in self.parts.iter() {
             write!(f, "{part}")?;
@@ -73,13 +72,13 @@ impl<'c> Display for LabeledCommand<'c> {
 
 #[cfg_attr(debug_assertions, derive(Debug))]
 #[derive(Clone)]
-pub enum CommandPart<'c> {
-    Text(&'c str),
-    Label(&'c str),
+pub enum CommandPart {
+    Text(String),
+    Label(String),
     LabelValue(String),
 }
 
-impl<'c> Display for CommandPart<'c> {
+impl Display for CommandPart {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             CommandPart::Text(t) => write!(f, "{t}"),
@@ -93,34 +92,34 @@ impl<'c> Display for CommandPart<'c> {
 static COMMAND_LABEL_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{\{([^}]+)}}"#).unwrap());
 
 /// Trait to build a [LabeledCommand] from other types
-pub trait AsLabeledCommand<'c> {
+pub trait AsLabeledCommand {
     /// Represents this type as a labeled command, when labels exist. Otherwise [None] shall be returned.
-    fn as_labeled_command(&'c self) -> Option<LabeledCommand<'c>>;
+    fn as_labeled_command(&self) -> Option<LabeledCommand>;
 }
-impl<'c> AsLabeledCommand<'c> for str {
-    fn as_labeled_command(&'c self) -> Option<LabeledCommand<'c>> {
+impl AsLabeledCommand for str {
+    fn as_labeled_command(&self) -> Option<LabeledCommand> {
         let cmd = self;
         let root = cmd.split_whitespace().next().unwrap_or(cmd);
         let splitter = SplitCaptures::new(&COMMAND_LABEL_REGEX, cmd);
         let parts = splitter
             .map(|e| match e {
-                SplitItem::Unmatched(t) => CommandPart::Text(t),
-                SplitItem::Captured(l) => CommandPart::Label(l.get(1).unwrap().as_str()),
+                SplitItem::Unmatched(t) => CommandPart::Text(t.to_owned()),
+                SplitItem::Captured(l) => CommandPart::Label(l.get(1).unwrap().as_str().to_owned()),
             })
             .collect::<Vec<_>>();
 
         if parts.len() <= 1 {
             None
         } else {
-            Some(LabeledCommand { id: None, root, parts })
+            Some(LabeledCommand {
+                root: root.to_owned(),
+                parts,
+            })
         }
     }
 }
-impl<'c> AsLabeledCommand<'c> for Command {
-    fn as_labeled_command(&'c self) -> Option<LabeledCommand<'c>> {
-        self.cmd.as_labeled_command().map(|mut l| {
-            l.id = Some(self.id);
-            l
-        })
+impl AsLabeledCommand for Command {
+    fn as_labeled_command(&self) -> Option<LabeledCommand> {
+        self.cmd.as_labeled_command()
     }
 }
