@@ -5,7 +5,7 @@ set -eo pipefail
 # Retrieve default shell
 shell="${SHELL##*/}"
 
-if [[ "$shell" != 'bash' ]] && [[ "$shell" != 'zsh' ]];
+if [[ "$shell" != 'bash' ]] && [[ "$shell" != 'bash.exe' ]] && [[ "$shell" != 'zsh' ]];
 then
   echo "Terminal $shell is not compatible";
   exit 1;
@@ -49,9 +49,9 @@ function update_rc () {
     files+=("$1")
     echo -e '\n# IntelliShell' >> "$1"
     echo "INTELLI_HOME=$INTELLI_HOME" >> "$1"
-    echo '# export INTELLI_SEARCH_HOTKEY=\C-@' >> "$1"
-    echo '# export INTELLI_LABEL_HOTKEY=C-l' >> "$1"
-    echo '# export INTELLI_SAVE_HOTKEY=C-b' >> "$1"
+    echo '# export INTELLI_SEARCH_HOTKEY=\\C-@' >> "$1"
+    echo '# export INTELLI_LABEL_HOTKEY=\\C-l' >> "$1"
+    echo '# export INTELLI_SAVE_HOTKEY=\\C-b' >> "$1"
     echo '# export INTELLI_SKIP_ESC_BIND=0' >> "$1"
     echo 'alias intelli-shell="$INTELLI_HOME/bin/intelli-shell"' >> "$1"
     echo 'source $INTELLI_HOME/bin/intelli-shell.sh' >> "$1"
@@ -83,7 +83,6 @@ if [[ -f "/usr/bin/fish" ]]; then
     echo '# set INTELLI_SAVE_HOTKEY \cb' >> "$config"
     echo '# set INTELLI_SKIP_ESC_BIND 0' >> "$config"
     echo 'source $INTELLI_HOME/bin/intelli-shell.fish' >> "$config"
-    # TODO include fish on tar.gz, bindings, test from each terminal
   fi
 fi
 
