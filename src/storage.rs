@@ -309,7 +309,7 @@ impl SqliteStorage {
                         SELECT c.rowid, c.category, c.alias, c.cmd, c.description, c.usage, 2 as ord
                         FROM command_fts s
                         JOIN command c ON s.rowid = c.rowid
-                        WHERE command_fts MATCH :match_ordered
+                        WHERE command_fts MATCH :match_cmd_ordered
                     
                         UNION ALL
                         
@@ -329,8 +329,8 @@ impl SqliteStorage {
                 "#,
         )?;
 
-        let match_ordered = format!(
-            "^{}",
+        let match_cmd_ordered = format!(
+            "\"flat_cmd\" : ^{}",
             flat_search
                 .split_whitespace()
                 .map(|token| format!("{token}*"))
@@ -347,7 +347,7 @@ impl SqliteStorage {
 
         let commands = stmt
             .query(&[
-                (":match_ordered", &match_ordered),
+                (":match_cmd_ordered", &match_cmd_ordered),
                 (":match_simple", &match_simple),
                 (":glob", &glob),
             ])?
