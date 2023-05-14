@@ -295,9 +295,14 @@ impl SqliteStorage {
             return Ok(vec![cmd]);
         }
 
-        let flat_search = ALLOWED_FTS_REGEX.replace_all(&flat_search, "");
-        let flat_search = flat_search.trim();
-        if flat_search.is_empty() || flat_search == " " {
+        let hashtags = flat_search
+            .split_whitespace()
+            .filter(|t| t.starts_with('#'))
+            .collect_vec();
+
+        let flat_fts_search = ALLOWED_FTS_REGEX.replace_all(&flat_search, "");
+        let flat_fts_search = flat_fts_search.trim();
+        if flat_fts_search.is_empty() || flat_fts_search == " " {
             drop(conn);
             return self.get_commands(USER_CATEGORY);
         }
@@ -323,7 +328,7 @@ impl SqliteStorage {
                         SELECT c.rowid, c.category, c.alias, c.cmd, c.description, c.usage, 0 as ord
                         FROM command_fts s
                         JOIN command c ON s.rowid = c.rowid
-                        WHERE s.flat_cmd GLOB :glob
+                        WHERE s.flat_cmd GLOB :glob OR s.flat_description GLOB :glob
                     )
                     ORDER BY ord DESC, usage DESC, (CASE WHEN category = 'user' THEN 1 ELSE 0 END) DESC
                 "#,
@@ -331,12 +336,12 @@ impl SqliteStorage {
 
         let match_cmd_ordered = format!(
             "\"flat_cmd\" : ^{}",
-            flat_search
+            flat_fts_search
                 .split_whitespace()
                 .map(|token| format!("{token}*"))
                 .join(" + ")
         );
-        let match_simple = flat_search
+        let match_simple = flat_fts_search
             .split_whitespace()
             .map(|token| format!("{token}*"))
             .join(" ");
@@ -352,6 +357,18 @@ impl SqliteStorage {
                 (":glob", &glob),
             ])?
             .mapped(command_from_row)
+            .filter(|r| {
+                if !hashtags.is_empty() {
+                    if let Ok(command) = r {
+                        for tag in &hashtags {
+                            if !command.description.contains(tag) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                true
+            })
             .finish_vec()
             .context("Error querying fts command")?;
 
