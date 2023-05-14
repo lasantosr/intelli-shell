@@ -127,6 +127,20 @@ where
         }
     }
 
+    /// Selects the first item on the list
+    pub fn first(&mut self) {
+        if !self.items.is_empty() {
+            self.state.select(Some(0));
+        }
+    }
+
+    /// Selects the last item on the list
+    pub fn last(&mut self) {
+        if !self.items.is_empty() {
+            self.state.select(Some(self.items.len() - 1))
+        }
+    }
+
     /// Returns a mutable reference to the current selected item
     pub fn current_mut(&mut self) -> Option<&mut T> {
         if let Some(selected) = self.state.selected() {

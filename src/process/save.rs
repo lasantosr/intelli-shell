@@ -113,6 +113,14 @@ impl<'s> InteractiveProcess for SaveCommandProcess<'s> {
 
     fn next(&mut self) {}
 
+    fn home(&mut self) {
+        self.current_description.inner_mut().move_beginning()
+    }
+
+    fn end(&mut self) {
+        self.current_description.inner_mut().move_end()
+    }
+
     fn insert_text(&mut self, text: String) -> Result<()> {
         self.current_description.inner_mut().insert_text(text);
         Ok(())

@@ -275,6 +275,16 @@ impl TextInput {
         }
     }
 
+    /// Moves internal cursor to the line beginning
+    pub fn move_beginning(&mut self) {
+        self.cursor.x = 0;
+    }
+
+    /// Moves internal cursor to the line end
+    pub fn move_end(&mut self) {
+        self.cursor.x = self.current_line_length();
+    }
+
     /// Inserts the given text at the internal cursor
     pub fn insert_text(&mut self, text: impl Into<String>) {
         let text = unify_newlines(text.into());

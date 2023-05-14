@@ -171,6 +171,14 @@ impl<'s> InteractiveProcess for LabelProcess<'s> {
         self.suggestions.next()
     }
 
+    fn home(&mut self) {
+        self.suggestions.first()
+    }
+
+    fn end(&mut self) {
+        self.suggestions.last()
+    }
+
     fn insert_text(&mut self, text: String) -> Result<()> {
         if let Some(LabelSuggestionItem::New(suggestion)) = self.suggestions.current_mut() {
             suggestion.insert_text(text);

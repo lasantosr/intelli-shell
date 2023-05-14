@@ -120,6 +120,8 @@ pub trait InteractiveProcess: Process {
                         // TODO edit
                     }
                     // Selection
+                    KeyCode::Home => self.home(),
+                    KeyCode::End => self.end(),
                     KeyCode::Char(c) if has_ctrl && c == 'k' => self.prev(),
                     KeyCode::Char(c) if has_ctrl && c == 'j' => self.next(),
                     KeyCode::Up => self.move_up(),
@@ -156,6 +158,11 @@ pub trait InteractiveProcess: Process {
     fn prev(&mut self);
     /// Moves the selection to the next item
     fn next(&mut self);
+
+    /// Home button, usually moving selection to the first
+    fn home(&mut self);
+    /// End button, usually moving selection to the last
+    fn end(&mut self);
 
     /// Inserts the given text into the currently selected input, if any
     fn insert_text(&mut self, text: String) -> Result<()>;

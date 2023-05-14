@@ -164,6 +164,14 @@ impl<'s> InteractiveProcess for SearchProcess<'s> {
         self.commands.next()
     }
 
+    fn home(&mut self) {
+        self.commands.first()
+    }
+
+    fn end(&mut self) {
+        self.commands.last()
+    }
+
     fn insert_text(&mut self, text: String) -> Result<()> {
         self.filter.inner_mut().insert_text(text);
         self.commands
