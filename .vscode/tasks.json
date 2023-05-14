@@ -6,6 +6,9 @@
         {
             "type": "cargo",
             "command": "build",
+            "args": [
+                "--features=debug"
+            ],
             "problemMatcher": [
                 "$rustc"
             ],

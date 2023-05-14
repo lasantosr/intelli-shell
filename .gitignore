@@ -108,3 +108,4 @@ target
 ### Local ###
 .env
 .vscode/launch.json
+debug.log

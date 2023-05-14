@@ -16,10 +16,9 @@ use crossterm::{
 };
 use intelli_shell::{
     model::AsLabeledCommand,
+    process::{LabelProcess, SaveCommandProcess, SearchProcess},
     storage::{SqliteStorage, USER_CATEGORY},
-    theme::{self, Theme},
-    widgets::{LabelWidget, SaveCommandWidget, SearchWidget},
-    Widget, WidgetOutput,
+    theme, ExecutionContext, Process, ProcessOutput,
 };
 use once_cell::sync::OnceCell;
 use tui::{backend::CrosstermBackend, layout::Rect, Terminal};
@@ -105,7 +104,7 @@ fn main() {
         Err(_) => {
             disable_raw_mode().unwrap();
             if let Some(panic_info) = PANIC_INFO.get() {
-                println!("{panic_info}");
+                eprintln!("{panic_info}");
             }
         }
     }
@@ -115,48 +114,54 @@ fn run(cli: Args) -> Result<()> {
     // Prepare storage
     let storage = SqliteStorage::new()?;
 
+    // Execution context
+    let context = ExecutionContext {
+        inline: cli.inline,
+        theme: theme::DARK,
+    };
+
     // Execute command
     let res = match cli.action {
         Actions::Save { command, description } => exec(
             cli.inline,
             cli.inline_extra_line,
-            SaveCommandWidget::new(&storage, command, description),
+            SaveCommandProcess::new(&storage, command, description, context),
         ),
         Actions::Search { filter } => exec(
             cli.inline,
             cli.inline_extra_line,
-            SearchWidget::new(&storage, filter.unwrap_or_default())?,
+            SearchProcess::new(&storage, filter.unwrap_or_default(), context)?,
         ),
         Actions::Label { command } => match command.as_labeled_command() {
             Some(labeled_command) => exec(
                 cli.inline,
                 cli.inline_extra_line,
-                LabelWidget::new(&storage, labeled_command)?,
+                LabelProcess::new(&storage, labeled_command, context)?,
             ),
-            None => Ok(WidgetOutput::new(" -> The command contains no labels!", command)),
+            None => Ok(ProcessOutput::new(" -> The command contains no labels!", command)),
         },
         Actions::Export { file } => {
             let file_path = file.as_deref().unwrap_or("user_commands.txt");
             let exported = storage.export(USER_CATEGORY, file_path)?;
-            Ok(WidgetOutput::message(format!(
+            Ok(ProcessOutput::message(format!(
                 " -> Successfully exported {exported} commands to '{file_path}'"
             )))
         }
         Actions::Import { file } => {
             let new = storage.import(USER_CATEGORY, file)?;
-            Ok(WidgetOutput::message(format!(" -> Imported {new} new commands")))
+            Ok(ProcessOutput::message(format!(" -> Imported {new} new commands")))
         }
         #[cfg(feature = "tldr")]
         Actions::Fetch { category } => exec(
             cli.inline,
             cli.inline_extra_line,
-            intelli_shell::widgets::FetchWidget::new(category, &storage),
+            intelli_shell::process::FetchProcess::new(category, &storage),
         ),
     }?;
 
     // Print any message received
     if let Some(msg) = res.message {
-        println!("{msg}");
+        eprintln!("{msg}");
     }
 
     // Write out the result
@@ -172,24 +177,23 @@ fn run(cli: Args) -> Result<()> {
     Ok(())
 }
 
-fn exec<W>(inline: bool, inline_extra_line: bool, widget: W) -> Result<WidgetOutput>
+fn exec<P>(inline: bool, inline_extra_line: bool, process: P) -> Result<ProcessOutput>
 where
-    W: Widget,
+    P: Process,
 {
-    let theme = theme::DARK;
     if inline {
-        exec_inline(widget, theme, inline_extra_line)
+        exec_inline(process, inline_extra_line)
     } else {
-        exec_alt_screen(widget, theme)
+        exec_alt_screen(process)
     }
 }
 
-fn exec_alt_screen<W>(mut widget: W, theme: Theme) -> Result<WidgetOutput>
+fn exec_alt_screen<P>(mut process: P) -> Result<ProcessOutput>
 where
-    W: Widget,
+    P: Process,
 {
     // Check if we've got a straight result
-    if let Some(result) = widget.peek()? {
+    if let Some(result) = process.peek()? {
         return Ok(result);
     }
 
@@ -202,8 +206,8 @@ where
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Show widget
-    let res = widget.show(&mut terminal, false, theme, |f| f.size());
+    // Show process
+    let res = process.show(&mut terminal, |f| f.size());
 
     // Restore terminal
     disable_raw_mode()?;
@@ -214,18 +218,18 @@ where
     res
 }
 
-fn exec_inline<W>(mut widget: W, theme: Theme, extra_line: bool) -> Result<WidgetOutput>
+fn exec_inline<P>(mut process: P, extra_line: bool) -> Result<ProcessOutput>
 where
-    W: Widget,
+    P: Process,
 {
     // Check if we've got a straight result
-    if let Some(result) = widget.peek()? {
+    if let Some(result) = process.peek()? {
         return Ok(result);
     }
 
     // Setup terminal
     let (orig_cursor_x, orig_cursor_y) = cursor::position()?;
-    let min_height = widget.min_height() as u16;
+    let min_height = process.min_height() as u16;
     let mut stdout = io::stdout();
     for _ in 0..min_height {
         stdout.queue(Print("\n"))?;
@@ -246,8 +250,8 @@ where
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Show widget
-    let res = widget.show(&mut terminal, true, theme, |f| {
+    // Show process
+    let res = process.show(&mut terminal, |f| {
         let Rect {
             x: _,
             y: _,

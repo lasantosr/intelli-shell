@@ -26,6 +26,10 @@ impl Command {
     pub fn increment_usage(&mut self) {
         self.usage += 1;
     }
+
+    pub fn is_persisted(&self) -> bool {
+        self.id > 0
+    }
 }
 
 impl Display for Command {

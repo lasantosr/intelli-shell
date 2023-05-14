@@ -17,14 +17,15 @@
 
 #![forbid(unsafe_code)]
 
+pub mod debug;
 pub mod model;
+pub mod process;
 pub mod storage;
 pub mod theme;
-pub mod widgets;
 
 mod cfg;
 mod common;
 #[cfg(feature = "tldr")]
 mod tldr;
 
-pub use common::{Widget, WidgetOutput};
+pub use common::{ExecutionContext, Process, ProcessOutput};
