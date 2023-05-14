@@ -28,4 +28,4 @@ mod common;
 #[cfg(feature = "tldr")]
 mod tldr;
 
-pub use common::{ExecutionContext, Process, ProcessOutput};
+pub use common::{remove_newlines, ExecutionContext, Process, ProcessOutput};

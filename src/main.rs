@@ -17,6 +17,7 @@ use crossterm::{
 use intelli_shell::{
     model::AsLabeledCommand,
     process::{LabelProcess, SaveCommandProcess, SearchProcess},
+    remove_newlines,
     storage::{SqliteStorage, USER_CATEGORY},
     theme, ExecutionContext, Process, ProcessOutput,
 };
@@ -125,14 +126,14 @@ fn run(cli: Args) -> Result<()> {
         Actions::Save { command, description } => exec(
             cli.inline,
             cli.inline_extra_line,
-            SaveCommandProcess::new(&storage, command, description, context),
+            SaveCommandProcess::new(&storage, remove_newlines(command), description, context),
         ),
         Actions::Search { filter } => exec(
             cli.inline,
             cli.inline_extra_line,
-            SearchProcess::new(&storage, filter.unwrap_or_default(), context)?,
+            SearchProcess::new(&storage, remove_newlines(filter.unwrap_or_default()), context)?,
         ),
-        Actions::Label { command } => match command.as_labeled_command() {
+        Actions::Label { command } => match remove_newlines(&command).as_labeled_command() {
             Some(labeled_command) => exec(
                 cli.inline,
                 cli.inline_extra_line,

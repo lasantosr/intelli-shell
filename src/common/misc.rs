@@ -4,17 +4,20 @@ use regex::{CaptureMatches, Captures, Regex};
 use unicode_segmentation::UnicodeSegmentation;
 use unidecode::unidecode;
 
-/// Regex to match not allowed FTS characters
+/// Regex to match newlines
 static NEW_LINES: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\r|\n|\r\n"#).unwrap());
 
 /// Converts all newline kinds to `\n`
-pub fn unify_newlines(str: String) -> String {
-    NEW_LINES.replace_all(&str, "\n").to_string()
+pub fn unify_newlines(str: impl AsRef<str>) -> String {
+    NEW_LINES.replace_all(str.as_ref(), "\n").to_string()
 }
 
+/// Regex to match spaces
+static NEW_LINE_AND_SPACES: Lazy<Regex> = Lazy::new(|| Regex::new(r#"[\r\n]\s*"#).unwrap());
+
 /// Removes newlines
-pub fn remove_newlines(str: String) -> String {
-    NEW_LINES.replace_all(&str, "").to_string()
+pub fn remove_newlines(str: impl AsRef<str>) -> String {
+    NEW_LINE_AND_SPACES.replace_all(str.as_ref(), "").to_string()
 }
 
 /// Applies [unidecode] to the given string and then converts it to lower case
