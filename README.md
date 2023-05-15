@@ -52,14 +52,14 @@ New-Item -Path $env:APPDATA\IntelliShell\Intelli-Shell\bin -Type Directory
 Invoke-WebRequest -UseBasicParsing -URI "https://github.com/lasantosr/intelli-shell/releases/latest/download/intelli-shell-x86_64-pc-windows-msvc.zip" -OutFile .\intelli-shell.zip
 Expand-Archive -Path intelli-shell.zip -DestinationPath $env:APPDATA\IntelliShell\Intelli-Shell\bin
 Remove-Item intelli-shell.zip
-$Path = [Environment]::GetEnvironmentVariable("PATH", "User") 
+$Path = [Environment]::GetEnvironmentVariable("PATH", [EnvironmentVariableTarget]::User) 
 if ($Path -NotLike "*IntelliShell*") { 
   $Path = $Path + [IO.Path]::PathSeparator + "$env:APPDATA\IntelliShell\Intelli-Shell\bin"
-  [Environment]::SetEnvironmentVariable( "Path", $Path, "User" )
+  [Environment]::SetEnvironmentVariable("Path", $Path, [EnvironmentVariableTarget]::User)
 }
 ```
 
-After installing it using PowerShell, it should also work in cmd.
+After installing it with powershell, it should also work on cmd.
 
 ### Source
 
