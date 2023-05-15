@@ -55,11 +55,27 @@ jobs:
           args: --release --target ${{ matrix.target }}
 
       - name: Package
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path .\target\${{ matrix.target }}\release\intelli-shell.exe -DestinationPath intelli-shell-${{ matrix.target }}.zip
+
+      - name: Release
+        if: matrix.os == 'windows-latest'
+        uses: softprops/action-gh-release@v1
+        with:
+            files: intelli-shell-${{ matrix.target }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           tar czvf intelli-shell-${{ matrix.target }}.tar.gz intelli-shell.sh intelli-shell.fish -C target/${{ matrix.target }}/release intelli-shell
         
       - name: Release
+        if: matrix.os != 'windows-latest'
         uses: softprops/action-gh-release@v1
         with:
             files: intelli-shell-${{ matrix.target }}.tar.gz

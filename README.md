@@ -37,47 +37,68 @@ It currently works on Bash, Zsh and Fish and should be compatible with most Linu
 
 Remember to bookmark some commands or fetch them after the installation!
 
-### Prebuilt
-
-To install using prebuilt binaries:
+### Bash (Linux)
 
 ```sh
 curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.sh | bash
 ```
 
-### From source code
+After installing it using bash, it should work in any supported shell.
 
-If your platform is not supported, you can also install using _cargo_, which is recommended to be installed using [rustup](https://www.rust-lang.org/tools/install).
+### PowerShell (Windows)
+
+```powershell
+New-Item -Path $env:APPDATA\IntelliShell\Intelli-Shell\bin -Type Directory
+Invoke-WebRequest -UseBasicParsing -URI "https://github.com/lasantosr/intelli-shell/releases/latest/download/intelli-shell-x86_64-pc-windows-msvc.zip" -OutFile .\intelli-shell.zip
+Expand-Archive -Path intelli-shell.zip -DestinationPath $env:APPDATA\IntelliShell\Intelli-Shell\bin
+Remove-Item intelli-shell.zip
+$Path = [Environment]::GetEnvironmentVariable("PATH", "User") 
+if ($Path -NotLike "*IntelliShell*") { 
+  $Path = $Path + [IO.Path]::PathSeparator + "$env:APPDATA\IntelliShell\Intelli-Shell\bin"
+  [Environment]::SetEnvironmentVariable( "Path", $Path, "User" )
+}
+```
+
+After installing it using PowerShell, it should also work in cmd.
+
+### Source
+
+To install from source you'll need to have Rust installed, which is recommended to be installed using [rustup](https://www.rust-lang.org/tools/install).
 
 ```sh
 cargo install intelli-shell --locked
 ```
 
-You'll need to download the source script also:
+<details>
+  <summary>Linux considerations</summary>
+  
+  To include hotkey integrations with current line, you'll need to download the source script also:
 
-```sh
-mkdir -p ~/.local/share/intelli-shell
-curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.sh > ~/.local/share/intelli-shell/intelli-shell.sh
-```
+  ```sh
+  mkdir -p ~/.local/share/intelli-shell
+  curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.sh > ~/.local/share/intelli-shell/intelli-shell.sh
+  ```
 
-Or, if using fish:
+  Or, if using fish:
 
-```sh
-mkdir -p ~/.local/share/intelli-shell
-curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.fish > ~/.local/share/intelli-shell/intelli-shell.fish
-```
+  ```sh
+  mkdir -p ~/.local/share/intelli-shell
+  curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.fish > ~/.local/share/intelli-shell/intelli-shell.fish
+  ```
 
-After that, you should edit your `~/.bashrc`, `~/.zshrc` or `~/.bash_profile` to source it:
+  After that, you should edit your `~/.bashrc`, `~/.zshrc` or `~/.bash_profile` to source it:
 
-```sh
-source ~/.local/share/intelli-shell/intelli-shell.sh
-```
+  ```sh
+  source ~/.local/share/intelli-shell/intelli-shell.sh
+  ```
 
-Or, if using fish you should edit `~/.config/fish/config.fish`:
+  Or, if using fish you should edit `~/.config/fish/config.fish`:
 
-```sh
-source ~/.local/share/intelli-shell/intelli-shell.fish
-```
+  ```sh
+  source ~/.local/share/intelli-shell/intelli-shell.fish
+  ```
+
+</details>
 
 ## Usage
 
@@ -88,7 +109,14 @@ You can view supported actions by running `intelli-shell -h`. Most used standalo
 - `intelli-shell export` to export user-bookmarked commands (won't export _tldr's_ commands)
 - `intelli-shell import user_commands.txt` to import commands into the user category
 
+Windows users, as hotkeys are not enabled, will also need those:
+
+- `intelli-shell search` to search for stored commands
+- `intelli-shell save "my command"` to save a new command
+
 ### Hotkeys
+
+Hotkeys are only available on Linux:
 
 - `ctrl + b` bookmark currently typed command
 - `ctrl + space` show suggestions for current line
@@ -103,8 +131,9 @@ You can customize key bindings using environment variables: `INTELLI_SAVE_HOTKEY
 
 - [x] Labels support to store most used labels and select them using a dedicated UI
 - [ ] Usability improvements to manage stored commands (including aliases)
-- [ ] Support for more terminals
+- [x] Support for more terminals
   - [x] [Fish](https://fishshell.com/)
+  - [x] PowerShell
 - [ ] Export also labels and UI to filter what to export
 - [ ] Deploy to package managers
 - [ ] Sync user bookmarks using some public / private Git repo

@@ -2,15 +2,6 @@
 
 set -eo pipefail
 
-# Retrieve default shell
-shell="${SHELL##*/}"
-
-if [[ "$shell" != 'bash' ]] && [[ "$shell" != 'bash.exe' ]] && [[ "$shell" != 'zsh' ]];
-then
-  echo "Terminal $shell is not compatible";
-  exit 1;
-fi
-
 # Find target
 arch=$(uname -m)
 case "$OSTYPE" in
