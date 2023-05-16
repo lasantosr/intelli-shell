@@ -1,7 +1,7 @@
 $null = New-Item -Force -Path $env:APPDATA\IntelliShell\Intelli-Shell\bin -Type Directory
-Invoke-WebRequest -UseBasicParsing -URI "https://github.com/lasantosr/intelli-shell/releases/latest/download/intelli-shell-x86_64-pc-windows-msvc.zip" -OutFile .\intelli-shell.zip
-Expand-Archive -Force -Path intelli-shell.zip -DestinationPath $env:APPDATA\IntelliShell\Intelli-Shell\bin
-Remove-Item intelli-shell.zip
+Invoke-WebRequest -UseBasicParsing -URI "https://github.com/lasantosr/intelli-shell/releases/latest/download/intelli-shell-x86_64-pc-windows-msvc.zip" -OutFile $env:TMP\intelli-shell.zip
+Expand-Archive -Force -Path $env:TMP\intelli-shell.zip -DestinationPath $env:APPDATA\IntelliShell\Intelli-Shell\bin
+Remove-Item $env:TMP\intelli-shell.zip
 $Path = [Environment]::GetEnvironmentVariable("PATH", [EnvironmentVariableTarget]::User) 
 if ($Path -NotLike "*IntelliShell*") { 
     $Path = $Path + [IO.Path]::PathSeparator + "$env:APPDATA\IntelliShell\Intelli-Shell\bin"
