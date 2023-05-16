@@ -1,11 +1,11 @@
+mod edit;
 #[cfg(feature = "tldr")]
 mod fetch;
 mod label;
-mod save;
 mod search;
 
+pub use edit::*;
 #[cfg(feature = "tldr")]
 pub use fetch::*;
 pub use label::*;
-pub use save::*;
 pub use search::*;

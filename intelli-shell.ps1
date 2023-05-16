@@ -29,7 +29,7 @@ Set-PSReadLineKeyHandler -Chord $IntelliBookmarkChord -BriefDescription "Intelli
 
     $TempFile = New-TemporaryFile
     $line = $line -replace '"','""""""""""""'
-    $Command = 'intelli-shell.exe --file-output=""""' + $TempFile.FullName + '"""" save """"' + $line + '""""' 
+    $Command = 'intelli-shell.exe --file-output=""""' + $TempFile.FullName + '"""" new -c """"' + $line + '""""' 
     Start-Process powershell.exe -Wait -NoNewWindow -ArgumentList "-command ""$Command""" -RedirectStandardError "NUL"
     $IntelliOutput = Get-Content -Raw $TempFile
     Remove-Item $TempFile

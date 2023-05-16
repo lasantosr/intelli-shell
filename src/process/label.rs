@@ -222,6 +222,10 @@ impl<'s> InteractiveProcess for LabelProcess<'s> {
         Ok(())
     }
 
+    fn edit_current(&mut self) -> Result<()> {
+        Ok(())
+    }
+
     fn delete_current(&mut self) -> Result<()> {
         if let Some(LabelSuggestionItem::Persisted(_)) = self.suggestions.current() {
             if let Some(LabelSuggestionItem::Persisted(suggestion)) = self.suggestions.delete_current() {

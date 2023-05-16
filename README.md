@@ -29,6 +29,7 @@ It currently works on Bash, Zsh and Fish and should be compatible with most Linu
 - Autocomplete currently typed command
   - Full Text Search in both command and description with hashtag support on descriptions
 - Find & replace labels of currently typed command
+- Edit bookmarked commands and provide aliases
 - Non-intrusive (inline) and full-screen interfaces
 - Fetch command to parse and store [tldr](https://github.com/tldr-pages/tldr) pages (Thanks to them!)
 - Portability. You can use bookmarked commands in any supported shell, as well as exporting and importing elsewhere.
@@ -133,14 +134,15 @@ You can view supported actions by running `intelli-shell -h`. Most used standalo
 - `ctrl + l` replace labels of currently typed command
 - `esc` clean current line, this binding can be skipped if `INTELLI_SKIP_ESC_BIND=1`
 
-**Note:** When navigating items, selected suggestion can be deleted with `ctrl + d`
+**Note:** When navigating items, selected suggestion can be deleted with `ctrl + d` or edited with any of: `ctrl + e`,
+`ctrl + u` or `F2`
 
 You can customize key bindings using environment variables: `INTELLI_BOOKMARK_HOTKEY`, `INTELLI_SEARCH_HOTKEY` and `INTELLI_LABEL_HOTKEY`
 
 ## Wishlist
 
 - [x] Labels support to store most used labels and select them using a dedicated UI
-- [ ] Usability improvements to manage stored commands (including aliases)
+- [x] Usability improvements to manage stored commands (including aliases)
 - [x] Support for more terminals
   - [x] [Fish](https://fishshell.com/)
   - [x] PowerShell

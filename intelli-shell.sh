@@ -34,7 +34,7 @@ if [[ -n "$ZSH_VERSION" ]]; then
     }
 
     function _intelli_save {
-        _intelli_exec save "$BUFFER"
+        _intelli_exec new -c "$BUFFER"
     }
 
     function _intelli_label {
@@ -78,7 +78,7 @@ elif [[ -n "$BASH" ]]; then
     }
 
     function _intelli_save {
-        _intelli_exec save "$READLINE_LINE"
+        _intelli_exec new -c "$READLINE_LINE"
     }
 
     function _intelli_label {

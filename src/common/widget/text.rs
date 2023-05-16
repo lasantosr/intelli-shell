@@ -62,6 +62,11 @@ where
         self
     }
 
+    pub fn set_focus(&mut self, focus: bool) -> &mut Self {
+        self.focus = focus;
+        self
+    }
+
     pub fn inner(&self) -> &T {
         &self.text
     }
@@ -136,7 +141,9 @@ where
             paragraph = paragraph.block(block);
             // Remove borders from max width & height
             max_width -= 2;
-            max_height -= 2;
+            if max_height > 2 {
+                max_height -= 2;
+            }
             // Shift offset because of borders
             if let (Some(cursor), Some(end_offset)) = (cursor.as_mut(), end_offset.as_mut()) {
                 cursor.x += 1;

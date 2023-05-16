@@ -46,7 +46,7 @@ impl<'a> IntoCursorWidget<Text<'a>> for &'a LabeledCommand {
                 .map(|p| {
                     let span = match p {
                         CommandPart::Text(t) | CommandPart::LabelValue(t) => {
-                            Span::styled(t, Style::default().fg(theme.disabled))
+                            Span::styled(t, Style::default().fg(theme.secondary))
                         }
                         CommandPart::Label(l) => {
                             let style = if !first_label_found {
@@ -54,7 +54,7 @@ impl<'a> IntoCursorWidget<Text<'a>> for &'a LabeledCommand {
                                 first_label_width = l.len_chars() as u16 + 4;
                                 Style::default().fg(theme.main).add_modifier(Modifier::BOLD)
                             } else {
-                                Style::default().fg(theme.disabled)
+                                Style::default().fg(theme.secondary)
                             };
                             Span::styled(format!("{{{{{l}}}}}"), style)
                         }

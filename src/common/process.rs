@@ -113,12 +113,8 @@ pub trait InteractiveProcess: Process {
                     // `ctrl + d` - Delete
                     KeyCode::Char(c) if has_ctrl && c == 'd' => self.delete_current()?,
                     // `ctrl + u` | `ctrl + e` | F2 - Edit / Update
-                    KeyCode::F(f) if f == 2 => {
-                        // TODO edit - delegate to process?
-                    }
-                    KeyCode::Char(c) if has_ctrl && (c == 'e' || c == 'u') => {
-                        // TODO edit
-                    }
+                    KeyCode::F(f) if f == 2 => self.edit_current()?,
+                    KeyCode::Char(c) if has_ctrl && (c == 'e' || c == 'u') => self.edit_current()?,
                     // Selection
                     KeyCode::Home => self.home(),
                     KeyCode::End => self.end(),
@@ -171,8 +167,10 @@ pub trait InteractiveProcess: Process {
     /// Removes a character from the currently selected input, if any
     fn delete_char(&mut self, backspace: bool) -> Result<()>;
 
-    /// Deleted the currently selected item, if any
+    /// Deletes the currently selected item, if any
     fn delete_current(&mut self) -> Result<()>;
+    /// Edits the currently selected item, if any
+    fn edit_current(&mut self) -> Result<()>;
     /// Accepts the currently selected item, if any
     fn accept_current(&mut self) -> Result<Option<ProcessOutput>>;
     /// Exits with the current state

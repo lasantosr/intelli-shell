@@ -11,6 +11,7 @@
 //! - Autocomplete currently typed command
 //!   - Full Text Search in both command and description with hashtag support on descriptions
 //! - Find & replace labels of currently typed command
+//! - Edit bookmarked commands and provide aliases
 //! - Non-intrusive (inline) and full-screen interfaces
 //! - Fetch command to parse and store [tldr](https://github.com/tldr-pages/tldr) pages (Thanks to them!)
 //! - Portability. You can use bookmarked commands in any supported shell, as well as exporting and importing elsewhere.

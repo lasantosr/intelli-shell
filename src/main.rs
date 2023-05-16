@@ -15,8 +15,8 @@ use crossterm::{
     QueueableCommand,
 };
 use intelli_shell::{
-    model::AsLabeledCommand,
-    process::{LabelProcess, SaveCommandProcess, SearchProcess},
+    model::{AsLabeledCommand, Command},
+    process::{EditCommandProcess, LabelProcess, SearchProcess},
     remove_newlines,
     storage::{SqliteStorage, USER_CATEGORY},
     theme, ExecutionContext, Process, ProcessOutput,
@@ -49,10 +49,11 @@ struct Args {
 #[derive(Subcommand)]
 #[cfg_attr(debug_assertions, derive(Debug))]
 enum Actions {
-    /// Saves a new user command
-    Save {
+    /// Stores a new user command
+    New {
         /// Command to be stored
-        command: String,
+        #[arg(short, long)]
+        command: Option<String>,
 
         #[arg(short, long)]
         /// Description of the command
@@ -123,11 +124,16 @@ fn run(cli: Args) -> Result<()> {
 
     // Execute command
     let res = match cli.action {
-        Actions::Save { command, description } => exec(
-            cli.inline,
-            cli.inline_extra_line,
-            SaveCommandProcess::new(&storage, remove_newlines(command), description, context),
-        ),
+        Actions::New { command, description } => {
+            let cmd = command.map(remove_newlines);
+            let description = description.map(remove_newlines);
+            let command = Command::new(USER_CATEGORY, cmd.unwrap_or_default(), description.unwrap_or_default());
+            exec(
+                cli.inline,
+                cli.inline_extra_line,
+                EditCommandProcess::new(&storage, command, context)?,
+            )
+        }
         Actions::Search { filter } => exec(
             cli.inline,
             cli.inline_extra_line,

@@ -7,7 +7,7 @@ use tui::{
     Frame,
 };
 
-use super::LabelProcess;
+use super::{EditCommandProcess, LabelProcess};
 use crate::{
     common::{
         widget::{
@@ -31,6 +31,8 @@ pub struct SearchProcess<'s> {
     commands: CustomStatefulList<Command>,
     /// Delegate label widget
     delegate_label: Option<LabelProcess<'s>>,
+    /// Delegate edit widget
+    delegate_edit: Option<EditCommandProcess<'s>>,
     // Execution context
     ctx: ExecutionContext,
 }
@@ -62,6 +64,7 @@ impl<'s> SearchProcess<'s> {
             filter,
             storage,
             delegate_label: None,
+            delegate_edit: None,
             ctx,
         })
     }
@@ -107,6 +110,10 @@ impl<'s> Process for SearchProcess<'s> {
 
     fn render<B: Backend>(&mut self, frame: &mut Frame<B>, area: Rect) {
         // If there's a delegate active, forward to it
+        if let Some(delegate) = &mut self.delegate_edit {
+            delegate.render(frame, area);
+            return;
+        }
         if let Some(delegate) = &mut self.delegate_label {
             delegate.render(frame, area);
             return;
@@ -133,6 +140,13 @@ impl<'s> Process for SearchProcess<'s> {
         // If there's a delegate active, forward to it
         if let Some(delegate) = &mut self.delegate_label {
             delegate.process_event(event)
+        } else if let Some(delegate) = &mut self.delegate_edit {
+            if delegate.process_event(event)?.is_some() {
+                self.delegate_edit = None;
+                self.commands
+                    .update_items(self.storage.find_commands(self.filter.inner().as_str())?);
+            }
+            Ok(None)
         } else {
             self.process_event(event)
         }
@@ -190,6 +204,13 @@ impl<'s> InteractiveProcess for SearchProcess<'s> {
         if self.filter.inner_mut().delete_char(backspace) {
             self.commands
                 .update_items(self.storage.find_commands(self.filter.inner().as_str())?);
+        }
+        Ok(())
+    }
+
+    fn edit_current(&mut self) -> Result<()> {
+        if let Some(command) = self.commands.current() {
+            self.delegate_edit = Some(EditCommandProcess::new(self.storage, command.clone(), self.ctx)?);
         }
         Ok(())
     }
