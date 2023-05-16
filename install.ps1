@@ -22,3 +22,4 @@ if (($null -eq $ProfileContent) -Or ($ProfileContent -NotLike "*IntelliShell*"))
     Add-Content $Profile "# `$env:INTELLI_LABEL_HOTKEY = 'Ctrl+l'"
     Add-Content $Profile ". `$env:APPDATA\IntelliShell\Intelli-Shell\bin\intelli-shell.ps1"
 }
+Write-Host "Close this terminal and open a new one for the changes to take effect"

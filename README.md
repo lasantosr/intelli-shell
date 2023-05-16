@@ -7,7 +7,7 @@ Like IntelliSense, but for shells!
 IntelliShell acts like a bookmark store for commands, so you don't have to keep your history clean in order to be able
 to find something useful with `ctrl + R`.
 
-It currently works on Bash, Zsh and Fish and should be compatible with most Linux, Windows and MacOS.
+It currently works on Bash, Zsh, Fish and PowerShell and should be compatible with most Linux, Windows and MacOS.
 
 ## TL;DR
 

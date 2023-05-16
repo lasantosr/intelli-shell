@@ -10,7 +10,7 @@ Set-PSReadLineKeyHandler -Chord $IntelliSearchChord -BriefDescription "IntelliSh
     $TempFile = New-TemporaryFile
     $line = $line -replace '"','""""""""""""'
     $Command = 'intelli-shell.exe --file-output=""""' + $TempFile.FullName + '"""" search """"' + $line + '""""' 
-    Start-Process powershell.exe -Wait -NoNewWindow -ArgumentList "-command ""$Command""" -RedirectStandardError "NUL"
+    Start-Process powershell.exe -Wait -NoNewWindow -ArgumentList "-command", "$Command" -RedirectStandardError "NUL"
     $IntelliOutput = Get-Content -Raw $TempFile
     Remove-Item $TempFile
 
@@ -30,7 +30,10 @@ Set-PSReadLineKeyHandler -Chord $IntelliBookmarkChord -BriefDescription "Intelli
     $TempFile = New-TemporaryFile
     $line = $line -replace '"','""""""""""""'
     $Command = 'intelli-shell.exe --file-output=""""' + $TempFile.FullName + '"""" new -c """"' + $line + '""""' 
-    Start-Process powershell.exe -Wait -NoNewWindow -ArgumentList "-command ""$Command""" -RedirectStandardError "NUL"
+	if ([string]::IsNullOrWhiteSpace($line)) {
+        $Command = 'intelli-shell.exe --file-output=""""' + $TempFile.FullName + '"""" new' 
+    }
+    Start-Process powershell.exe -Wait -NoNewWindow -ArgumentList "-command", "$Command" -RedirectStandardError "NUL"
     $IntelliOutput = Get-Content -Raw $TempFile
     Remove-Item $TempFile
 
@@ -50,7 +53,7 @@ Set-PSReadLineKeyHandler -Chord $IntelliLabelChord -BriefDescription "IntelliShe
     $TempFile = New-TemporaryFile
     $line = $line -replace '"','""""""""""""'
     $Command = 'intelli-shell.exe --file-output=""""' + $TempFile.FullName + '"""" label """"' + $line + '""""' 
-    Start-Process powershell.exe -Wait -NoNewWindow -ArgumentList "-command ""$Command""" -RedirectStandardError "NUL"
+    Start-Process powershell.exe -Wait -NoNewWindow -ArgumentList "-command", "$Command" -RedirectStandardError "NUL"
     $IntelliOutput = Get-Content -Raw $TempFile
     Remove-Item $TempFile
 
