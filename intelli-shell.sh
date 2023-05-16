@@ -1,6 +1,6 @@
 # Default bindings
 intelli_search_key="${INTELLI_SEARCH_HOTKEY:-\C-@}"
-intelli_save_key="${INTELLI_SAVE_HOTKEY:-\C-b}"
+intelli_bookmark_key="${INTELLI_BOOKMARK_HOTKEY:-\C-b}"
 intelli_label_key="${INTELLI_LABEL_HOTKEY:-\C-l}"
 
 if [[ -n "$ZSH_VERSION" ]]; then
@@ -46,7 +46,7 @@ if [[ -n "$ZSH_VERSION" ]]; then
     zle -N _intelli_save
     zle -N _intelli_label
     bindkey "$intelli_search_key" _intelli_search 
-    bindkey "$intelli_save_key" _intelli_save
+    bindkey "$intelli_bookmark_key" _intelli_save
     bindkey "$intelli_label_key" _intelli_label
     
 elif [[ -n "$BASH" ]]; then
@@ -87,6 +87,6 @@ elif [[ -n "$BASH" ]]; then
 
     if [[ "${INTELLI_SKIP_ESC_BIND:-0}" == "0" ]]; then bind '"\e": kill-whole-line'; fi
     bind -x '"'"$intelli_search_key"'":_intelli_search'
-    bind -x '"'"$intelli_save_key"'":_intelli_save'
+    bind -x '"'"$intelli_bookmark_key"'":_intelli_save'
     bind -x '"'"$intelli_label_key"'":_intelli_label'
 fi

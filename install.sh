@@ -9,7 +9,7 @@ case "$OSTYPE" in
             INTELLI_HOME="${INTELLI_HOME:-$HOME/.local/share/intelli-shell}"
             ;;
   darwin*)  os="apple-darwin" 
-            INTELLI_HOME="${INTELLI_HOME:-$HOME/Library/Application Support/org.IntelliShell.Intelli-Shell}"
+            INTELLI_HOME="${INTELLI_HOME:-$HOME/Library/Application\ Support/org.IntelliShell.Intelli-Shell}"
             ;; 
   msys*)    os="pc-windows-msvc" 
             POSIX_APPDATA=$(echo "/$APPDATA" | sed 's/\\/\//g' | sed 's/://')
@@ -42,7 +42,7 @@ function update_rc () {
     echo "INTELLI_HOME=$INTELLI_HOME" >> "$1"
     echo '# export INTELLI_SEARCH_HOTKEY=\\C-@' >> "$1"
     echo '# export INTELLI_LABEL_HOTKEY=\\C-l' >> "$1"
-    echo '# export INTELLI_SAVE_HOTKEY=\\C-b' >> "$1"
+    echo '# export INTELLI_BOOKMARK_HOTKEY=\\C-b' >> "$1"
     echo '# export INTELLI_SKIP_ESC_BIND=0' >> "$1"
     echo 'alias intelli-shell="$INTELLI_HOME/bin/intelli-shell"' >> "$1"
     echo 'source $INTELLI_HOME/bin/intelli-shell.sh' >> "$1"
@@ -71,7 +71,7 @@ if [[ -f "/usr/bin/fish" ]]; then
     echo "set INTELLI_HOME $INTELLI_HOME" >> "$config"
     echo '# set INTELLI_SEARCH_HOTKEY \cr' >> "$config"
     echo '# set INTELLI_LABEL_HOTKEY \cl' >> "$config"
-    echo '# set INTELLI_SAVE_HOTKEY \cb' >> "$config"
+    echo '# set INTELLI_BOOKMARK_HOTKEY \cb' >> "$config"
     echo '# set INTELLI_SKIP_ESC_BIND 0' >> "$config"
     echo 'source $INTELLI_HOME/bin/intelli-shell.fish' >> "$config"
   fi

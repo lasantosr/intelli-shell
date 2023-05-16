@@ -57,7 +57,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          Compress-Archive -Path .\target\${{ matrix.target }}\release\intelli-shell.exe -DestinationPath intelli-shell-${{ matrix.target }}.zip
+          Compress-Archive -Path ".\target\${{ matrix.target }}\release\intelli-shell.exe", ".\intelli-shell.ps1" -DestinationPath intelli-shell-${{ matrix.target }}.zip
 
       - name: Release
         if: matrix.os == 'windows-latest'

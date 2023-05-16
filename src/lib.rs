@@ -9,7 +9,7 @@
 //!
 //! - Standalone binaries
 //! - Autocomplete currently typed command
-//!   - Full Text Search in both command and description with hashtag support
+//!   - Full Text Search in both command and description with hashtag support on descriptions
 //! - Find & replace labels of currently typed command
 //! - Non-intrusive (inline) and full-screen interfaces
 //! - Fetch command to parse and store [tldr](https://github.com/tldr-pages/tldr) pages (Thanks to them!)

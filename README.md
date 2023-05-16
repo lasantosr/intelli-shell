@@ -27,7 +27,7 @@ It currently works on Bash, Zsh and Fish and should be compatible with most Linu
 
 - Standalone binaries
 - Autocomplete currently typed command
-  - Full Text Search in both command and description with hashtag support
+  - Full Text Search in both command and description with hashtag support on descriptions
 - Find & replace labels of currently typed command
 - Non-intrusive (inline) and full-screen interfaces
 - Fetch command to parse and store [tldr](https://github.com/tldr-pages/tldr) pages (Thanks to them!)
@@ -48,18 +48,11 @@ After installing it using bash, it should work in any supported shell.
 ### PowerShell (Windows)
 
 ```powershell
-New-Item -Path $env:APPDATA\IntelliShell\Intelli-Shell\bin -Type Directory
-Invoke-WebRequest -UseBasicParsing -URI "https://github.com/lasantosr/intelli-shell/releases/latest/download/intelli-shell-x86_64-pc-windows-msvc.zip" -OutFile .\intelli-shell.zip
-Expand-Archive -Path intelli-shell.zip -DestinationPath $env:APPDATA\IntelliShell\Intelli-Shell\bin
-Remove-Item intelli-shell.zip
-$Path = [Environment]::GetEnvironmentVariable("PATH", [EnvironmentVariableTarget]::User) 
-if ($Path -NotLike "*IntelliShell*") { 
-  $Path = $Path + [IO.Path]::PathSeparator + "$env:APPDATA\IntelliShell\Intelli-Shell\bin"
-  [Environment]::SetEnvironmentVariable("Path", $Path, [EnvironmentVariableTarget]::User)
-}
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser # Optional: Needed to run a remote script the first time
+irm https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.ps1 | iex
 ```
 
-After installing it with powershell, it should also work on cmd.
+After installing it with powershell, it should also work on cmd (without hotkeys).
 
 ### Source
 
@@ -69,34 +62,58 @@ To install from source you'll need to have Rust installed, which is recommended 
 cargo install intelli-shell --locked
 ```
 
+To enable hotkeys, additional steps are required:
+
 <details>
-  <summary>Linux considerations</summary>
+  <summary>Linux</summary>
   
-  To include hotkey integrations with current line, you'll need to download the source script also:
+Download source script:
+
+- Bash / Zsh:
 
   ```sh
-  mkdir -p ~/.local/share/intelli-shell
-  curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.sh > ~/.local/share/intelli-shell/intelli-shell.sh
+  mkdir -p ~/.local/share/intelli-shell/bin
+  curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.sh > ~/.local/share/intelli-shell/bin/intelli-shell.sh
   ```
 
-  Or, if using fish:
+- Fish:
 
   ```sh
-  mkdir -p ~/.local/share/intelli-shell
-  curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.fish > ~/.local/share/intelli-shell/intelli-shell.fish
+  mkdir -p ~/.local/share/intelli-shell/bin
+  curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.fish > ~/.local/share/intelli-shell/bin/intelli-shell.fish
   ```
 
-  After that, you should edit your `~/.bashrc`, `~/.zshrc` or `~/.bash_profile` to source it:
+Edit your profile to source it:
+
+- Bash / Zsh: `~/.bashrc`, `~/.zshrc` or `~/.bash_profile`
 
   ```sh
-  source ~/.local/share/intelli-shell/intelli-shell.sh
+  source ~/.local/share/intelli-shell/bin/intelli-shell.sh
   ```
 
-  Or, if using fish you should edit `~/.config/fish/config.fish`:
+- Fish: `~/.config/fish/config.fish`:
 
   ```sh
-  source ~/.local/share/intelli-shell/intelli-shell.fish
+  source ~/.local/share/intelli-shell/bin/intelli-shell.fish
   ```
+
+</details>
+
+<details>
+  <summary>Windows</summary>
+  
+Download the source script also:
+
+```powershell
+New-Item -Path $env:APPDATA\IntelliShell\Intelli-Shell\bin -Type Directory
+Invoke-WebRequest -UseBasicParsing -URI "https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.ps1" -OutFile $env:APPDATA\IntelliShell\Intelli-Shell\bin\intelli-shell.ps1
+```
+
+Edit your `$Profile` to execute it:
+
+```powershell
+. $env:APPDATA\IntelliShell\Intelli-Shell\bin\intelli-shell.ps1
+```
 
 </details>
 
@@ -109,14 +126,7 @@ You can view supported actions by running `intelli-shell -h`. Most used standalo
 - `intelli-shell export` to export user-bookmarked commands (won't export _tldr's_ commands)
 - `intelli-shell import user_commands.txt` to import commands into the user category
 
-Windows users, as hotkeys are not enabled, will also need those:
-
-- `intelli-shell search` to search for stored commands
-- `intelli-shell save "my command"` to save a new command
-
 ### Hotkeys
-
-Hotkeys are only available on Linux:
 
 - `ctrl + b` bookmark currently typed command
 - `ctrl + space` show suggestions for current line
@@ -125,7 +135,7 @@ Hotkeys are only available on Linux:
 
 **Note:** When navigating items, selected suggestion can be deleted with `ctrl + d`
 
-You can customize key bindings using environment variables: `INTELLI_SAVE_HOTKEY`, `INTELLI_SEARCH_HOTKEY` and `INTELLI_LABEL_HOTKEY`
+You can customize key bindings using environment variables: `INTELLI_BOOKMARK_HOTKEY`, `INTELLI_SEARCH_HOTKEY` and `INTELLI_LABEL_HOTKEY`
 
 ## Wishlist
 
