@@ -139,6 +139,16 @@ You can view supported actions by running `intelli-shell -h`. Most used standalo
 
 You can customize key bindings using environment variables: `INTELLI_BOOKMARK_HOTKEY`, `INTELLI_SEARCH_HOTKEY` and `INTELLI_LABEL_HOTKEY`
 
+## Tips
+
+- When the search criteria matches an alias or produces a single result, it's automatically autocompleted!
+  - The label UI will still be shown if the command contains labels
+- You can alias common commands to store some kind of favorite labels, for example bookmark `cd {{path}}` and give it a
+  `cd` alias
+  - You can regularly use `cd` but if you hit `ctrl + space` it will show your "pinned" folders
+- Long commands or even functions can also be bookmarked
+  - For example `function custom_echo () { echo "hey: $@"; }; custom_echo {{text}};`
+
 ## Wishlist
 
 - [x] Labels support to store most used labels and select them using a dedicated UI
