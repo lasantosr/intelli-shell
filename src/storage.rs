@@ -279,7 +279,7 @@ impl SqliteStorage {
 
     /// Finds commands matching the given search criteria
     pub fn find_commands(&self, search: impl AsRef<str>) -> Result<Vec<Command>> {
-        let search = search.as_ref();
+        let search = search.as_ref().trim();
         if search.is_empty() {
             return self.get_commands(USER_CATEGORY);
         }
