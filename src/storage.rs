@@ -1,6 +1,6 @@
 use core::slice;
 use std::{
-    fs,
+    env, fs,
     io::{BufRead, BufReader, BufWriter, Write},
     sync::Mutex,
 };
@@ -58,10 +58,15 @@ pub struct SqliteStorage {
 impl SqliteStorage {
     /// Builds a new SQLite storage on the default path
     pub fn new() -> Result<Self> {
-        let path = ProjectDirs::from("org", "IntelliShell", "Intelli-Shell")
-            .context("Error initializing project dir")?
-            .data_dir()
-            .to_path_buf();
+        let path = env::var_os("INTELLI_HOME")
+            .map(Into::into)
+            .map(anyhow::Ok)
+            .unwrap_or_else(|| {
+                Ok(ProjectDirs::from("org", "IntelliShell", "Intelli-Shell")
+                    .context("Error initializing project dir")?
+                    .data_dir()
+                    .to_path_buf())
+            })?;
 
         fs::create_dir_all(&path).context("Could't create data dir")?;
 

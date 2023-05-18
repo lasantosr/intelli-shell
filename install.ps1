@@ -17,9 +17,10 @@ if (Test-Path -Path $Profile -PathType Leaf) {
 }
 if (($null -eq $ProfileContent) -Or ($ProfileContent -NotLike "*IntelliShell*")) { 
     Add-Content $Profile "`n# IntelliShell"
+    Add-Content $Profile "`$env:INTELLI_HOME = `"`$env:APPDATA\IntelliShell\Intelli-Shell`""
     Add-Content $Profile "# `$env:INTELLI_SEARCH_HOTKEY = 'Ctrl+Spacebar'"
     Add-Content $Profile "# `$env:INTELLI_BOOKMARK_HOTKEY = 'Ctrl+b'"
     Add-Content $Profile "# `$env:INTELLI_LABEL_HOTKEY = 'Ctrl+l'"
-    Add-Content $Profile ". `$env:APPDATA\IntelliShell\Intelli-Shell\bin\intelli-shell.ps1"
+    Add-Content $Profile ". `$env:INTELLI_HOME\bin\intelli-shell.ps1"
 }
 Write-Host "Close this terminal and open a new one for the changes to take effect"
