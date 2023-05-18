@@ -13,7 +13,7 @@ case "$OSTYPE" in
             ;; 
   msys*)    os="pc-windows-msvc" 
             POSIX_APPDATA=$(echo "/$APPDATA" | sed 's/\\/\//g' | sed 's/://')
-            INTELLI_HOME="${INTELLI_HOME:-$POSIX_APPDATA/IntelliShell/Intelli-Shell}"
+            INTELLI_HOME="${INTELLI_HOME:-$POSIX_APPDATA/IntelliShell/Intelli-Shell/data}"
             ;;
   *)        echo "OS type not supported: $OSTYPE" 
             exit 1 
