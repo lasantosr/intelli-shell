@@ -4,6 +4,9 @@ set -eo pipefail
 
 # Find target
 arch=$(uname -m)
+if [ "$arch" = "arm64" ]; then
+  arch=aarch64
+fi
 case "$OSTYPE" in
   linux*)   os="unknown-$OSTYPE" 
             INTELLI_HOME="${INTELLI_HOME:-$HOME/.local/share/intelli-shell}"
