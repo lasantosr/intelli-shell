@@ -38,6 +38,8 @@ It currently works on Bash, Zsh, Fish and PowerShell and should be compatible wi
 
 Remember to bookmark some commands or fetch them after the installation!
 
+To skip profile updates, set `INTELLI_SKIP_PROFILE` environment variable to `1` before installing.
+
 ### Bash (Linux)
 
 ```sh
