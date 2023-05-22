@@ -150,6 +150,15 @@ You can customize key bindings using environment variables: `INTELLI_BOOKMARK_HO
   - You can regularly use `cd` but if you hit `ctrl + space` it will show your "pinned" folders
 - Long commands or even functions can also be bookmarked
   - For example `function custom_echo () { echo "hey: $@"; }; custom_echo {{text}};`
+- Label suggestions are stored based on the root command and the label name, which gives you flexibility to decide.
+
+  For these two commands, the same images will be suggested:
+  - `docker run {{--rm}} {{--interactive}} {{image}}`
+  - `docker rmi {{--no-prune}} {{image}}`
+  
+  But these two commands will suggest different volumes:
+  - `docker run --volume {{image-1-volumes}} image-1`
+  - `docker run --volume {{image-2-volumes}} -p {{image-2-ports}} image-2`
 
 ## Wishlist
 
