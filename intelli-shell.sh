@@ -1,11 +1,11 @@
-# Default bindings
-intelli_search_key="${INTELLI_SEARCH_HOTKEY:-\C-@}"
-intelli_bookmark_key="${INTELLI_BOOKMARK_HOTKEY:-\C-b}"
-intelli_label_key="${INTELLI_LABEL_HOTKEY:-\C-l}"
-
 if [[ -n "$ZSH_VERSION" ]]; then
     # zshell
     # https://zsh.sourceforge.io/Guide/zshguide04.html
+
+    # Default bindings
+    intelli_search_key="${INTELLI_SEARCH_HOTKEY:-^@}"
+    intelli_bookmark_key="${INTELLI_BOOKMARK_HOTKEY:-^b}"
+    intelli_label_key="${INTELLI_LABEL_HOTKEY:-^l}"
 
     function _intelli_exec {
         ps1_lines=$(echo "$PS1" | wc -l)
@@ -52,6 +52,11 @@ if [[ -n "$ZSH_VERSION" ]]; then
 elif [[ -n "$BASH" ]]; then
     # bash
     # https://www.gnu.org/software/bash/manual/html_node/Bash-Builtins.html#index-bind
+
+    # Default bindings
+    intelli_search_key="${INTELLI_SEARCH_HOTKEY:-\C-@}"
+    intelli_bookmark_key="${INTELLI_BOOKMARK_HOTKEY:-\C-b}"
+    intelli_label_key="${INTELLI_LABEL_HOTKEY:-\C-l}"
 
     function _intelli_exec {
         ps1_lines=$(echo "$PS1" | wc -l)
