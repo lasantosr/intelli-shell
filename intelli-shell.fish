@@ -28,7 +28,7 @@ end
 
 function _intelli_save
     set LINE (commandline)
-    _intelli_exec save "$LINE"
+    _intelli_exec new -c "$LINE"
 end
 
 function _intelli_label
