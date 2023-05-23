@@ -8,24 +8,18 @@ if [[ -n "$ZSH_VERSION" ]]; then
     intelli_label_key="${INTELLI_LABEL_HOTKEY:-^l}"
 
     function _intelli_exec {
-        ps1_lines=$(echo "$PS1" | wc -l)
-        # Temp file for output
-        tmp_file=$(mktemp -t intelli-shell.XXXXXXXX)
-        tmp_file_msg=$(mktemp -t intelli-shell.XXXXXXXX)
-        # Exec command
-        intelli-shell --inline --inline-extra-line --file-output="$tmp_file" "$@" 2> $tmp_file_msg
-        # Capture output
-        INTELLI_OUTPUT=$(<$tmp_file)
-        INTELLI_MESSAGE=$(<$tmp_file_msg)
-        rm -f $tmp_file
-        rm -f $tmp_file_msg
-        if [[ -n "$INTELLI_MESSAGE" ]]; then
-            echo "$INTELLI_MESSAGE"
-            [[ "$ps1_lines" -gt 1 ]] && echo ""
+        p_lines=$(echo "$PS1" | wc -l)
+        
+        # Swap stderr and stdout 
+        if [ "$p_lines" -gt "1" ]; then
+            INTELLI_OUTPUT=$(intelli-shell --inline --inline-extra-line "$@" 3>&1 1>&2 2>&3)
+        else
+            INTELLI_OUTPUT=$(intelli-shell --inline "$@" 3>&1 1>&2 2>&3)
         fi
+
         # Rewrite line
         zle reset-prompt
-        BUFFER="$INTELLI_OUTPUT"
+        BUFFER=$INTELLI_OUTPUT
         zle end-of-line
     }
 
@@ -59,22 +53,10 @@ elif [[ -n "$BASH" ]]; then
     intelli_label_key="${INTELLI_LABEL_HOTKEY:-\C-l}"
 
     function _intelli_exec {
-        ps1_lines=$(echo "$PS1" | wc -l)
-        # Temp file for output
-        tmp_file=$(mktemp -t intelli-shell.XXXXXXXX)
-        tmp_file_msg=$(mktemp -t intelli-shell.XXXXXXXX)
-        # Exec command
-        intelli-shell --inline --file-output="$tmp_file" "$@" 2> $tmp_file_msg
-        # Capture output
-        INTELLI_OUTPUT=$(<$tmp_file)
-        INTELLI_MESSAGE=$(<$tmp_file_msg)
-        rm -f $tmp_file
-        rm -f $tmp_file_msg
-        if [[ -n "$INTELLI_MESSAGE" ]]; then
-            echo "$INTELLI_MESSAGE"
-        fi
+        # Swap stderr and stdout 
+        INTELLI_OUTPUT=$(intelli-shell --inline "$@" 3>&1 1>&2 2>&3)
         # Rewrite line
-        READLINE_LINE="$INTELLI_OUTPUT"
+        READLINE_LINE=${INTELLI_OUTPUT}
         READLINE_POINT=${#READLINE_LINE}
     }
 

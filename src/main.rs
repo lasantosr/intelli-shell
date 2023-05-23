@@ -168,14 +168,17 @@ fn run(cli: Args) -> Result<()> {
 
     // Print any message received
     if let Some(msg) = res.message {
-        eprintln!("{msg}");
+        println!("{msg}");
+        if cli.inline_extra_line {
+            println!();
+        }
     }
 
     // Write out the result
     match res.output {
         None => (),
         Some(output) => match cli.file_output {
-            None => execute!(io::stdout(), Print(format!("{output}\n")))?,
+            None => eprintln!("{output}"),
             Some(path) => fs::write(path, output)?,
         },
     }
