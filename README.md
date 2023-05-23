@@ -108,14 +108,14 @@ Edit your profile to source it:
 Download the source script also:
 
 ```powershell
-New-Item -Path $env:APPDATA\IntelliShell\Intelli-Shell\bin -Type Directory
-Invoke-WebRequest -UseBasicParsing -URI "https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.ps1" -OutFile $env:APPDATA\IntelliShell\Intelli-Shell\bin\intelli-shell.ps1
+New-Item -Path $env:APPDATA\IntelliShell\Intelli-Shell\data\bin -Type Directory
+Invoke-WebRequest -UseBasicParsing -URI "https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.ps1" -OutFile $env:APPDATA\IntelliShell\Intelli-Shell\data\bin\intelli-shell.ps1
 ```
 
 Edit your `$Profile` to execute it:
 
 ```powershell
-. $env:APPDATA\IntelliShell\Intelli-Shell\bin\intelli-shell.ps1
+. $env:APPDATA\IntelliShell\Intelli-Shell\data\bin\intelli-shell.ps1
 ```
 
 </details>
