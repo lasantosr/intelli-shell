@@ -12,10 +12,12 @@ use crate::{
     theme::Theme,
 };
 
+pub const SECRET_LABEL_PREFIX: &str = "(secret) ";
 pub const NEW_LABEL_PREFIX: &str = "(new) ";
 
 #[cfg_attr(debug_assertions, derive(Debug))]
 pub enum LabelSuggestionItem {
+    Secret(TextInput),
     New(TextInput),
     Label(String),
     Persisted(LabelSuggestion),
@@ -24,6 +26,10 @@ pub enum LabelSuggestionItem {
 impl<'a> From<&'a LabelSuggestionItem> for ListItem<'a> {
     fn from(item: &'a LabelSuggestionItem) -> Self {
         match item {
+            LabelSuggestionItem::Secret(value) => ListItem::new(Spans::from(vec![
+                Span::styled(SECRET_LABEL_PREFIX, Style::default().add_modifier(Modifier::ITALIC)),
+                Span::raw(value.as_str()),
+            ])),
             LabelSuggestionItem::New(value) => ListItem::new(Spans::from(vec![
                 Span::styled(NEW_LABEL_PREFIX, Style::default().add_modifier(Modifier::ITALIC)),
                 Span::raw(value.as_str()),

@@ -150,6 +150,7 @@ You can customize key bindings using environment variables: `INTELLI_BOOKMARK_HO
   - You can regularly use `cd` but if you hit `ctrl + space` it will show your "pinned" folders
 - Long commands or even functions can also be bookmarked
   - For example `function custom_echo () { echo "hey: $@"; }; custom_echo {{text}};`
+- You can avoid labels to be stored and keep them secret if wrapped between '*' : `echo {{*my-secret*}}`
 - Label suggestions are stored based on the root command and the label name, which gives you flexibility to decide.
 
   For these two commands, the same images will be suggested:
