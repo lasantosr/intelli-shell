@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use crossterm::event::Event;
 use itertools::Itertools;
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
@@ -12,7 +12,7 @@ use crate::{
     common::{
         widget::{
             CustomParagraph, CustomStatefulList, CustomStatefulWidget, CustomWidget, LabelSuggestionItem, TextInput,
-            DEFAULT_HIGHLIGHT_SYMBOL_PREFIX, NEW_LABEL_PREFIX, SECRET_LABEL_PREFIX,
+            DEFAULT_HIGHLIGHT_SYMBOL_PREFIX,
         },
         ExecutionContext, InteractiveProcess,
     },
@@ -47,7 +47,8 @@ impl<'s> LabelProcess<'s> {
 
         let suggestions = CustomStatefulList::new(suggestions)
             .inline(ctx.inline)
-            .style(Style::default().fg(ctx.theme.main))
+            .focus(true)
+            .style(Style::default())
             .highlight_style(
                 Style::default()
                     .bg(ctx.theme.selected_background)
@@ -58,7 +59,7 @@ impl<'s> LabelProcess<'s> {
         let command = CustomParagraph::new(command)
             .inline(ctx.inline)
             .block_title("Command")
-            .style(Style::default().fg(ctx.theme.main));
+            .style(Style::default());
 
         Ok(Self {
             storage,
@@ -82,7 +83,7 @@ impl<'s> LabelProcess<'s> {
             let mut suggestions = storage
                 .find_suggestions_for(root_cmd, label)?
                 .into_iter()
-                .map(LabelSuggestionItem::Persisted)
+                .map(|s| LabelSuggestionItem::Persisted(s, None))
                 .collect_vec();
 
             let mut suggestions_from_label = label
@@ -96,7 +97,7 @@ impl<'s> LabelProcess<'s> {
                     LabelSuggestionItem::Secret(_) => true,
                     LabelSuggestionItem::New(_) => true,
                     LabelSuggestionItem::Label(l) => l.contains(new_suggestion.as_str()),
-                    LabelSuggestionItem::Persisted(s) => s.suggestion.contains(new_suggestion.as_str()),
+                    LabelSuggestionItem::Persisted(s, _) => s.suggestion.contains(new_suggestion.as_str()),
                 })
             }
             suggestions.insert(0, LabelSuggestionItem::New(new_suggestion));
@@ -127,34 +128,6 @@ impl<'s> Process for LabelProcess<'s> {
 
         // Display label suggestions
         self.suggestions.render_in(frame, body, self.ctx.theme);
-        // check if cursor is needed
-        match self.suggestions.current() {
-            Some(LabelSuggestionItem::Secret(t)) => {
-                frame.set_cursor(
-                    // Put cursor at the input text offset
-                    body.x
-                        + DEFAULT_HIGHLIGHT_SYMBOL_PREFIX.len() as u16
-                        + SECRET_LABEL_PREFIX.len() as u16
-                        + t.cursor().x
-                        + (!self.ctx.inline as u16),
-                    // Move one line down, from the border to the input line
-                    body.y + (!self.ctx.inline as u16),
-                );
-            }
-            Some(LabelSuggestionItem::New(t)) => {
-                frame.set_cursor(
-                    // Put cursor at the input text offset
-                    body.x
-                        + DEFAULT_HIGHLIGHT_SYMBOL_PREFIX.len() as u16
-                        + NEW_LABEL_PREFIX.len() as u16
-                        + t.cursor().x
-                        + (!self.ctx.inline as u16),
-                    // Move one line down, from the border to the input line
-                    body.y + (!self.ctx.inline as u16),
-                );
-            }
-            _ => (),
-        }
     }
 
     fn process_raw_event(&mut self, event: Event) -> Result<Option<ProcessOutput>> {
@@ -164,50 +137,67 @@ impl<'s> Process for LabelProcess<'s> {
 
 impl<'s> InteractiveProcess for LabelProcess<'s> {
     fn move_up(&mut self) {
-        self.suggestions.previous()
+        match self.suggestions.current() {
+            Some(LabelSuggestionItem::Persisted(_, Some(_))) => (),
+            _ => self.suggestions.previous(),
+        }
     }
 
     fn move_down(&mut self) {
-        self.suggestions.next()
+        match self.suggestions.current() {
+            Some(LabelSuggestionItem::Persisted(_, Some(_))) => (),
+            _ => self.suggestions.next(),
+        }
     }
 
     fn move_left(&mut self) {
         match self.suggestions.current_mut() {
-            Some(LabelSuggestionItem::Secret(suggestion)) | Some(LabelSuggestionItem::New(suggestion)) => {
-                suggestion.move_left()
-            }
+            Some(LabelSuggestionItem::Secret(suggestion))
+            | Some(LabelSuggestionItem::New(suggestion))
+            | Some(LabelSuggestionItem::Persisted(_, Some(suggestion))) => suggestion.move_left(),
             _ => (),
         }
     }
 
     fn move_right(&mut self) {
         match self.suggestions.current_mut() {
-            Some(LabelSuggestionItem::Secret(suggestion)) | Some(LabelSuggestionItem::New(suggestion)) => {
-                suggestion.move_right()
-            }
+            Some(LabelSuggestionItem::Secret(suggestion))
+            | Some(LabelSuggestionItem::New(suggestion))
+            | Some(LabelSuggestionItem::Persisted(_, Some(suggestion))) => suggestion.move_right(),
             _ => (),
         }
     }
 
     fn prev(&mut self) {
-        self.suggestions.previous()
+        self.move_up()
     }
 
     fn next(&mut self) {
-        self.suggestions.next()
+        self.move_down()
     }
 
     fn home(&mut self) {
-        self.suggestions.first()
+        match self.suggestions.current_mut() {
+            Some(LabelSuggestionItem::Secret(suggestion))
+            | Some(LabelSuggestionItem::New(suggestion))
+            | Some(LabelSuggestionItem::Persisted(_, Some(suggestion))) => suggestion.move_beginning(),
+            _ => self.suggestions.first(),
+        }
     }
 
     fn end(&mut self) {
-        self.suggestions.last()
+        match self.suggestions.current_mut() {
+            Some(LabelSuggestionItem::Secret(suggestion))
+            | Some(LabelSuggestionItem::New(suggestion))
+            | Some(LabelSuggestionItem::Persisted(_, Some(suggestion))) => suggestion.move_end(),
+            _ => self.suggestions.last(),
+        }
     }
 
     fn insert_text(&mut self, text: String) -> Result<()> {
         match self.suggestions.current_mut() {
-            Some(LabelSuggestionItem::Secret(suggestion)) => {
+            Some(LabelSuggestionItem::Secret(suggestion))
+            | Some(LabelSuggestionItem::Persisted(_, Some(suggestion))) => {
                 suggestion.insert_text(text);
             }
             Some(LabelSuggestionItem::New(suggestion)) => {
@@ -227,7 +217,8 @@ impl<'s> InteractiveProcess for LabelProcess<'s> {
 
     fn insert_char(&mut self, c: char) -> Result<()> {
         match self.suggestions.current_mut() {
-            Some(LabelSuggestionItem::Secret(suggestion)) => {
+            Some(LabelSuggestionItem::Secret(suggestion))
+            | Some(LabelSuggestionItem::Persisted(_, Some(suggestion))) => {
                 suggestion.insert_char(c);
             }
             Some(LabelSuggestionItem::New(suggestion)) => {
@@ -247,7 +238,8 @@ impl<'s> InteractiveProcess for LabelProcess<'s> {
 
     fn delete_char(&mut self, backspace: bool) -> Result<()> {
         match self.suggestions.current_mut() {
-            Some(LabelSuggestionItem::Secret(suggestion)) => {
+            Some(LabelSuggestionItem::Secret(suggestion))
+            | Some(LabelSuggestionItem::Persisted(_, Some(suggestion))) => {
                 suggestion.delete_char(backspace);
             }
             Some(LabelSuggestionItem::New(suggestion)) => {
@@ -267,12 +259,17 @@ impl<'s> InteractiveProcess for LabelProcess<'s> {
     }
 
     fn edit_current(&mut self) -> Result<()> {
+        if let Some(LabelSuggestionItem::Persisted(s, input)) = self.suggestions.current_mut() {
+            if input.is_none() {
+                input.replace(TextInput::new(&s.suggestion));
+            }
+        }
         Ok(())
     }
 
     fn delete_current(&mut self) -> Result<()> {
-        if let Some(LabelSuggestionItem::Persisted(_)) = self.suggestions.current() {
-            if let Some(LabelSuggestionItem::Persisted(suggestion)) = self.suggestions.delete_current() {
+        if let Some(LabelSuggestionItem::Persisted(_, None)) = self.suggestions.current() {
+            if let Some(LabelSuggestionItem::Persisted(suggestion, _)) = self.suggestions.delete_current() {
                 self.storage.delete_label_suggestion(&suggestion)?;
             }
         }
@@ -298,11 +295,17 @@ impl<'s> InteractiveProcess for LabelProcess<'s> {
                 LabelSuggestionItem::Label(value) => {
                     self.command.inner_mut().set_next_label(value.clone());
                 }
-                LabelSuggestionItem::Persisted(suggestion) => {
-                    suggestion.increment_usage();
-                    self.storage.update_label_suggestion(suggestion)?;
-                    self.command.inner_mut().set_next_label(&suggestion.suggestion);
-                }
+                LabelSuggestionItem::Persisted(suggestion, input) => match input.take() {
+                    None => {
+                        suggestion.increment_usage();
+                        self.storage.update_label_suggestion_usage(suggestion)?;
+                        self.command.inner_mut().set_next_label(&suggestion.suggestion)
+                    }
+                    Some(value) => {
+                        self.storage.update_label_suggestion(suggestion, value.as_str())?;
+                        return Ok(None);
+                    }
+                },
             }
             match self.command.inner().next_label() {
                 Some((ix, label)) => {

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crossterm::event::Event;
-use tui::{backend::Backend, layout::Rect, Frame};
+use ratatui::{backend::Backend, layout::Rect, Frame};
 
 use crate::{storage::SqliteStorage, tldr::scrape_tldr_github, Process, ProcessOutput};
 

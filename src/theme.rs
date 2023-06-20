@@ -1,7 +1,6 @@
-use tui::style::Color;
+use ratatui::style::Color;
 
 pub const LIGHT: Theme = Theme {
-    main: Color::Black,
     secondary: Color::Gray,
     selected_background: Color::Gray,
     alias: Color::Yellow,
@@ -9,7 +8,6 @@ pub const LIGHT: Theme = Theme {
 };
 
 pub const DARK: Theme = Theme {
-    main: Color::White,
     secondary: Color::Rgb(154, 154, 154),
     selected_background: Color::Rgb(154, 154, 154),
     alias: Color::Yellow,
@@ -18,7 +16,6 @@ pub const DARK: Theme = Theme {
 
 #[derive(Clone, Copy)]
 pub struct Theme {
-    pub main: Color,
     pub secondary: Color,
     pub selected_background: Color,
     pub alias: Color,

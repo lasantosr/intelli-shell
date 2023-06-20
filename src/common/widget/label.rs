@@ -1,7 +1,7 @@
 use itertools::Itertools;
-use tui::{
+use ratatui::{
     style::{Modifier, Style},
-    text::{Span, Spans, Text},
+    text::{Line, Span, Text},
     widgets::ListItem,
 };
 
@@ -12,30 +12,64 @@ use crate::{
     theme::Theme,
 };
 
-pub const SECRET_LABEL_PREFIX: &str = "(secret) ";
-pub const NEW_LABEL_PREFIX: &str = "(new) ";
+const SECRET_LABEL_PREFIX: &str = "(secret) ";
+const NEW_LABEL_PREFIX: &str = "(new) ";
+const EDIT_LABEL_PREFIX: &str = "(edit) ";
 
 #[cfg_attr(debug_assertions, derive(Debug))]
 pub enum LabelSuggestionItem {
     Secret(TextInput),
     New(TextInput),
     Label(String),
-    Persisted(LabelSuggestion),
+    Persisted(LabelSuggestion, Option<TextInput>),
 }
 
-impl<'a> From<&'a LabelSuggestionItem> for ListItem<'a> {
-    fn from(item: &'a LabelSuggestionItem) -> Self {
-        match item {
-            LabelSuggestionItem::Secret(value) => ListItem::new(Spans::from(vec![
-                Span::styled(SECRET_LABEL_PREFIX, Style::default().add_modifier(Modifier::ITALIC)),
-                Span::raw(value.as_str()),
-            ])),
-            LabelSuggestionItem::New(value) => ListItem::new(Spans::from(vec![
-                Span::styled(NEW_LABEL_PREFIX, Style::default().add_modifier(Modifier::ITALIC)),
-                Span::raw(value.as_str()),
-            ])),
-            LabelSuggestionItem::Label(value) => ListItem::new(value.clone()),
-            LabelSuggestionItem::Persisted(e) => ListItem::new(e.suggestion.clone()),
+impl<'a> IntoCursorWidget<ListItem<'a>> for &'a LabelSuggestionItem {
+    fn into_widget_and_cursor(self, theme: Theme) -> (ListItem<'a>, Option<(Offset, Area)>) {
+        match self {
+            LabelSuggestionItem::Secret(value) => (
+                ListItem::new(Line::from(vec![
+                    Span::styled(
+                        SECRET_LABEL_PREFIX,
+                        Style::default().fg(theme.secondary).add_modifier(Modifier::ITALIC),
+                    ),
+                    Span::raw(value.as_str()),
+                ])),
+                Some((
+                    value.cursor() + Offset::new(SECRET_LABEL_PREFIX.len() as u16, 0),
+                    Area::default_visible(),
+                )),
+            ),
+            LabelSuggestionItem::New(value) => (
+                ListItem::new(Line::from(vec![
+                    Span::styled(
+                        NEW_LABEL_PREFIX,
+                        Style::default().fg(theme.secondary).add_modifier(Modifier::ITALIC),
+                    ),
+                    Span::raw(value.as_str()),
+                ])),
+                Some((
+                    value.cursor() + Offset::new(NEW_LABEL_PREFIX.len() as u16, 0),
+                    Area::default_visible(),
+                )),
+            ),
+            LabelSuggestionItem::Label(value) => (ListItem::new(value.as_str()), None),
+            LabelSuggestionItem::Persisted(e, input) => match input {
+                Some(value) => (
+                    ListItem::new(Line::from(vec![
+                        Span::styled(
+                            EDIT_LABEL_PREFIX,
+                            Style::default().fg(theme.secondary).add_modifier(Modifier::ITALIC),
+                        ),
+                        Span::raw(value.as_str()),
+                    ])),
+                    Some((
+                        value.cursor() + Offset::new(EDIT_LABEL_PREFIX.len() as u16, 0),
+                        Area::default_visible(),
+                    )),
+                ),
+                None => (ListItem::new(e.suggestion.as_str()), None),
+            },
         }
     }
 }
@@ -46,7 +80,7 @@ impl<'a> IntoCursorWidget<Text<'a>> for &'a LabeledCommand {
         let mut first_label_offset_x = 0;
         let mut first_label_width = 0;
 
-        let text = Spans::from(
+        let text = Line::from(
             self.parts
                 .iter()
                 .map(|p| {
@@ -58,7 +92,7 @@ impl<'a> IntoCursorWidget<Text<'a>> for &'a LabeledCommand {
                             let style = if !first_label_found {
                                 first_label_found = true;
                                 first_label_width = l.len_chars() as u16 + 4;
-                                Style::default().fg(theme.main).add_modifier(Modifier::BOLD)
+                                Style::default().add_modifier(Modifier::BOLD)
                             } else {
                                 Style::default().fg(theme.secondary)
                             };

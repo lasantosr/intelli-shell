@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
-use tui::{backend::Backend, layout::Rect, Frame, Terminal};
+use ratatui::{backend::Backend, layout::Rect, Frame, Terminal};
 
 use super::remove_newlines;
 use crate::theme::Theme;

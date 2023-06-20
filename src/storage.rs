@@ -475,7 +475,38 @@ impl SqliteStorage {
     /// Updates an existing label suggestion
     ///
     /// Returns wether the suggestion exists and was updated or not.
-    pub fn update_label_suggestion(&self, suggestion: &LabelSuggestion) -> Result<bool> {
+    pub fn update_label_suggestion(
+        &self,
+        suggestion: &mut LabelSuggestion,
+        new_suggestion: impl Into<String>,
+    ) -> Result<bool> {
+        let conn = self.conn.lock().expect("poisoned lock");
+        let new_suggestion = new_suggestion.into();
+        let updated = conn
+            .execute(
+                r#"UPDATE label_suggestion SET suggestion = ? WHERE flat_root_cmd = ? AND flat_label = ? AND suggestion = ?"#,
+                (
+                    &new_suggestion,
+                    &suggestion.flat_root_cmd,
+                    &suggestion.flat_label,
+                    &suggestion.suggestion,
+                ),
+            )
+            .context("Error updating label suggestion")?;
+
+        let updated = updated == 1;
+
+        if updated {
+            suggestion.suggestion = new_suggestion;
+        }
+
+        Ok(updated)
+    }
+
+    /// Updates the usage of an existing label suggestion
+    ///
+    /// Returns wether the suggestion exists and was updated or not.
+    pub fn update_label_suggestion_usage(&self, suggestion: &LabelSuggestion) -> Result<bool> {
         let conn = self.conn.lock().expect("poisoned lock");
         let updated = conn
             .execute(
@@ -487,7 +518,7 @@ impl SqliteStorage {
                     &suggestion.suggestion,
                 ),
             )
-            .context("Error updating label suggestion")?;
+            .context("Error updating label suggestion usage")?;
 
         Ok(updated == 1)
     }

@@ -1,17 +1,19 @@
-use itertools::Itertools;
-use tui::{
+use ratatui::{
+    backend::Backend,
     layout::Rect,
     style::Style,
     widgets::{Block, Borders, List, ListItem, ListState},
+    Frame,
 };
 
-use super::{Area, CustomStatefulWidget, IntoWidget};
+use super::{Area, CustomStatefulWidget, IntoCursorWidget, Offset};
 use crate::theme::Theme;
 
 pub const DEFAULT_HIGHLIGHT_SYMBOL_PREFIX: &str = ">> ";
 
 pub struct CustomStatefulList<T> {
     state: ListState,
+    focus: bool,
     items: Vec<T>,
     inline: bool,
     block_title: Option<&'static str>,
@@ -23,7 +25,7 @@ pub struct CustomStatefulList<T> {
 
 impl<'s, T: 's> CustomStatefulList<T>
 where
-    &'s T: IntoWidget<ListItem<'s>>,
+    &'s T: IntoCursorWidget<ListItem<'s>>,
 {
     /// Builds a new list from the given items
     pub fn new(items: Vec<T>) -> Self {
@@ -33,6 +35,7 @@ where
         }
         Self {
             state,
+            focus: false,
             items,
             inline: true,
             block_title: None,
@@ -54,6 +57,11 @@ where
 
     pub fn style(mut self, style: Style) -> Self {
         self.style = style;
+        self
+    }
+
+    pub fn focus(mut self, focus: bool) -> Self {
+        self.focus = focus;
         self
     }
 
@@ -183,7 +191,7 @@ where
 
 impl<'s, T: 's> CustomStatefulWidget<'s> for CustomStatefulList<T>
 where
-    &'s T: IntoWidget<ListItem<'s>>,
+    &'s T: IntoCursorWidget<ListItem<'s>>,
 {
     type Inner = List<'s>;
 
@@ -194,13 +202,17 @@ where
         Area::new(width, height)
     }
 
-    fn prepare(&'s mut self, _area: Rect, theme: Theme) -> (Self::Inner, &mut ListState) {
+    fn is_focused(&self) -> bool {
+        self.focus
+    }
+
+    fn prepare(&'s mut self, _area: Rect, theme: Theme) -> (Option<Offset>, Self::Inner, &mut ListState) {
         // Get the widget of each item
-        let widget_items = self
+        let (widget_items, widget_cursors): (Vec<_>, Vec<_>) = self
             .items
             .iter()
-            .map(|i| IntoWidget::into_widget(i, theme))
-            .collect_vec();
+            .map(|i| IntoCursorWidget::into_widget_and_cursor(i, theme))
+            .unzip();
 
         // Generate the list
         let mut list = List::new(widget_items)
@@ -217,7 +229,40 @@ where
             list = list.block(block);
         }
 
+        let line_cursor = if let Some(selected) = self.state.selected() {
+            // We're returning the line cursor offset only, because we don't know where it is until we render the list
+            widget_cursors.get(selected).expect("Missing cursor").map(|(c, _)| c)
+        } else {
+            None
+        };
+
         // Return
-        (list, &mut self.state)
+        (line_cursor, list, &mut self.state)
+    }
+
+    /// Renders itself in the frame
+    fn render_in<B: Backend>(&'s mut self, frame: &mut Frame<B>, area: Rect, theme: Theme)
+    where
+        Self: Sized,
+    {
+        let focused = self.is_focused();
+        let inline = self.inline;
+        let (line_cursor, widget, state) = self.prepare(area, theme);
+        frame.render_stateful_widget(widget, area, state);
+
+        if focused {
+            if let Some(cursor) = line_cursor {
+                // Recalculate global cursor offset based on line cursor and list rendered offset
+                if let Some(selected) = state.selected() {
+                    let list_offset = state.offset();
+                    let y_offset = (selected - list_offset) as u16;
+                    // Make the cursor visible and ask tui-rs to put it at the specified coordinates after rendering
+                    frame.set_cursor(
+                        area.x + DEFAULT_HIGHLIGHT_SYMBOL_PREFIX.len() as u16 + cursor.x + (!inline as u16),
+                        area.y + y_offset + cursor.y + (!inline as u16),
+                    );
+                }
+            }
+        }
     }
 }

@@ -1,6 +1,6 @@
-use tui::{
+use ratatui::{
     style::Style,
-    text::{Span, Spans},
+    text::{Line, Span},
     widgets::ListItem,
 };
 
@@ -17,6 +17,6 @@ impl<'a> IntoWidget<ListItem<'a>> for &'a Command {
         if let Some(alias) = &self.alias {
             content.insert(0, Span::styled(format!("[{alias}] "), Style::default().fg(theme.alias)))
         }
-        ListItem::new(Spans::from(content))
+        ListItem::new(Line::from(content))
     }
 }

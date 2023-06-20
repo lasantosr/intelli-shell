@@ -22,7 +22,7 @@ use intelli_shell::{
     theme, ExecutionContext, Process, ProcessOutput,
 };
 use once_cell::sync::OnceCell;
-use tui::{backend::CrosstermBackend, layout::Rect, Terminal};
+use ratatui::{backend::CrosstermBackend, layout::Rect, Terminal};
 
 /// Command line arguments
 #[derive(Parser)]

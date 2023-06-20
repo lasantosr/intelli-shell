@@ -3,16 +3,18 @@ mod label;
 mod list;
 mod text;
 
+use std::ops::Add;
+
 pub use command::*;
 pub use label::*;
 pub use list::*;
-pub use text::*;
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::Rect,
     widgets::{StatefulWidget, Widget},
     Frame,
 };
+pub use text::*;
 
 use crate::theme::Theme;
 
@@ -27,6 +29,17 @@ pub struct Offset {
 impl Offset {
     pub fn new(x: u16, y: u16) -> Self {
         Self { x, y }
+    }
+}
+
+impl Add<Offset> for Offset {
+    type Output = Offset;
+
+    fn add(self, other: Offset) -> Offset {
+        Offset {
+            x: self.x + other.x,
+            y: self.y + other.y,
+        }
     }
 }
 
@@ -94,17 +107,35 @@ pub trait CustomStatefulWidget<'s> {
     /// Retrieves the minimum size needed to render this widget
     fn min_size(&self) -> Area;
 
+    /// Determines if the widget is currently focused
+    fn is_focused(&self) -> bool;
+
     /// Prepares widget and state parts
-    fn prepare(&'s mut self, area: Rect, theme: Theme)
-    -> (Self::Inner, &'s mut <Self::Inner as StatefulWidget>::State);
+    fn prepare(
+        &'s mut self,
+        area: Rect,
+        theme: Theme,
+    ) -> (
+        Option<Offset>,
+        Self::Inner,
+        &'s mut <Self::Inner as StatefulWidget>::State,
+    );
 
     /// Renders itself in the frame
     fn render_in<B: Backend>(&'s mut self, frame: &mut Frame<B>, area: Rect, theme: Theme)
     where
         Self: Sized,
     {
-        let (widget, state) = self.prepare(area, theme);
+        let focused = self.is_focused();
+        let (offset, widget, state) = self.prepare(area, theme);
         frame.render_stateful_widget(widget, area, state);
+
+        if focused {
+            if let Some(offset) = offset {
+                // Make the cursor visible and ask tui-rs to put it at the specified coordinates after rendering
+                frame.set_cursor(area.x + offset.x, area.y + offset.y);
+            }
+        }
     }
 }
 
@@ -129,9 +160,9 @@ pub trait IntoCursorWidget<W> {
 
 impl<W, T> IntoCursorWidget<W> for T
 where
-    T: Into<W>,
+    T: IntoWidget<W>,
 {
-    fn into_widget_and_cursor(self, _theme: Theme) -> (W, Option<(Offset, Area)>) {
-        (self.into(), None)
+    fn into_widget_and_cursor(self, theme: Theme) -> (W, Option<(Offset, Area)>) {
+        (self.into_widget(theme), None)
     }
 }

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crossterm::event::Event;
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
@@ -46,12 +46,12 @@ impl<'s> SearchProcess<'s> {
             .focus(true)
             .inline_title("(filter)")
             .block_title("Filter")
-            .style(Style::default().fg(ctx.theme.main));
+            .style(Style::default());
 
         let commands = CustomStatefulList::new(commands)
             .inline(ctx.inline)
             .block_title("Commands")
-            .style(Style::default().fg(ctx.theme.main))
+            .style(Style::default())
             .highlight_style(
                 Style::default()
                     .bg(ctx.theme.selected_background)

@@ -1,9 +1,9 @@
 use std::{borrow::Cow, fmt::Display};
 
-use tui::{
+use ratatui::{
     layout::Rect,
     style::Style,
-    text::{Span, Spans, Text},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
 
@@ -115,11 +115,11 @@ where
         if self.inline {
             if let Some(inline_title) = self.inline_title {
                 if let Some(line) = text.lines.get_mut(0) {
-                    line.0.insert(0, Span::raw(inline_title));
-                    line.0.insert(1, Span::raw(" "));
+                    line.spans.insert(0, Span::raw(inline_title));
+                    line.spans.insert(1, Span::raw(" "));
                 } else {
                     text.lines
-                        .push(Spans::from(vec![Span::raw(inline_title), Span::raw(" ")]));
+                        .push(Line::from(vec![Span::raw(inline_title), Span::raw(" ")]));
                 }
                 // Shift cursor if on the first line
                 if let (Some(cursor), Some(end_offset)) = (cursor.as_mut(), end_offset.as_mut()) {

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crossterm::event::Event;
-use tui::{
+use ratatui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
@@ -59,13 +59,13 @@ impl<'s> EditCommandProcess<'s> {
             .inline(ctx.inline)
             .inline_title("Command:")
             .block_title("Command")
-            .style(Style::default().fg(ctx.theme.main));
+            .style(Style::default());
 
         let mut description = CustomParagraph::new(TextInput::new(&command.description))
             .inline(ctx.inline)
             .inline_title("Description:")
             .block_title("Description")
-            .style(Style::default().fg(ctx.theme.main));
+            .style(Style::default());
 
         match active_field_kind {
             ActiveFieldKind::Alias => alias.set_focus(true),
