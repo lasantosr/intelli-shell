@@ -13,7 +13,7 @@ pub fn unify_newlines(str: impl AsRef<str>) -> String {
 }
 
 /// Regex to match spaces
-static NEW_LINE_AND_SPACES: Lazy<Regex> = Lazy::new(|| Regex::new(r#"[\r\n]\s*"#).unwrap());
+static NEW_LINE_AND_SPACES: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(\\)?(\r|\n|\r\n)\s*"#).unwrap());
 
 /// Removes newlines
 pub fn remove_newlines(str: impl AsRef<str>) -> String {
