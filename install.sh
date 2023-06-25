@@ -49,7 +49,7 @@ if [[ "${INTELLI_SKIP_PROFILE:-0}" == "0" ]]; then
       echo '# export INTELLI_LABEL_HOTKEY=\\C-l' >> "$1"
       echo '# export INTELLI_BOOKMARK_HOTKEY=\\C-b' >> "$1"
       echo '# export INTELLI_SKIP_ESC_BIND=0' >> "$1"
-      echo 'alias intelli-shell="$INTELLI_HOME/bin/intelli-shell"' >> "$1"
+      echo 'alias intelli-shell="'"'"'$INTELLI_HOME/bin/intelli-shell'"'"'"' >> "$1"
       echo 'source "$INTELLI_HOME/bin/intelli-shell.sh"' >> "$1"
     fi
   }
