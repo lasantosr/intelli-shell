@@ -23,6 +23,8 @@ It currently works on Bash, Zsh, Fish and PowerShell and should be compatible wi
 
 4. Hit `ctrl + space` to begin the journey!
 
+5. _(optional)_ Check out the [tips](#tips) section below to get some ideas
+
 ## Features
 
 - Standalone binaries
@@ -145,12 +147,16 @@ You can customize key bindings using environment variables: `INTELLI_BOOKMARK_HO
 
 - When the search criteria matches an alias or produces a single result, it's automatically autocompleted!
   - The label UI will still be shown if the command contains labels
+
 - You can alias common commands to store some kind of favorite labels, for example bookmark `cd {{path}}` and give it a
   `cd` alias
   - You can regularly use `cd` but if you hit `ctrl + space` it will show your "pinned" folders
+
 - Long commands or even functions can also be bookmarked
   - For example `function custom_echo () { echo "hey: $@"; }; custom_echo {{text}};`
+
 - You can avoid labels to be stored and keep them secret if wrapped between '*' : `echo {{*my-secret*}}`
+
 - Label suggestions are stored based on the root command and the label name, which gives you flexibility to decide.
 
   For these two commands, the same images will be suggested:
@@ -160,6 +166,8 @@ You can customize key bindings using environment variables: `INTELLI_BOOKMARK_HO
   But these two commands will suggest different volumes:
   - `docker run --volume {{image-1-volumes}} image-1`
   - `docker run --volume {{image-2-volumes}} -p {{image-2-ports}} image-2`
+
+- Include hashtags on descriptions like `#cool` and use them while searching
 
 ## Wishlist
 
