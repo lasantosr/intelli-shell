@@ -13,11 +13,11 @@ pub fn unify_newlines(str: impl AsRef<str>) -> String {
 }
 
 /// Regex to match spaces
-static NEW_LINE_AND_SPACES: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(\\)?(\r|\n|\r\n)\s*"#).unwrap());
+static NEW_LINE_AND_SPACES: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\s*(\\)?(\r|\n|\r\n)\s*"#).unwrap());
 
 /// Removes newlines
 pub fn remove_newlines(str: impl AsRef<str>) -> String {
-    NEW_LINE_AND_SPACES.replace_all(str.as_ref(), "").to_string()
+    NEW_LINE_AND_SPACES.replace_all(str.as_ref(), " ").to_string()
 }
 
 /// Applies [unidecode] to the given string and then converts it to lower case

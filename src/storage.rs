@@ -550,7 +550,7 @@ impl SqliteStorage {
     ) -> Result<Vec<LabelSuggestion>> {
         let flat_root_cmd = flatten_str(root_cmd.as_ref());
         let label = label.as_ref();
-        let mut parameters = label.split('|').map(flatten_str).collect_vec();
+        let mut parameters = label.split('|').map(str::trim).map(flatten_str).collect_vec();
         parameters.insert(0, flatten_str(label));
 
         const QUERY: &str = r#"

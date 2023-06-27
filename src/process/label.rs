@@ -88,7 +88,7 @@ impl<'s> LabelProcess<'s> {
 
             let mut suggestions_from_label = label
                 .split('|')
-                .map(|l| LabelSuggestionItem::Label(l.to_owned()))
+                .map(|l| LabelSuggestionItem::Label(l.trim().to_owned()))
                 .collect_vec();
             suggestions.append(&mut suggestions_from_label);
 
