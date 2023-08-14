@@ -316,6 +316,11 @@ impl SqliteStorage {
             r#"
                     SELECT DISTINCT rowid, category, alias, cmd, description, usage 
                     FROM (
+                        SELECT c.rowid, c.category, c.alias, c.cmd, c.description, c.usage, 3 as ord
+                        FROM command c
+                        WHERE c.alias GLOB :glob
+                    
+                        UNION ALL
                         SELECT c.rowid, c.category, c.alias, c.cmd, c.description, c.usage, 2 as ord
                         FROM command_fts s
                         JOIN command c ON s.rowid = c.rowid
