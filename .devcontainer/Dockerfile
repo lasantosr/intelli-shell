@@ -11,7 +11,7 @@ RUN cargo install cargo-audit
 RUN curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
 
 # Install zsh and fish
-RUN apt-get update && apt-get install zsh fish -y
+RUN apt-get update && apt-get install zsh fish gnupg2 -y
 
 # Create default non-root user
 ARG USERNAME=rust
