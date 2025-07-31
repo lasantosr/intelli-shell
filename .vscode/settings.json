@@ -30,7 +30,8 @@
         "MD033": {
             "allowed_elements": [
                 "details",
-                "summary"
+                "summary",
+                "kbd"
             ]
         }
     }

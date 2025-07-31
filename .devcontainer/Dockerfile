@@ -1,3 +1,4 @@
+FROM tsl0922/ttyd:alpine AS ttyd
 FROM rust
 
 # Install clippy and nightly rustfmt
@@ -6,12 +7,19 @@ RUN rustup toolchain install nightly
 RUN rustup component add rustfmt --toolchain nightly-x86_64-unknown-linux-gnu
 
 # Install some cargo utilities
-ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
-RUN cargo install cargo-audit
-RUN curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
+RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+RUN cargo binstall --no-confirm --no-symlinks cargo-audit cargo-nextest mdbook
 
-# Install zsh and fish
-RUN apt-get update && apt-get install zsh fish gnupg2 -y
+# Add vhs repo
+RUN mkdir -p /etc/apt/keyrings
+RUN curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+RUN echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | tee /etc/apt/sources.list.d/charm.list
+
+# Install latest ttyd
+COPY --from=ttyd /usr/bin/ttyd /usr/bin/ttyd
+
+# Install zsh, fish and required packages
+RUN apt-get update && apt-get install -y zsh fish gnupg2 bc ffmpeg chromium vhs
 
 # Create default non-root user
 ARG USERNAME=rust
@@ -27,27 +35,21 @@ RUN groupadd --gid $USER_GID $USERNAME \
     && chsh -s /bin/bash $USERNAME
 USER $USERNAME
 
-# Source artifact to be ready to execute
-RUN echo "\n# Search up & down" >> ~/.bashrc
-RUN echo "bind '\"\e[A\": history-search-backward'" >> ~/.bashrc
-RUN echo "bind '\"\e[B\": history-search-forward'" >> ~/.bashrc
-RUN echo "\n# IntelliShell debug" >> ~/.bashrc
-RUN echo "alias intelli-shell=/workspaces/intelli-shell/target/debug/intelli-shell" >> ~/.bashrc
-RUN echo "source /workspaces/intelli-shell/intelli-shell.sh" >> ~/.bashrc
-RUN echo "alias ll='ls -alF'" >> ~/.bashrc
+ENV VHS_NO_SANDBOX "true"
 
+# Useful additions to shell profiles
+RUN echo '\n# Customize PS1 with git branch' >> ~/.bashrc
+RUN echo 'parse_git_branch() {' >> ~/.bashrc
+RUN echo "  git branch 2> /dev/null | sed -e '/^[^*]/d' -e 's/* \\(.*\\)/ (\\\\1) /'" >> ~/.bashrc
+RUN echo '}' >> ~/.bashrc
+RUN echo "PS1=\${PS1/'\\\\[\\\\033[00m\\\\]\\\\$ '/'\\\\[\\\\033[33m\\\\]\$(parse_git_branch)\\\\[\\\\033[00m\\\\]\\\\$ '}" >> ~/.bashrc
+RUN echo '\n# Aliases' >> ~/.bashrc
+RUN echo "alias ll='ls -alF'" >> ~/.bashrc
+RUN echo '\n# Search up & down' >> ~/.bashrc
+RUN echo "bind '\"\\\\e[A\": history-search-backward'" >> ~/.bashrc
+RUN echo "bind '\"\\\\e[B\": history-search-forward'" >> ~/.bashrc
+
+RUN echo "alias ll='ls -alF'" >> ~/.zshrc
 RUN echo "\n# Search up & down" >> ~/.zshrc
 RUN echo "bindkey '^[[A' up-line-or-search" >> ~/.zshrc
 RUN echo "bindkey '^[[B' down-line-or-search" >> ~/.zshrc
-RUN echo "\n# IntelliShell debug" >> ~/.zshrc
-RUN echo "alias intelli-shell=/workspaces/intelli-shell/target/debug/intelli-shell" >> ~/.zshrc
-RUN echo "source /workspaces/intelli-shell/intelli-shell.sh" >> ~/.zshrc
-RUN echo "alias ll='ls -alF'" >> ~/.zshrc
-
-RUN mkdir -p ~/.config/fish
-RUN echo "# IntelliShell debug" >> ~/.config/fish/config.fish
-RUN echo "set INTELLI_HOME /workspaces/intelli-shell" >> ~/.config/fish/config.fish
-RUN echo "source /workspaces/intelli-shell/intelli-shell.fish" >> ~/.config/fish/config.fish
-RUN echo "function intelli-shell --description 'IntelliShell'" >> ~/.config/fish/config.fish
-RUN echo '/workspaces/intelli-shell/target/debug/intelli-shell $argv;' >> ~/.config/fish/config.fish
-RUN echo "end" >> ~/.config/fish/config.fish

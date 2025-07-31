@@ -1,0 +1,6 @@
+Examples:
+  # Clear all command examples fetched from tldr pages
+  intelli-shell tldr clear
+
+  # Clear command exampels imported from the 'linux' category of tldr pages
+  intelli-shell tldr clear linux

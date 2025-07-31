@@ -1,0 +1,12 @@
+Examples:
+  # Add the following to your .bashrc:
+  eval "$(intelli-shell init bash)"
+
+  # Add the following to your .zshrc:
+  eval "$(intelli-shell init zsh)"
+
+  # Add the following to your config.fish:
+  intelli-shell init fish | source
+
+  # Add the following to your PowerShell profile:
+  iex ((intelli-shell init powershell) -join "`n")

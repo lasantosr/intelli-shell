@@ -1,0 +1,17 @@
+Examples:
+  # Open the interactive bookmarking interface (blank slate)
+  intelli-shell new -i
+
+  # Open the interface, pre-populating the command field
+  # Note: Use shell quoting if your command has special characters
+  intelli-shell new -i 'docker run --rm -it -v $(pwd):/app -w /app rust:latest bash'
+
+  # Bookmark a simple command non-interactively
+  intelli-shell new "echo 'Hello from script'"
+
+  # Add a command with an alias and description
+  intelli-shell new "ls -la" --alias "lh" --description "List all files including hidden"
+
+  # Add a command with shell pipes or special characters (requires careful quoting)
+  # Example for bash/zsh: Use single quotes to prevent shell expansion
+  intelli-shell new -d "find my app containers" 'docker ps -a --format "table {{.ID}}\t{{.Image}}\t{{.Names}}" | grep my_app'

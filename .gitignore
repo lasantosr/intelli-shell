@@ -105,6 +105,13 @@ target
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
+### Firebase Studio ###
+.idx/.data/
+.idx/secrets.nix
+
+### mdbook ##
+docs/book/
+
 ### Local ###
 .env
 .vscode/launch.json

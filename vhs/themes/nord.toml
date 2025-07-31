@@ -1,0 +1,12 @@
+[theme]
+primary = "#eceff4"
+secondary = "#81a1c1"
+accent = "bold #a3be8c"
+comment = "italic #4c566a"
+error = "bold #bf616a"
+highlight = "#434c5e"
+highlight_symbol = "❄ "
+highlight_primary = "#eceff4"
+highlight_secondary = "dim #d8dee9"
+highlight_accent = "bold #ebcb8b"
+highlight_comment = "italic #d8dee9"

@@ -1,0 +1,24 @@
+Examples:
+  # Import commands piped from stdin
+  intelli-shell import << EOF
+    // This is a sample command
+    echo Hello World!
+  EOF
+
+  # Import filtered commands from a specific file path
+  intelli-shell import --filter docker path/to/shared.commands
+
+  # Import commands from the default gist on the config
+  intelli-shell import gist
+
+  # Import commands from a specific file of the default gist, adding a tag to the description if not present
+  intelli-shell import -t docker --gist docker_commands.sh
+
+  # Preview commands from a gist without actually importing them, to check if they're properly parsed
+  intelli-shell import --dry-run https://gist.github.com/username/1234567890abcdef1234567890abcdef
+
+  # Import commands from a specific revision and file of a gist
+  intelli-shell import https://gist.githubusercontent.com/username/1234567890abcdef1234567890abcdef/raw/b4092b1b7d4ad752ff7309a038ebc938e327f518/file.txt
+
+  # Import commands from a custom url (supports both text content and the same json format as export)
+  intelli-shell import https://api.example.com/custom-endpoint

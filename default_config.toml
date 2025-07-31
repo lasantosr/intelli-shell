@@ -1,0 +1,203 @@
+# This file contains the default configuration settings for Intelli-Shell.
+# It serves as both a demo of available options and a reference for customization.
+#
+# To customize your configuration, copy this file to your user configuration directory or create a new one:
+# ~/.config/intelli-shell/config.toml (on Linux/macOS)
+# %APPDATA%\IntelliShell\Intelli-Shell\config\config.toml (on Windows)
+# $XDG_CONFIG_HOME/intelli-shell/config.toml (if XDG_CONFIG_HOME is set)
+#
+# Any setting not present on the file will inherit the default value displayed here.
+
+# --------------------------------------------------------------
+#   General 
+# --------------------------------------------------------------
+
+# The default directory for application data, such as the stored commands database.
+# If this value is left empty, the application will use the system's default data directory:
+# - ~/.local/share/intelli-shell (on Linux/macOS, unless overridden by XDG_DATA_HOME)
+# - %APPDATA%\IntelliShell\Intelli-Shell\data (on Windows)
+data_dir = ""
+
+# Whether to check for updates on application startup
+check_updates = true
+
+# Determines the rendering mode for the Terminal User Interface (TUI).
+# - If `true`, the TUI will appear directly below the shell prompt, integrating seamlessly
+# - If `false`, the TUI will take over the entire terminal screen
+inline = true
+
+# --------------------------------------------------------------
+#   Gist Integration
+# --------------------------------------------------------------
+
+# Configuration for the default gist to use when importing or exporting (if no other is explicitly set)
+[gist]
+# The id of the gist, you can get it from the url after the username
+id = ""
+# Token to authenticate the API call to GH when exporting
+# GIST_TOKEN env variable will take precedence over the config value
+token = ""
+
+# --------------------------------------------------------------
+#   Search Command 
+# --------------------------------------------------------------
+
+# Configuration for the search command
+[search]
+# The delay (in ms) to wait and accumulate type events before triggering the query
+delay = 250
+# Specifies the default search mode to be used when initiating a search.
+# Possible values are:
+# - "auto": An internal algorithm is used to best match common human search patterns
+# - "fuzzy": Employs fuzzy matching to find commands that are similar to the input query
+# - "regex": Treats the input query as a regular expression, allowing for complex pattern matching
+# - "exact": The search will only return commands that precisely match the entire input query
+# - "relaxed": Attempts to find the maximum number of potentially relevant commands using broader matching criteria
+mode = "auto"
+# Whether to search for user commands only by default when initiating a search (excluding tldr and workspace)
+user_only = false
+
+# --------------------------------------------------------------
+#   Logs 
+# --------------------------------------------------------------
+
+# Configuration settings for application logging.
+#
+# If an `INTELLI_LOG` environment variable exists, it will override the filter and enable logging.
+[logs]
+# Whether application logging is enabled.
+# If set to `true`, the application will write detailed logs to a file within the data directory.
+enabled = false
+# The log filter to apply, controlling which logs are recorded.
+#
+# This string supports the `tracing-subscriber`'s environment filter syntax, for example:
+# - "info" enables info log level (and above: warn and error)
+# - "warn,intelli_shell=debug" enables debug for `intelli_shell` and warn for the rest
+filter = "info"
+
+# --------------------------------------------------------------
+#   Key Bindings
+# --------------------------------------------------------------
+
+# Configuration for the key bindings used to interact with the Terminal User Interface (TUI).
+# Key bindings map an action within the application to one or more key press combinations.
+#
+# Each action can be bound to a single key event string or a list of key event strings.
+# If a list is provided, pressing any of the listed combinations will trigger the action.
+#
+# Key event strings are parsed from a simple format:
+# - Modifiers (optional, separated by `-` or `+`): `ctrl`, `shift`, `alt`
+# - Followed by the key name or character
+[keybindings]
+# Exit the TUI gracefully
+quit = "esc"
+# Update the currently highlighted record or item (e.g., edit a command)
+update = ["ctrl-u", "ctrl-e", "F2"]
+# Delete the currently highlighted record or item
+delete = "ctrl-d"
+# Confirm a selection or action related to the highlighted record
+confirm = ["tab", "enter"]
+# Execute the action associated with the highlighted record or item (e.g., run a command)
+execute = ["ctrl-enter", "ctrl-r"]
+# Toggle the search mode
+search_mode = "ctrl-s"
+# Toggle whether to search for user commands only or include workspace and tldr's
+search_user_only = "ctrl-o"
+
+# --------------------------------------------------------------
+#   Theme
+# --------------------------------------------------------------
+
+# Configuration for the visual theme of the Terminal User Interface (TUI).
+#
+# Styles are defined using a string that can consist of one or more optional modifiers
+# followed by an optional color. Modifiers and colors should be space-separated.
+#
+# Supported Modifiers: `bold`, `dim`, `italic`, `underline`
+#
+# Supported Color Formats:
+# - Keep the original terminal color (no ANSI escape codes): "default" or an empty string (`""`)
+# - Named colors (standard ANSI): "black", "red", etc.
+# - RGB color value: "rgb(15, 15, 15)"
+# - Hexadecimal color value: "#112233"
+# - ANSI 8-bit indexed color (integer string from 0 to 255): "8", "13", etc.
+[theme]
+# The primary style used for main elements, like selected items or important text
+primary = "default"
+# The secondary style used for less prominent elements, like unselected items
+secondary = "dim"
+# An accent style used to highlight specific elements, like aliases or keywords
+accent = "yellow"
+# The style used for comments or explanatory text
+comment = "italic green"
+# The style used for errors
+error = "dark red"
+# The background color for the highlighted item in a list. Use "none" for no background color
+highlight = "dark gray"
+# The string symbol displayed next to the highlighted item
+highlight_symbol = "» "
+# The primary style applied specifically to a highlighted item
+highlight_primary = "default"
+# The secondary style applied specifically to a highlighted item
+highlight_secondary = "dim"
+# The accent style applied specifically to a highlighted item
+highlight_accent = "yellow"
+# The comments style applied specifically to a highlighted item
+highlight_comment = "italic green"
+
+# --------------------------------------------------------------
+#   Search Tuning
+# --------------------------------------------------------------
+
+# Configuration to tune the variables suggestion ranking algorithm.
+#
+# The final score for a variable suggestion is a weighted sum of points from two sources:
+# 1. Context Score: Other variable values already selected to the command
+# 2. Path Score: Where the value has been used before
+# The total usage will be used as a tie-breaker if the same points are scored
+[tuning.variables]
+# Total points assigned for matching contextual information (e.g., previous variables values)
+context.points = 700
+
+# Total points assigned for matching any usage on a relevant path
+path.points = 300
+# Weights applied to a variable path score based on where it was used
+path.exact = 1.0
+path.ancestor = 0.5
+path.descendant = 0.25
+path.unrelated = 0.1
+
+# Configuration to tune the command search ranking algorithm.
+#
+# The final score for a command is a weighted sum of points from three sources:
+# 1. Usage Score: How often the command has been globally used
+# 2. Path Score: Where the command has been used before
+# 3. Text Relevance: How well the command's text matches the search query (if any)
+[tuning.commands]
+# Total points assigned to the global usage of a command
+usage.points = 100
+
+# Total points assigned for matching any usage on a relevant path
+path.points = 300
+# Weights applied to a command path points based on where it was used
+path.exact = 1.0
+path.ancestor = 0.5
+path.descendant = 0.25
+path.unrelated = 0.1
+
+# Total points assigned to the normalized text relevance score
+text.points = 600
+# The weight for the command's `cmd` field in the text search
+text.command = 2.0
+# The weight for the command's `description` field in the text search
+text.description = 1.0
+
+# --- "auto" Mode Specific Tuning ---
+# Multiplier for high-confidence prefix matches
+text.auto.prefix = 1.5
+# Multiplier for standard "all words must match" fuzzy results
+text.auto.fuzzy = 1.0
+# Multiplier for lower-confidence "any word can match" relaxed results
+text.auto.relaxed = 0.5
+# A boost multiplier to add when the search term matches the start of a command
+text.auto.root = 2.0

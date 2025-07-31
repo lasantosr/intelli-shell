@@ -1,0 +1,24 @@
+Examples:
+  # Open an interactive interface to bookmark a new command
+  intelli-shell new -i
+
+  # Interactively search stored commands, initially filtering for "git"
+  intelli-shell search -i git
+
+  # Interactively replace variables in a command
+  intelli-shell replace -i "echo {{message}}"
+
+  # Store a command non-interactively
+  intelli-shell new "find . -name '*.py'" --alias "lp" --description "Find Python files" 
+
+  # Export all user commands
+  intelli-shell export user.commands
+
+  # Import user commands
+  intelli-shell import user.commands
+
+  # Fetch useful commands from tldr
+  intelli-shell tldr fetch
+
+  # Remove commands imported from tldr
+  intelli-shell tldr clear

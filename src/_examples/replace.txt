@@ -1,0 +1,10 @@
+Examples:
+  # Open the interactive variables replacement ui using the command from stdin
+  echo "tar -czvf {{archive_name}}.tar.gz {{source_dir}}" | intelli-shell replace -i
+
+  # Replace variables non-interactively, with the api token pre-filled from your environment and the user query urlencoded
+  # Note: Use shell quoting for the command string if it contains shell metacharacters
+  intelli-shell replace -e API_TOKEN -e USER_QUERY='my query text' 'curl -H "Authorization: Bearer {{{api_token}}}" https://api.example.com/data?query={{user_query:url}}'
+
+  # Replace variables non-interactively using the values from the environment, then execute the command
+  intelli-shell replace -E "aws s3 sync {{local_path}} s3://{{bucket_name}}/{{remote_path}} --delete" | sh

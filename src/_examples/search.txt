@@ -1,0 +1,12 @@
+Examples:
+  # Open the interactive search interface
+  intelli-shell search -i
+
+  # Searches non-interactively for commands filtering by "docker", using the default config
+  intelli-shell search docker
+
+  # Searches non-interactively for user commands filtering by "docker" with exact mode
+  intelli-shell search -m exact --user-only docker
+
+  # Open the interface in full screen mode
+  intelli-shell search -i --full-screen

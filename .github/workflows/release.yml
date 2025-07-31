@@ -3,16 +3,12 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
-
-env:
-  CARGO_TERM_COLOR: always
+      - "v*.*.*"
 
 jobs:
   release:
     name: Release ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-
     strategy:
       fail-fast: false
       matrix:
@@ -25,9 +21,9 @@ jobs:
             target: x86_64-unknown-linux-musl
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
-          - os: macOS-latest
+          - os: macos-latest
             target: x86_64-apple-darwin
-          - os: macOS-latest
+          - os: macos-latest
             target: aarch64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -36,68 +32,65 @@ jobs:
 
     steps:
       - name: Clone repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Install rust
-        uses: actions-rs/toolchain@v1
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
-          target: ${{ matrix.target }}
+          targets: ${{ matrix.target }}
 
-      - name: Build target
-        uses: actions-rs/cargo@v1
-        with:
-          use-cross: true
-          command: build
-          args: --release --target ${{ matrix.target }}
+      - name: Build binary
+        run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          Compress-Archive -Path ".\target\${{ matrix.target }}\release\intelli-shell.exe", ".\intelli-shell.ps1" -DestinationPath intelli-shell-${{ matrix.target }}.zip
-
-      - name: Release
-        if: matrix.os == 'windows-latest'
-        uses: softprops/action-gh-release@v1
-        with:
-            files: intelli-shell-${{ matrix.target }}.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Package
-        if: matrix.os != 'windows-latest'
+      - name: Package artifact
         shell: bash
         run: |
-          tar czvf intelli-shell-${{ matrix.target }}.tar.gz intelli-shell.sh intelli-shell.fish -C target/${{ matrix.target }}/release intelli-shell
-        
-      - name: Release
-        if: matrix.os != 'windows-latest'
-        uses: softprops/action-gh-release@v1
+          # Define the build path and the artifact name
+          build_path="target/${{ matrix.target }}/release"
+          artifact_name="intelli-shell-${{ matrix.target }}"
+
+          # Package accordingly
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            7z a "${artifact_name}.zip" "${build_path}/intelli-shell.exe"
+            echo "ASSET=${artifact_name}.zip" >> $GITHUB_ENV
+          else
+            tar czvf "${artifact_name}.tar.gz" -C "${build_path}" "intelli-shell"
+            echo "ASSET=${artifact_name}.tar.gz" >> $GITHUB_ENV
+          fi
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
         with:
-            files: intelli-shell-${{ matrix.target }}.tar.gz
+          draft: true
+          files: ${{ env.ASSET }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  publish:
-    name: Publish to crates
+  publish-crate:
+    name: Publish to crates.io
     runs-on: ubuntu-latest
     needs: [release]
-
     steps:
       - name: Clone repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Install rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Publish
-        run: cargo publish --token ${CRATES_TOKEN}
+      - name: Publish to crates.io
+        run: cargo publish
         env:
-          CRATES_TOKEN: ${{ secrets.CRATES_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_TOKEN }}
+
+  publish-github-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [release]
+    steps:
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

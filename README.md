@@ -1,189 +1,109 @@
 # IntelliShell
 
-Like IntelliSense, but for shells!
+_Like IntelliSense, but for shells!_
 
-![intelli-shell demo](assets/intellishell.gif)
+IntelliShell is a command-line tool that acts as a smart bookmark manager.
+It helps you find, organize, and reuse complex shell commands without ever leaving your terminal.
 
-IntelliShell acts like a bookmark store for commands, so you don't have to keep your history clean in order to be able
-to find something useful with `ctrl + R`.
+Works on **Bash**, **Zsh**, **Fish**, and **PowerShell**, with standalone binaries for Linux, macOS, and Windows.
 
-It currently works on Bash, Zsh, Fish and PowerShell and should be compatible with most Linux, Windows and MacOS.
+![intelli-shell demo](docs/src/images/demo.gif)
 
-## TL;DR
+## Features
+
+- **Standalone & Dependency-Free**: Distributed as a single binary with no external runtimes or dependencies
+- **Seamless Shell Integration**: Search commands with `ctrl+space` or bookmark them with `ctrl+b`
+- **Flexible Interface**: Choose between a non-intrusive (inline) or an immersive (full-screen) TUI
+- **Dynamic Variables**: Create command templates with `{{variables}}` and replace them on the fly
+- **Highly Configurable**: Tailor search modes, keybindings, themes, and even search-ranking algorithms
+- **Workspace-Aware Commands**: Automatically discovers and loads commands from your workspace's directory
+- **Import/Export**: Share your command library by importing or exporting to files, HTTP endpoints, or even Gists
+- **TLDR Integration**: Fetch and import command examples from [tldr](https://github.com/tldr-pages/tldr) pages
+
+## Quick Start
 
 1. Install the binaries:
 
    ```sh
-   curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.sh | bash
+   # For Linux and macOS (Bash, Zsh, Fish)
+   curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.sh | sh
    ```
 
-2. Bookmark your first command by typing it on a terminal and using `ctrl + b`
+   <details>
+   <summary>Windows</summary>
 
-3. _(optional)_ Run `intelli-shell fetch` to download commands from [tldr](https://github.com/tldr-pages/tldr)
+   ```powershell
+   Set-ExecutionPolicy RemoteSigned -Scope CurrentUser # Optional: Only needed if scripts are disabled
+   irm https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.ps1 | iex
+   ```
 
-4. Hit `ctrl + space` to begin the journey!
+   > **Note**: Microsoft Visual C++ Redistributable ([download](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist))
+   > is required for the application to run
+   </details>
 
-5. _(optional)_ Check out the [tips](#tips) section below to get some ideas
+   _To skip profile updates, set `INTELLI_SKIP_PROFILE` environment variable to `1` before installing._
 
-## Features
+2. Bookmark your first command by typing it on a terminal and hitting `ctrl+b`
 
-- Standalone binaries
-- Autocomplete currently typed command
-  - Full Text Search in both command and description with hashtag support on descriptions
-- Find & replace labels of currently typed command
-- Edit bookmarked commands and provide aliases
-- Non-intrusive (inline) and full-screen interfaces
-- Fetch command to parse and store [tldr](https://github.com/tldr-pages/tldr) pages (Thanks to them!)
-- Portability. You can use bookmarked commands in any supported shell, as well as exporting and importing elsewhere.
+3. _(optional)_ Run `intelli-shell tldr fetch` to download commands from [tldr](https://github.com/tldr-pages/tldr)
 
-## Installation
+4. Hit `ctrl+space` to begin the journey and dont forget to checkout the [tips](#tips)!
 
-Remember to bookmark some commands or fetch them after the installation!
+## Basic Usage
 
-To skip profile updates, set `INTELLI_SKIP_PROFILE` environment variable to `1` before installing.
+IntelliShell is designed to be used interactively through keybindings:
 
-### Bash (Linux)
+- **`ctrl+space`**: Search for a command
+- **`ctrl+b`**: Bookmark the command currently typed in your terminal
+- **`ctrl+l`**: Replace `{{variables}}` in the current command
+- **`esc`** clean current line, this binding can be skipped if `INTELLI_SKIP_ESC_BIND=1`
 
-```sh
-curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.sh | bash
-```
+You can customize everything from keybindings and themes to the search behavior.
+For a complete list of available options, check out the [default configuration file](./default_config.toml).
 
-After installing it using bash, it should work in any supported shell.
-
-### PowerShell (Windows)
-
-```powershell
-Set-ExecutionPolicy RemoteSigned -Scope CurrentUser # Optional: Needed to run a remote script the first time
-irm https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.ps1 | iex
-```
-
-After installing it with powershell, it should also work on cmd (without hotkeys).
-
-### Source
-
-To install from source you'll need to have Rust installed, which is recommended to be installed using [rustup](https://www.rust-lang.org/tools/install).
-
-```sh
-cargo install intelli-shell --locked
-```
-
-To enable hotkeys, additional steps are required:
-
-<details>
-  <summary>Linux</summary>
-  
-Download source script:
-
-- Bash / Zsh:
-
-  ```sh
-  mkdir -p ~/.local/share/intelli-shell/bin
-  curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.sh > ~/.local/share/intelli-shell/bin/intelli-shell.sh
-  ```
-
-- Fish:
-
-  ```sh
-  mkdir -p ~/.local/share/intelli-shell/bin
-  curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.fish > ~/.local/share/intelli-shell/bin/intelli-shell.fish
-  ```
-
-Edit your profile to source it:
-
-- Bash / Zsh: `~/.bashrc`, `~/.zshrc` or `~/.bash_profile`
-
-  ```sh
-  source ~/.local/share/intelli-shell/bin/intelli-shell.sh
-  ```
-
-- Fish: `~/.config/fish/config.fish`:
-
-  ```sh
-  source ~/.local/share/intelli-shell/bin/intelli-shell.fish
-  ```
-
-</details>
-
-<details>
-  <summary>Windows</summary>
-  
-Download the source script also:
-
-```powershell
-New-Item -Path $env:APPDATA\IntelliShell\Intelli-Shell\data\bin -Type Directory
-Invoke-WebRequest -UseBasicParsing -URI "https://raw.githubusercontent.com/lasantosr/intelli-shell/main/intelli-shell.ps1" -OutFile $env:APPDATA\IntelliShell\Intelli-Shell\data\bin\intelli-shell.ps1
-```
-
-Edit your `$Profile` to execute it:
-
-```powershell
-. $env:APPDATA\IntelliShell\Intelli-Shell\data\bin\intelli-shell.ps1
-```
-
-</details>
-
-## Usage
-
-You can view supported actions by running `intelli-shell -h`. Most used standalone commands are:
-
-- `intelli-shell fetch [category]` to fetch [tldr](https://github.com/tldr-pages/tldr) commands and store them.
-   _[category]_ can be skipped or a valid folder from tldr's [pages](https://github.com/tldr-pages/tldr/tree/main/pages)
-- `intelli-shell export` to export user-bookmarked commands (won't export _tldr's_ commands)
-- `intelli-shell import user_commands.txt` to import commands into the user category
-
-### Hotkeys
-
-- `ctrl + b` bookmark currently typed command
-- `ctrl + space` show suggestions for current line
-- `ctrl + l` replace labels of currently typed command
-- `esc` clean current line, this binding can be skipped if `INTELLI_SKIP_ESC_BIND=1`
-
-**Note:** When navigating items, selected suggestion can be deleted with `ctrl + d` or edited with any of: `ctrl + e`,
-`ctrl + u` or `F2`
-
-You can customize key bindings using environment variables: `INTELLI_BOOKMARK_HOTKEY`, `INTELLI_SEARCH_HOTKEY` and `INTELLI_LABEL_HOTKEY`
+For detailed information on installation, configuration or advanced usage examples, please refer to
+the [**Book**](https://lasantosr.github.io/intelli-shell/).
 
 ## Tips
 
-- When the search criteria matches an alias or produces a single result, it's automatically autocompleted!
-  - The label UI will still be shown if the command contains labels
+- **Quick autocomplete**: If your search query matches an alias, it will be autocompleted instantly. The variable
+  replacement UI will still appear if the command has variables.
 
-- You can alias common commands to store some kind of favorite labels, for example bookmark `cd {{path}}` and give it a
-  `cd` alias
-  - You can regularly use `cd` but if you hit `ctrl + space` it will show your "pinned" folders
+- **Alias your favorites**: Use aliases to "pin" different sets of favorite values for the same command. For example,
+  bookmark `cd {{path}}` with a `cd` alias and you can regularly use `cd` but if you hit `ctrl+space` it will show your
+  "pinned" folders.
 
-- Long commands or even functions can also be bookmarked
-  - For example `function custom_echo () { echo "hey: $@"; }; custom_echo {{text}};`
+- **Quickly re-prompt variables**: Need to run a command again with different inputs? Hit the up arrow in your shell to
+  recall the last command, then press `ctrl+space`. You'll get the original template back, ready for new values.
 
-- You can avoid labels to be stored and keep them secret if wrapped between '*' : `echo {{*my-secret*}}`
+- **Organize with hashtags**: Add hashtags like `#work` or `#gcp` to your command descriptions. You can then find and use
+  these hashtags in your search query to quickly filter your bookmarks.
 
-- Label suggestions are stored based on the root command and the label name, which gives you flexibility to decide.
+- **Bookmark everything**: Don't just bookmark simple commands! You can save entire shell functions for reuse.
+  For example: `custom_echo() { echo "hey: $@"; }; custom_echo {{text}};`
 
-  For these two commands, the same images will be suggested:
-  - `docker run {{--rm}} {{--interactive}} {{image}}`
-  - `docker rmi {{--no-prune}} {{image}}`
-  
-  But these two commands will suggest different volumes:
-  - `docker run --volume {{image-1-volumes}} image-1`
-  - `docker run --volume {{image-2-volumes}} -p {{image-2-ports}} image-2`
+- **Keep variables secret**: If you have a variable you don't want to save in your suggestion history (like a token or a
+  comment), wrap its name in an extra pair of brackets: `echo "{{{message}}}"`
 
-- Include hashtags on descriptions like `#cool` and use them while searching
+- **Embrace environment variables**: Let your environment do the work. Suggestions are automatically pulled from your
+  environment variables. For example, `{{{api-key}}}` will suggest `$API_KEY` variable if it exists.
 
-## Wishlist
+- **Format variables**: Apply formatting functions directly within your variable placeholders. This is perfect for
+  transforming input on the fly, like a git-friendly branch name: `git checkout -b {{feature|bugfix}}/{{{description:kebab}}}`
 
-- [x] Labels support to store most used labels and select them using a dedicated UI
-- [x] Usability improvements to manage stored commands (including aliases)
-- [x] Support for more terminals
-  - [x] [Fish](https://fishshell.com/)
-  - [x] PowerShell
-- [ ] Export also labels and UI to filter what to export
-- [ ] Deploy to package managers
-- [ ] Sync user bookmarks using some public / private Git repo
+- **Define workspace-specific commands**: Create a `.intellishell` file in your workspace's root directory and commit it
+  to git. These commands are temporary, prioritized in search results, and don't clutter your global library.
+  It's the perfect way to define and share common tasks (like build or deploy scripts) with your team.
 
-## Alternatives
+- **Share your knowledge**: Found a set of commands that could help others? Use the export feature to a public Gist of
+  your bookmarks. Share the link on your blog, with your team, or contribute to a curated list.
 
-You might want to have a look at [Marker](https://github.com/pindexis/marker) which is pretty similar but requires Python
-to be installed on your system.
+- **Name your variables wisely**: You have full control over which suggestions are shared between commands. Suggestions
+  are grouped by variable name and root cmd. Use the same name to share suggestions, or different names to keep them separate.
+  - **Shared**: Using `{{image}}` for both `docker run` and `docker rmi` will share the same list of image suggestions.
+  - **Separate**: Keep suggestions for different use cases distinct by using different variable names. For example, you
+    can separate your `ssh` connections for `{{prod_server}}` and `{{staging_server}}` environments. Giving each a distinct
+    alias like `sshp` and `sshs` lets you quickly access the right set of servers.
 
 ## License
 

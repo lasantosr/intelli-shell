@@ -1,12 +1,15 @@
 {
     "name": "Rust Codespace",
     "dockerFile": "Dockerfile",
-    "postCreateCommand": "cargo build",
+    "postCreateCommand": ".devcontainer/post-create.sh \"${containerWorkspaceFolder}\"",
+    "containerEnv": {
+        "GIST_TOKEN": "${localEnv:GIST_TOKEN}"
+    },
     "customizations": {
         "vscode": {
             "extensions": [
                 "rust-lang.rust-analyzer",
-                "serayuzgur.crates",
+                "fill-labs.dependi",
                 "tamasfe.even-better-toml",
                 "vadimcn.vscode-lldb",
                 "eamodio.gitlens",

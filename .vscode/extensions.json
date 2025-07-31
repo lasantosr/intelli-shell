@@ -4,7 +4,7 @@
     // List of extensions which should be recommended for users of this workspace.
     "recommendations": [
         "rust-lang.rust-analyzer",
-        "serayuzgur.crates",
+        "fill-labs.dependi",
         "tamasfe.even-better-toml",
         "vadimcn.vscode-lldb",
     ],

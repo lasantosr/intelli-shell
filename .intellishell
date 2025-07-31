@@ -1,0 +1,14 @@
+# Serve and open the book
+mdbook serve docs --hostname 0.0.0.0 --open
+
+# Create a new vhs tape
+vhs new vhs/tapes/{{name:snake}}.tape
+
+# Run an existing vhs tape 
+vhs vhs/tapes/{{name:snake}}.tape
+
+# Generate all GIFs from the tapes
+vhs/generate_all_tapes.sh {{--merge-only}}
+
+# Executes an sql query to debug it
+intelli-shell query {{debug/query.sql}}

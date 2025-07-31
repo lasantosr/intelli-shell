@@ -1,0 +1,19 @@
+Examples:
+  # Fetch and import tldr pages for the current OS (e.g., linux) + common pages
+  intelli-shell tldr fetch
+
+  # Fetch and import pages only for the 'common' category (OS-independent commands)
+  intelli-shell tldr fetch common
+
+  # Fetch and import pages only for git and docker commands
+  intelli-shell tldr fetch -c git -c docker
+
+  # Fetch and import examples for commands listed in a file
+  # (assuming 'my_commands.txt' contains one command name per line, e.g., tar, find)
+  intelli-shell tldr fetch -C my_commands.txt
+
+  # Fetch and import examples for commands listed in stdin
+  intelli-shell tldr fetch -C << EOF
+    tar
+    find
+  EOF

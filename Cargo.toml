@@ -1,48 +1,80 @@
 [package]
 name = "intelli-shell"
 description = "Like IntelliSense, but for shells"
-version = "0.2.7"
-edition = "2021"
+version = "1.0.0"
+edition = "2024"
 license = "Apache-2.0"
 readme = "README.md"
 keywords = ["intellisense", "autocomplete", "cli", "shell", "bookmark"]
 categories = ["command-line-utilities", "development-tools"]
-repository = "https://github.com/lasantosr/intelli-shell/"
+repository = "https://github.com/lasantosr/intelli-shell"
+documentation = "https://lasantosr.github.io/intelli-shell"
 
 [[bin]]
 name = "intelli-shell"
 path = "src/main.rs"
 required-features = []
 
-[features]
-default = ["tldr"]
-tldr = ["dep:git2", "dep:tempfile"]
-debug = []
-
 [dependencies]
-anyhow               = "1"
-clap                 = { version = "4", features = ["derive"] }
-crossterm            = "0.26"
-directories          = "5"
-indoc                = "2"
-iter-flow            = "0.1"
-itertools            = "0.10"
-once_cell            = "1"
-parking_lot          = "0.12"
-ratatui              = "0.21"
-rayon                = "1"
-regex                = { version = "1" }
-rusqlite             = { version = "0.29", features = ["bundled", "uuid"] }
-rusqlite_migration   = "1"
-serde                = { version = "1", features = ["derive", "rc"] }
-serde_json           = "1"
-tempfile             = { version = "3", optional = true }
-unicode-segmentation = "1"
-unidecode            = "0.3"
-uuid                 = { version = "1", features = ["serde", "v4"] }
+async-trait        = "0.1"
+chrono             = "0.4"
+clap               = { version = "4", features = ["derive"] }
+clap-stdin         = { version = "0.6", features = ["tokio"] }
+color-eyre         = "0.6"
+crossbeam-channel  = "0.5"
+crossterm          = { version = "0.28.1", features = ["serde", "event-stream"] }
+directories        = "6"
+enum_cycling       = { version = "0.2", features = ["derive"] }
+futures-util       = "0.3"
+git2               = { version = "0.20", default-features = false, features = ["https", "vendored-openssl", "vendored-libgit2"] }
+heck               = "0.5"
+indicatif          = "0.18"
+itertools          = "0.14"
+parking_lot        = "0.12"
+percent-encoding   = "2"
+ratatui            = "0.29"
+rayon              = "1"
+regex              = { version = "1" }
+reqwest            = { version = "0.12", features = ["stream", "json"] }
+rusqlite           = { version = "0.36", features = ["bundled", "functions", "chrono", "uuid", "serde_json"] }
+rusqlite_migration = "2.2"
+semver             = "1"
+serde              = { version = "1", features = ["derive", "rc"] }
+serde_json         = "1"
+signal-hook        = "0.3"
+strip-ansi-escapes = "0.2"
+strum              = { version = "0.27", features = ["derive"] }
+sysinfo            = "0.36"
+tokio              = { version = "1", features = ["sync", "macros", "rt-multi-thread", "time", "process"] }
+tokio-stream       = "0.1"
+tokio-util         = "0.7"
+toml               = "0.9"
+tracing            = "0.1"
+tracing-error      = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "serde"] }
+trait-variant      = "0.1"
+tui-textarea       = "0.7"
+tui-widget-list    = "0.13"
+unicode-width      = "0.2"
+unidecode          = "0.3"
+uuid               = { version = "1", features = ["serde", "v7"] }
+walkdir            = "2"
 
-[dependencies.git2]
-default-features = false
-features         = ["https", "vendored-openssl", "vendored-libgit2"]
-optional         = true
-version          = "0.17"
+# TODO remove when release is made with rusqlite 0.36 (after june)
+# sea-query          = { version = "1.0.0", features = ["derive", "thread-safe", "backend-sqlite"] }
+# sea-query-rusqlite = { version = "0.8", features = ["with-chrono", "with-uuid", "with-json"] }
+[dependencies.sea-query]
+branch   = "master"
+features = ["derive", "thread-safe", "backend-sqlite"]
+git      = "https://github.com/SeaQL/sea-query"
+[dependencies.sea-query-rusqlite]
+branch   = "master"
+features = ["with-chrono", "with-uuid", "with-json"]
+git      = "https://github.com/SeaQL/sea-query"
+
+
+[target.'cfg(debug_assertions)'.dependencies]
+prettytable-rs = "0.10"
+
+[dev-dependencies]
+pretty_assertions = "1"

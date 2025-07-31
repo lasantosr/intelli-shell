@@ -1,0 +1,6 @@
+[book]
+language = "en"
+title = "IntelliShell Book"
+
+[output.html]
+git-repository-url = "https://github.com/lasantosr/intelli-shell"

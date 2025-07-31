@@ -1,0 +1,119 @@
+# Create a new branch and switch to it #git #branch
+git checkout -b {{feature|bugfix}}/{{{description:kebab}}}
+
+# Commit changes with a message #git #commit
+git commit -m "{{{message}}}"
+
+# Push a branch to the remote repository #git #push #branch
+git push origin {{branch}}
+
+# View commit history in a compact, graphical format #git #log
+git log --oneline --graph --decorate
+
+# Interactively rebase the last N commits #git #rebase
+git rebase -i HEAD~{{number-of-commits}}
+
+# Create a new annotated tag #git #tag
+git tag -a {{{tag-name}}} -m "{{{tag-message}}}"
+
+# Apply a specific commit from another branch #git #cherry-pick
+git cherry-pick {{{commit}}}
+
+# Discard all local changes and commits, reverting to the last fetched state #git #reset
+git reset --hard origin/{{branch}}
+
+# Forcefully delete untracked files and directories #git #clean
+git clean -fdx
+
+# Update all submodules recursively #git #submodule
+git submodule update --init --recursive
+
+# Force delete a local branch #git #branch
+git branch -D {{branch}}
+
+# Delete a remote branch #git #branch #remote
+git push origin --delete {{branch}}
+
+# Fetch all remotes and remove stale remote-tracking branches #git #fetch
+git fetch --all --prune
+
+# Build a Docker image with a specific name and tag #docker #image
+docker build -t {{image}}:{{tag|latest}} .
+
+# Run a container in detached mode with port mapping #docker #container #run
+docker run -d -p {{host-port}}:{{container-port}} --name {{container}} {{image}}
+
+# List all containers, including stopped ones #docker #container #list
+docker ps -a
+
+# Stop a running container #docker #container
+docker stop {{container|id}}
+
+# Remove a stopped container #docker #container
+docker rm {{container|id}}
+
+# Remove a Docker image #docker #image
+docker rmi {{image|id}}
+
+# Get an interactive shell inside a running container #docker #container #exec
+docker exec -it {{container|id}} /bin/bash
+
+# View logs from a container in real-time #docker #logs
+docker logs -f {{container|id}}
+
+# Remove all unused containers, networks, images, and build cache #docker #prune #system
+docker system prune -af --volumes
+
+# List all pods in a specific namespace #k8s #pod
+kubectl get pods -n {{namespace}}
+
+# Show detailed information about a pod #k8s #pod
+kubectl describe pod {{pod}} -n {{namespace}}
+
+# Force delete a pod without waiting #k8s #pod
+kubectl delete pod {{pod}} --grace-period=0 --force -n {{namespace}}
+
+# Apply a configuration from a file or directory #k8s #apply
+kubectl apply -f {{filename.yml}}
+
+# Restart a deployment #k8s #restart
+kubectl rollout restart deployment/{{deployment}} -n {{namespace}}
+
+# Stream logs from a specific container in a pod #k8s #logs
+kubectl logs -f {{pod}} -c {{container}} -n {{namespace}}
+
+# Execute a command in a container #k8s #exec
+kubectl exec -it {{pod}} -n {{namespace}} -- /bin/sh
+
+# Forward a local port to a port on a service #k8s #port-forward
+kubectl port-forward svc/{{service}} {{local-port}}:{{service-port}} -n {{namespace}}
+
+# Switch the current kubectl context #k8s #context
+kubectl config use-context {{context}}
+
+# Display resource (CPU/Memory/Storage) usage for nodes #k8s #top
+kubectl top nodes
+
+# Get events sorted by the last timestamp #k8s #get #events
+kubectl get events --sort-by='.lastTimestamp' -n {{namespace}}
+
+# Get a specific resource with a custom output format #k8s #get #output
+kubectl get {{pods|services|deployments}} {{resource-name}} -n {{namespace}} -o {{yaml|json}}
+
+# Make a GET request with a Bearer Token #curl #http
+curl -X GET -H "Authorization: Bearer {{{api-token}}}" {{url}}
+
+# Create a compressed tar archive of a directory #tar #archive #compress
+tar -czvf {{archive-name.tar.gz}} {{directory-to-compress}}
+
+# Extract a compressed tar archive #tar #archive #extract
+tar -xzvf {{archive-name.tar.gz}} -C {{destination-directory|.}}
+
+# Find a file by name within the current directory tree #find
+find . -name "{{*.log}}" -type f
+
+# Replace all occurrences of a string in a file #sed #text-processing
+sed -i 's/{{find}}/{{replace}}/g' {{filename}}
+
+# Pretty-print a JSON file and extract all name fields using jq #jq #json
+cat {{file.json}} | jq '.[] | .name'

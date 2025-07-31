@@ -1,292 +1,257 @@
 use std::{
-    fs,
-    io::{self, Write},
-    panic,
+    env, fs,
+    io::{self, IsTerminal, Write},
+    panic::AssertUnwindSafe,
+    path::Path,
+    process,
 };
 
-use anyhow::Result;
-use clap::{Parser, Subcommand};
-use crossterm::{
-    cursor,
-    event::{DisableMouseCapture, EnableMouseCapture},
-    execute,
-    style::Print,
-    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
-    QueueableCommand,
-};
+use color_eyre::{Result, eyre::Context};
 use intelli_shell::{
-    model::{AsLabeledCommand, Command},
-    process::{EditCommandProcess, LabelProcess, SearchProcess},
-    remove_newlines,
-    storage::{SqliteStorage, USER_CATEGORY},
-    theme, ExecutionContext, Process, ProcessOutput,
+    app::App,
+    cli::{Cli, CliProcess, Shell},
+    config::Config,
+    errors, logging,
+    process::{OutputInfo, ProcessOutput},
+    service::IntelliShellService,
+    storage::SqliteStorage,
+    utils::{ShellType, get_shell},
 };
-use once_cell::sync::OnceCell;
-use ratatui::{backend::CrosstermBackend, layout::Rect, Terminal};
+use tokio::process::Command;
 
-/// Command line arguments
-#[derive(Parser)]
-#[cfg_attr(debug_assertions, derive(Debug))]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    /// Whether the UI should be rendered inline instead of taking full terminal
-    #[arg(short, long)]
-    inline: bool,
+const EXECUTE_PREFIX: &str = "____execute____";
+const EXECUTED_OUTPUT: &str = "####EXECUTED####";
 
-    /// Whether an extra line should be rendered when inline
-    #[arg(long)]
-    inline_extra_line: bool,
+const BASH_INIT: &str = include_str!("./_shell/intelli-shell.bash");
+const ZSH_INIT: &str = include_str!("./_shell/intelli-shell.zsh");
+const FISH_INIT: &str = include_str!("./_shell/intelli-shell.fish");
+const POWERSHELL_INIT: &str = include_str!("./_shell/intelli-shell.ps1");
 
-    /// Path of an existing file to write the output to (defaults to stdout)
-    #[arg(short, long)]
-    file_output: Option<String>,
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Read and initialize config
+    let config = Config::init(env::var("INTELLI_CONFIG").ok().map(Into::into))?;
 
-    /// Action to be executed
-    #[command(subcommand)]
-    action: Actions,
-}
+    // Initialize logging
+    let logs_path = logging::init(&config)?;
 
-#[derive(Subcommand)]
-#[cfg_attr(debug_assertions, derive(Debug))]
-enum Actions {
-    /// Stores a new user command
-    New {
-        /// Command to be stored
-        #[arg(short, long)]
-        command: Option<String>,
+    tracing::info!("intelli-shell v{}", env!("CARGO_PKG_VERSION"),);
 
-        #[arg(short, long)]
-        /// Description of the command
-        description: Option<String>,
-    },
-    /// Opens a new search interface
-    Search {
-        /// Filter to be applied
-        filter: Option<String>,
-    },
-    /// Opens a new label interface
-    Label {
-        /// Command to replace labels
-        command: String,
-    },
-    /// Exports stored user commands
-    Export {
-        /// File path to be exported
-        #[arg(short, long)]
-        file: Option<String>,
-    },
-    /// Imports user commands
-    Import {
-        /// File path to be imported
-        file: String,
-    },
-    #[cfg(feature = "tldr")]
-    /// Fetches new commands from tldr
-    Fetch {
-        /// Category to fetch, skip to fetch for current platform (common, android, osx, linux, windows)
-        category: Option<String>,
-    },
-}
+    // Initialize error handling
+    errors::init(
+        logs_path,
+        AssertUnwindSafe(async move {
+            // Parse cli arguments
+            let args = Cli::parse_extended();
 
-static PANIC_INFO: OnceCell<String> = OnceCell::new();
-
-fn main() {
-    // Parse arguments
-    let cli = Args::parse();
-
-    // Set panic hook to avoid printing while on raw mode
-    panic::set_hook(Box::new(|info| {
-        PANIC_INFO.get_or_init(|| info.to_string());
-    }));
-
-    // Run program
-    match panic::catch_unwind(|| run(cli)) {
-        Ok(Ok(_)) => (),
-        Ok(Err(err)) => eprintln!(" -> Error: {err}"),
-        Err(_) => {
-            disable_raw_mode().unwrap();
-            if let Some(panic_info) = PANIC_INFO.get() {
-                eprintln!("{panic_info}");
+            // Check for init process before initialization, to avoid unnecessary overhead
+            if let CliProcess::Init(init) = args.process {
+                tracing::info!("Running 'init' process");
+                tracing::debug!("Options: {:?}", init);
+                let script = match init.shell {
+                    Shell::Bash => BASH_INIT,
+                    Shell::Zsh => ZSH_INIT,
+                    Shell::Fish => FISH_INIT,
+                    Shell::Powershell => POWERSHELL_INIT,
+                };
+                process_output(
+                    OutputInfo {
+                        stdout: Some(script.into()),
+                        ..Default::default()
+                    },
+                    args.file_output,
+                )?;
+                return Ok(());
             }
-        }
-    }
+
+            // Initialize the storage and the service
+            let storage = SqliteStorage::new(&config.data_dir).await?;
+            let service = IntelliShellService::new(storage, config.tuning, &config.data_dir, config.check_updates);
+
+            // Run the app
+            let output = App::new()?.run(config, service, args.process, args.extra_line).await?;
+
+            // Process the output
+            match output {
+                ProcessOutput::Execute { cmd } => execute_command(cmd, args.file_output, args.skip_execution).await?,
+                ProcessOutput::Output(info) => process_output(info, args.file_output)?,
+            }
+
+            Ok(())
+        }),
+    )
+    .await
 }
 
-fn run(cli: Args) -> Result<()> {
-    // Prepare storage
-    let storage = SqliteStorage::new()?;
+/// Executes the given command
+async fn execute_command(command: String, file_output_path: Option<String>, skip_execution: bool) -> Result<()> {
+    // If skip_execution is true, we only write the command to the file output path
+    // and do not execute it. This is useful for shell integrations that can handle the command
+    // execution themselves.
+    if skip_execution {
+        if let Some(file_output) = file_output_path {
+            let fileout = format!("{EXECUTE_PREFIX}{command}");
+            tracing::info!("[fileout] {fileout}");
+            let path_output = Path::new(&file_output);
+            if let Some(parent) = path_output.parent() {
+                fs::create_dir_all(parent)
+                    .wrap_err_with(|| format!("Failed to create parent directories for: {}", parent.display()))?;
+            }
+            fs::write(path_output, fileout)
+                .wrap_err_with(|| format!("Failed to write to fileout path: {file_output}"))?;
+        }
+        return Ok(());
+    }
 
-    // Execution context
-    let context = ExecutionContext {
-        inline: cli.inline,
-        theme: theme::DARK,
+    // Let the OS shell parse the command, supporting complex commands, arguments, and pipelines
+    let shell = get_shell();
+    let shell_arg = match shell {
+        ShellType::Cmd => "/c",
+        ShellType::WindowsPowerShell => "-Command",
+        _ => "-c",
     };
 
-    // Execute command
-    let res = match cli.action {
-        Actions::New { command, description } => {
-            let cmd = command.map(remove_newlines);
-            let description = description.map(remove_newlines);
-            let command = Command::new(USER_CATEGORY, cmd.unwrap_or_default(), description.unwrap_or_default());
-            exec(
-                cli.inline,
-                cli.inline_extra_line,
-                EditCommandProcess::new(&storage, command, context)?,
-            )
+    tracing::info!("Executing command: {shell} {shell_arg} -- {command}");
+    let is_file_out = file_output_path.is_some();
+    if let Some(file_output) = file_output_path {
+        let fileout = EXECUTED_OUTPUT;
+        tracing::info!("[fileout] {fileout}");
+        let path_output = Path::new(&file_output);
+        if let Some(parent) = path_output.parent() {
+            fs::create_dir_all(parent)
+                .wrap_err_with(|| format!("Failed to create parent directories for: {}", parent.display()))?;
         }
-        Actions::Search { filter } => exec(
-            cli.inline,
-            cli.inline_extra_line,
-            SearchProcess::new(&storage, remove_newlines(filter.unwrap_or_default()), context)?,
-        ),
-        Actions::Label { command } => match remove_newlines(&command).as_labeled_command() {
-            Some(labeled_command) => exec(
-                cli.inline,
-                cli.inline_extra_line,
-                LabelProcess::new(&storage, labeled_command, context)?,
-            ),
-            None => Ok(ProcessOutput::new(" -> The command contains no labels!", command)),
-        },
-        Actions::Export { file } => {
-            let file_path = file.as_deref().unwrap_or("user_commands.txt");
-            let exported = storage.export(USER_CATEGORY, file_path)?;
-            Ok(ProcessOutput::message(format!(
-                " -> Successfully exported {exported} commands to '{file_path}'"
-            )))
-        }
-        Actions::Import { file } => {
-            let new = storage.import(USER_CATEGORY, file)?;
-            Ok(ProcessOutput::message(format!(" -> Imported {new} new commands")))
-        }
-        #[cfg(feature = "tldr")]
-        Actions::Fetch { category } => exec(
-            cli.inline,
-            cli.inline_extra_line,
-            intelli_shell::process::FetchProcess::new(category, &storage),
-        ),
-    }?;
+        fs::write(path_output, fileout).wrap_err_with(|| format!("Failed to write to fileout path: {file_output}"))?;
+    }
 
-    // Print any message received
-    if let Some(msg) = res.message {
-        println!("{msg}");
-        if cli.inline_extra_line {
-            println!();
+    // Print the command on stderr
+    let write_result = if !is_file_out {
+        writeln!(
+            io::stderr(),
+            "{}{command}",
+            env::var("INTELLI_EXEC_PROMPT").as_deref().unwrap_or("> "),
+        )
+    } else {
+        writeln!(io::stderr(), "{command}")
+    };
+    // Handle broken pipe
+    if let Err(err) = write_result {
+        if err.kind() != io::ErrorKind::BrokenPipe {
+            return Err(err).wrap_err("Failed writing to stderr");
+        }
+        tracing::error!("Failed writing to stderr: Broken pipe");
+    };
+
+    // Build the command to execute
+    let mut cmd = Command::new(shell.to_string());
+    cmd.arg(shell_arg);
+    cmd.arg(&command);
+
+    // By default, the child process inherits the parent's stdin, stdout, and stderr
+    let status = cmd
+        .status()
+        .await
+        .with_context(|| format!("Failed to execute command: `{command}`"))?;
+
+    // Check if the command was not successful
+    if !status.success() {
+        if let Some(code) = status.code() {
+            process::exit(code);
+        } else {
+            process::exit(1);
         }
     }
 
-    // Write out the result
-    match res.output {
-        None => (),
-        Some(output) => match cli.file_output {
-            None => eprintln!("{output}"),
-            Some(path) => fs::write(path, output)?,
-        },
-    }
-
-    // Exit
     Ok(())
 }
 
-fn exec<P>(inline: bool, inline_extra_line: bool, process: P) -> Result<ProcessOutput>
-where
-    P: Process,
-{
-    if inline {
-        exec_inline(process, inline_extra_line)
-    } else {
-        exec_alt_screen(process)
+/// Process the output info
+fn process_output(info: OutputInfo, file_output_path: Option<String>) -> Result<()> {
+    // Determine color usage for stdout and stderr based on env vars and TTY
+    let use_color_stderr = should_use_color(io::stderr().is_terminal());
+    let use_color_stdout = should_use_color(io::stdout().is_terminal());
+
+    // Write the output, if any
+    if let Some(stderr) = info.stderr {
+        let stderr_nocolor = strip_ansi_escapes::strip_str(&stderr);
+        tracing::info!("[stderr] {stderr_nocolor}");
+        let write_result = if use_color_stderr {
+            writeln!(io::stderr(), "{stderr}")
+        } else {
+            writeln!(io::stderr(), "{stderr_nocolor}")
+        };
+        // Handle broken pipe
+        if let Err(err) = write_result {
+            if err.kind() != io::ErrorKind::BrokenPipe {
+                return Err(err).wrap_err("Failed writing to stderr");
+            }
+            tracing::error!("Failed writing to stderr: Broken pipe");
+        };
     }
+    if let Some(file_output) = file_output_path {
+        if let Some(fileout) = info.fileout {
+            let fileout = strip_ansi_escapes::strip_str(&fileout);
+            tracing::info!("[fileout] {fileout}");
+            let path_output = Path::new(&file_output);
+            if let Some(parent) = path_output.parent() {
+                fs::create_dir_all(parent)
+                    .wrap_err_with(|| format!("Failed to create parent directories for: {}", parent.display()))?;
+            }
+            fs::write(path_output, fileout)
+                .wrap_err_with(|| format!("Failed to write to fileout path: {file_output}"))?;
+        }
+    } else if let Some(stdout) = info.stdout {
+        let stdout_nocolor = strip_ansi_escapes::strip_str(&stdout);
+        tracing::info!("[stdout] {stdout_nocolor}");
+        let write_result = if use_color_stdout {
+            writeln!(io::stdout(), "{stdout}")
+        } else {
+            writeln!(io::stdout(), "{stdout_nocolor}")
+        };
+        // Handle broken pipe
+        if let Err(err) = write_result {
+            if err.kind() != io::ErrorKind::BrokenPipe {
+                return Err(err).wrap_err("Failed writing to stdout");
+            }
+            tracing::error!("Failed writing to stdout: Broken pipe");
+        };
+    }
+
+    // Exit with a non-zero status code when the process failed
+    if info.failed {
+        process::exit(1);
+    }
+
+    Ok(())
 }
 
-fn exec_alt_screen<P>(mut process: P) -> Result<ProcessOutput>
-where
-    P: Process,
-{
-    // Check if we've got a straight result
-    if let Some(result) = process.peek()? {
-        return Ok(result);
+/// Determines whether to use color for a given output stream.
+///
+/// Precedence:
+/// 1. `NO_COLOR` environment variable (if set to any value, disables color)
+/// 2. `CLICOLOR_FORCE` environment variable (if set and not "0", forces color)
+/// 3. `CLICOLOR` environment variable (if set to "0", disables color)
+/// 4. `stream_is_tty` (default if not overridden by env vars)
+fn should_use_color(stream_is_tty: bool) -> bool {
+    // 1. NO_COLOR environment variable (takes highest precedence)
+    if env::var("NO_COLOR").is_ok() {
+        return false;
     }
 
-    // Setup terminal
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-
-    // Prepare terminal
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    // Show process
-    let res = process.show(&mut terminal, |f| f.size());
-
-    // Restore terminal
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
-    terminal.show_cursor()?;
-
-    // Return
-    res
-}
-
-fn exec_inline<P>(mut process: P, extra_line: bool) -> Result<ProcessOutput>
-where
-    P: Process,
-{
-    // Check if we've got a straight result
-    if let Some(result) = process.peek()? {
-        return Ok(result);
+    // 2. CLICOLOR_FORCE environment variable
+    if let Ok(force_val) = env::var("CLICOLOR_FORCE") {
+        if !force_val.is_empty() && force_val != "0" {
+            return true;
+        }
     }
 
-    // Setup terminal
-    let (orig_cursor_x, orig_cursor_y) = cursor::position()?;
-    let min_height = process.min_height() as u16;
-    let mut stdout = io::stdout();
-    for _ in 0..min_height {
-        stdout.queue(Print("\n"))?;
+    // 3. CLICOLOR environment variable
+    if let Ok(clicolor_val) = env::var("CLICOLOR") {
+        if clicolor_val == "0" {
+            return false;
+        }
     }
-    if extra_line {
-        stdout.queue(Print("\n"))?;
-    }
-    stdout
-        .queue(cursor::MoveToPreviousLine(min_height))?
-        .queue(Clear(ClearType::FromCursorDown))?
-        .flush()?;
 
-    let (cursor_x, cursor_y) = cursor::position()?;
-
-    enable_raw_mode()?;
-
-    // Prepare terminal
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    // Show process
-    let res = process.show(&mut terminal, |f| {
-        let Rect {
-            x: _,
-            y: _,
-            width,
-            height,
-        } = f.size();
-        let min_height = std::cmp::min(height, min_height);
-        let available_height = height - cursor_y;
-        let height = std::cmp::max(min_height, available_height);
-        let width = width - cursor_x;
-        Rect::new(cursor_x, cursor_y, width, height)
-    });
-
-    // Restore terminal
-    disable_raw_mode()?;
-    terminal
-        .backend_mut()
-        .queue(cursor::MoveTo(
-            orig_cursor_x,
-            std::cmp::min(orig_cursor_y, cursor_y - extra_line as u16),
-        ))?
-        .queue(Clear(ClearType::FromCursorDown))?
-        .flush()?;
-    terminal.show_cursor()?;
-
-    // Return
-    res
+    // 4. TTY status (default if no strong opinions from env vars)
+    stream_is_tty
 }

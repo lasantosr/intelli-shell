@@ -1,0 +1,12 @@
+[theme]
+primary = "#ebdbb2"
+secondary = "#a89984"
+accent = "bold #b8bb26"
+comment = "italic #928374"
+error = "bold #fb4934"
+highlight = "#458588"
+highlight_symbol = "» "
+highlight_primary = "#ebdbb2"
+highlight_secondary = "dim #ebdbb2"
+highlight_accent = "bold #fabd2f"
+highlight_comment = "italic dim #ebdbb2"
