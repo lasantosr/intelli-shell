@@ -1009,6 +1009,11 @@ pub(super) fn parse_commands(
                 Err(err) => return Some((Err(err).wrap_err("Error reading commands"), state)),
             };
 
+            // If the line is the shebang header, skip it
+            if line == "#!intelli-shell" {
+                continue;
+            }
+
             // If the line is an MD quote or code block, skip it
             if line.trim().starts_with("> ") || line.trim().starts_with("```") {
                 continue;

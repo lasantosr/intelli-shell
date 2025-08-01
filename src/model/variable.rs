@@ -240,11 +240,11 @@ impl Variable {
     pub fn env_var_names(&self, include_options: bool) -> HashSet<String> {
         let mut names = HashSet::new();
         let env_var_name = self.name.to_shouty_snake_case();
-        if !env_var_name.trim().is_empty() {
+        if !env_var_name.trim().is_empty() && env_var_name.trim() != "PATH" {
             names.insert(env_var_name.trim().to_owned());
         }
         let env_var_name_no_fn = self.options.iter().join("|").to_shouty_snake_case();
-        if !env_var_name_no_fn.trim().is_empty() {
+        if !env_var_name_no_fn.trim().is_empty() && env_var_name_no_fn.trim() != "PATH" {
             names.insert(env_var_name_no_fn.trim().to_owned());
         }
         if include_options {
@@ -253,6 +253,7 @@ impl Variable {
                     .iter()
                     .map(|o| o.to_shouty_snake_case())
                     .filter(|o| !o.trim().is_empty())
+                    .filter(|o| o.trim() != "PATH")
                     .map(|o| o.trim().to_owned()),
             );
         }

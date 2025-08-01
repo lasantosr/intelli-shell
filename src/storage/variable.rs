@@ -30,7 +30,7 @@ impl SqliteStorage {
         root_cmd: impl AsRef<str>,
         variable_name: impl AsRef<str>,
         working_path: impl Into<String>,
-        context: impl IntoIterator<Item = (String, String)>,
+        context: &BTreeMap<String, String>,
         tuning: &SearchVariableTuning,
     ) -> Result<Vec<VariableValue>> {
         // Prepare flattened inputs
@@ -59,9 +59,7 @@ impl SqliteStorage {
         all_sql_params.push(Value::from(flat_root_cmd));
         all_sql_params.push(Value::from(flat_variable));
         all_sql_params.push(Value::from(working_path.into()));
-        all_sql_params.push(Value::from(serde_json::to_string(
-            &BTreeMap::<String, String>::from_iter(context),
-        )?));
+        all_sql_params.push(Value::from(serde_json::to_string(context)?));
         let prev_params_len = all_sql_params.len();
         let mut in_placeholders = Vec::new();
         for (idx, variable_param) in flat_variable_values.into_iter().enumerate() {
@@ -222,9 +220,9 @@ impl SqliteStorage {
         &self,
         value_id: i32,
         path: impl AsRef<str> + Send + 'static,
-        context: impl IntoIterator<Item = (String, String)>,
+        context: &BTreeMap<String, String>,
     ) -> Result<i32, UpdateError> {
-        let context = serde_json::to_string(&BTreeMap::<String, String>::from_iter(context))?;
+        let context = serde_json::to_string(context)?;
         self.client
             .conn_mut(move |conn| {
                 let res = conn.query_row(
@@ -290,7 +288,13 @@ mod tests {
     async fn test_find_variable_values_empty() {
         let storage = SqliteStorage::new_in_memory().await.unwrap();
         let values = storage
-            .find_variable_values("cmd", "variable", "/some/path", [], &SearchVariableTuning::default())
+            .find_variable_values(
+                "cmd",
+                "variable",
+                "/some/path",
+                &BTreeMap::new(),
+                &SearchVariableTuning::default(),
+            )
             .await
             .unwrap();
         assert!(values.is_empty());
@@ -318,7 +322,13 @@ mod tests {
             .await;
 
         let matches = storage
-            .find_variable_values(root, variable, current_path, [], &SearchVariableTuning::default())
+            .find_variable_values(
+                root,
+                variable,
+                current_path,
+                &BTreeMap::new(),
+                &SearchVariableTuning::default(),
+            )
             .await
             .unwrap();
 
@@ -361,7 +371,7 @@ mod tests {
                 root,
                 variable,
                 current_path,
-                query_context.into_iter().map(|(k, v)| (k.to_owned(), v.to_owned())),
+                &BTreeMap::from_iter(query_context.into_iter().map(|(k, v)| (k.to_owned(), v.to_owned()))),
                 &SearchVariableTuning::default(),
             )
             .await
@@ -394,7 +404,13 @@ mod tests {
             .await;
 
         let matches = storage
-            .find_variable_values(root, variable, current_path, [], &SearchVariableTuning::default())
+            .find_variable_values(
+                root,
+                variable,
+                current_path,
+                &BTreeMap::new(),
+                &SearchVariableTuning::default(),
+            )
             .await
             .unwrap();
 
@@ -424,7 +440,13 @@ mod tests {
             .await;
 
         let matches = storage
-            .find_variable_values(root, variable_composite, "/path", [], &SearchVariableTuning::default())
+            .find_variable_values(
+                root,
+                variable_composite,
+                "/path",
+                &BTreeMap::new(),
+                &SearchVariableTuning::default(),
+            )
             .await
             .unwrap();
 
@@ -496,14 +518,14 @@ mod tests {
 
         // Insert
         let count = storage
-            .increment_variable_value_usage(val_id, "/path", [])
+            .increment_variable_value_usage(val_id, "/path", &BTreeMap::new())
             .await
             .unwrap();
         assert_eq!(count, 1);
 
         // Update
         let count = storage
-            .increment_variable_value_usage(val_id, "/path", [])
+            .increment_variable_value_usage(val_id, "/path", &BTreeMap::new())
             .await
             .unwrap();
         assert_eq!(count, 2);

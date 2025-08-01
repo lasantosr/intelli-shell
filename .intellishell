@@ -1,3 +1,5 @@
+#!intelli-shell
+
 # Serve and open the book
 mdbook serve docs --hostname 0.0.0.0 --open
 

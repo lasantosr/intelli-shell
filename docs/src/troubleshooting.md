@@ -51,6 +51,9 @@ From the search UI (<kbd>Ctrl</kbd>+<kbd>Space</kbd>), highlight the command you
 - **Edit**: Press <kbd>Ctrl</kbd>+<kbd>U</kbd>
 - **Delete**: Press <kbd>Ctrl</kbd>+<kbd>D</kbd>
 
+> ⚠️ **Note**: It you can't edit or delete some commands, they might come from the workspace-specific files. You can
+> enable user-only search to exclude them or add them you your own user library before updating the alias or description.
+
 ### Where is my data stored?
 
 By default, IntelliShell stores its database and configuration in platform-specific user directories. You can override

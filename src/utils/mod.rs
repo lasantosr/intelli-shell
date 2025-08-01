@@ -48,4 +48,5 @@ using! {
     pub tags,
     pub fuzzy,
     pub variable,
+    pub widget,
 }

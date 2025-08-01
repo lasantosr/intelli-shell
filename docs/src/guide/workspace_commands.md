@@ -40,7 +40,7 @@ before a command is treated as its description.
 Here is an example `.intellishell` file for a web project:
 
 ```sh
-# .intellishell
+#!intelli-shell
 
 # Run the development server
 npm run dev

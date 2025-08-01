@@ -1,4 +1,7 @@
-use std::{collections::HashMap, env};
+use std::{
+    collections::{BTreeMap, HashMap},
+    env,
+};
 
 use color_eyre::Result;
 use heck::ToShoutySnakeCase;
@@ -108,17 +111,27 @@ impl IntelliShellService {
             // Otherwise it's a regular variable, suggest a new value
             suggestions.push(VariableSuggestion::New);
 
-            // Find sotred values for the variable
+            // Find sorted values for the variable
+            let context = BTreeMap::from_iter(context);
             let mut existing_values = self
                 .storage
                 .find_variable_values(
                     root_cmd,
                     &variable.name,
                     get_working_dir(),
-                    context,
+                    &context,
                     &self.tuning.variables,
                 )
                 .await?;
+
+            // If there's a suggestion for a value previously selected for the same variable
+            let previous_value = context.get(&variable.name).cloned();
+            if let Some(previous_value) = previous_value
+                && let Some(index) = existing_values.iter().position(|s| s.value == previous_value)
+            {
+                // Include it first, ignoring its relevance ordering
+                suggestions.push(VariableSuggestion::Existing(existing_values.remove(index)));
+            }
 
             // Check if there's any env var that matches the variable to include it as a suggestion
             for env_var_name in variable.env_var_names(true) {
@@ -139,7 +152,7 @@ impl IntelliShellService {
                     };
                 }
             }
-            // Include remaining stored values
+            // Include remaining existing values
             suggestions.extend(existing_values.into_iter().map(VariableSuggestion::Existing));
             // And suggestions from the variable options (not already present)
             let options = variable
@@ -191,8 +204,9 @@ impl IntelliShellService {
         context: impl IntoIterator<Item = (String, String)>,
     ) -> Result<i32, UpdateError> {
         tracing::info!("Increasing usage for variable value '{value_id}'");
+        let context = BTreeMap::from_iter(context);
         self.storage
-            .increment_variable_value_usage(value_id, get_working_dir(), context)
+            .increment_variable_value_usage(value_id, get_working_dir(), &context)
             .await
     }
 

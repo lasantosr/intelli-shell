@@ -28,7 +28,7 @@ switch ($architecture) {
   'ARM64' { $targetArch = 'aarch64' }
   default {
     Write-Error "Unsupported processor architecture: $architecture"
-    exit 1
+    return
   }
 }
 $osSlug = "pc-windows-msvc"
@@ -55,7 +55,7 @@ try {
   }
 } catch {
   Write-Error "Failed to create installation directory '$binPath': $_"
-  exit 1
+  return
 }
 
 # --- Download and Extract ---
@@ -69,7 +69,7 @@ try {
   if (Test-Path -Path $tempFile) {
     Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
   }
-  exit 1
+  return
 }
 
 Write-Host "Extracting ..."
@@ -77,15 +77,12 @@ try {
   Expand-Archive -Path $tempFile -DestinationPath $binPath -Force -ErrorAction Stop
 } catch {
   Write-Error "An error occurred during extraction: $_"
+  return
+} finally {
+  # Clean up the temporary archive in all cases (success or failure)
   if (Test-Path -Path $tempFile) {
     Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
   }
-  exit 1
-}
-
-# Clean up the temporary archive
-if (Test-Path -Path $tempFile) {
-  Remove-Item -Path $tempFile -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "Successfully installed $AppName at: $installPath"
@@ -149,5 +146,3 @@ if ($env:INTELLI_SKIP_PROFILE -eq '1') {
     Write-Warning "You may need to add the IntelliShell configuration manually."
   }
 }
-
-exit 0

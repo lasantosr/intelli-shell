@@ -32,12 +32,15 @@ indicatif          = "0.18"
 itertools          = "0.14"
 parking_lot        = "0.12"
 percent-encoding   = "2"
+prettytable-rs     = "0.10"
 ratatui            = "0.29"
 rayon              = "1"
 regex              = { version = "1" }
 reqwest            = { version = "0.12", features = ["stream", "json"] }
-rusqlite           = { version = "0.36", features = ["bundled", "functions", "chrono", "uuid", "serde_json"] }
-rusqlite_migration = "2.2"
+rusqlite           = { version = "0.37", features = ["bundled", "functions", "chrono", "uuid", "serde_json"] }
+rusqlite_migration = "2.3"
+sea-query          = { version = "1.0.0-rc.7", features = ["derive", "thread-safe", "backend-sqlite"] }
+sea-query-rusqlite = { version = "0.8.0-rc.7", features = ["with-chrono", "with-uuid", "with-json"] }
 semver             = "1"
 serde              = { version = "1", features = ["derive", "rc"] }
 serde_json         = "1"
@@ -59,22 +62,6 @@ unicode-width      = "0.2"
 unidecode          = "0.3"
 uuid               = { version = "1", features = ["serde", "v7"] }
 walkdir            = "2"
-
-# TODO remove when release is made with rusqlite 0.36 (after june)
-# sea-query          = { version = "1.0.0", features = ["derive", "thread-safe", "backend-sqlite"] }
-# sea-query-rusqlite = { version = "0.8", features = ["with-chrono", "with-uuid", "with-json"] }
-[dependencies.sea-query]
-branch   = "master"
-features = ["derive", "thread-safe", "backend-sqlite"]
-git      = "https://github.com/SeaQL/sea-query"
-[dependencies.sea-query-rusqlite]
-branch   = "master"
-features = ["with-chrono", "with-uuid", "with-json"]
-git      = "https://github.com/SeaQL/sea-query"
-
-
-[target.'cfg(debug_assertions)'.dependencies]
-prettytable-rs = "0.10"
 
 [dev-dependencies]
 pretty_assertions = "1"

@@ -313,13 +313,14 @@ fn query_commands_filtered(
         // Rank rows: global (non-workspace) commands get rank 1, workspace commands get rank 2
         .expr_window_as(
             CustomFunc::row_number(),
-            WindowStatement::partition_by(Command::Cmd).order_by(IS_WORKSPACE, Order::Desc).take(),
+            WindowStatement::partition_by_custom(r#"TRIM("cmd")"#)
+                .order_by(IS_WORKSPACE, Order::Asc).take(),
             dedup_rank_col,
         )
         // Count cmd occurences: 2 if global and workspace
         .expr_window_as(
             Expr::col(Asterisk).count(),
-            WindowStatement::partition_by(Command::Cmd),
+            WindowStatement::partition_by_custom(r#"TRIM("cmd")"#),
             count_col,
         )
         .from(union_cte_name)

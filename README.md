@@ -22,7 +22,7 @@ Works on **Bash**, **Zsh**, **Fish**, and **PowerShell**, with standalone binari
 
 ## Quick Start
 
-1. Install the binaries:
+1. Install or update the binaries:
 
    ```sh
    # For Linux and macOS (Bash, Zsh, Fish)
