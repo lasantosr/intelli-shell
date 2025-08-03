@@ -16,7 +16,7 @@ and setting up the shell integration.
 If you don't want the script to update the profile files, you can set `INTELLI_SKIP_PROFILE=1` environment variable
 before installing.
 
-### Linux & macOS (Bash, Zsh, Fish)
+### Linux, macOS & Windows on sh-compatible shell (Bash, Zsh, Fish, Git Bash)
 
 ```sh
 curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.sh | sh
@@ -47,7 +47,7 @@ cargo install intelli-shell --locked
 To enable hotkeys integration, additional steps are required:
 
 <details>
-  <summary>Linux</summary>
+  <summary>Details</summary>
 
 Edit your profile to source the init output:
 
@@ -69,16 +69,11 @@ Edit your profile to source the init output:
   intelli-shell init fish | source
   ```
 
-</details>
+- Powershell: `$Profile`
 
-<details>
-  <summary>Windows</summary>
-
-Edit your `$Profile` to source the init output:
-
-```powershell
-iex ((intelli-shell init powershell) -join "`n")
-```
+  ```powershell
+  iex ((intelli-shell init powershell) -join "`n")
+  ```
 
 </details>
 

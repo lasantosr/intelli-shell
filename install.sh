@@ -13,7 +13,7 @@ required_cmds="curl tar uname mkdir rm grep sed printf"
 # Add unzip check only if on a Windows-like system
 case "$os_type" in
   MSYS*|MINGW*|CYGWIN*)
-    required_cmds="$required_cmds unzip"
+    required_cmds="$required_cmds unzip powershell.exe"
     ;;
 esac
 
@@ -159,7 +159,7 @@ if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
   # Function to add IntelliShell config to a given profile file if not already present
   update_rc() {
     profile_file="$1"
-    shell_type="$2" # 'bash', 'zsh' or 'fish'
+    shell_type="$2" # 'bash', 'zsh', 'fish', or 'powershell'
 
     # Check if the file exists
     if [ ! -f "$profile_file" ]; then
@@ -183,29 +183,68 @@ if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
       updated_files="$updated_files $profile_file"
 
       if [ "$shell_type" = "fish" ]; then
-          printf '\n# IntelliShell\n' >> "$profile_file"
-          printf 'set -gx INTELLI_HOME "%s"\n' "$INTELLI_HOME" >> "$profile_file"
-          printf '# set -gx INTELLI_SEARCH_HOTKEY \\c@\n' >> "$profile_file"
-          printf '# set -gx INTELLI_VARIABLE_HOTKEY \\cl\n' >> "$profile_file"
-          printf '# set -gx INTELLI_BOOKMARK_HOTKEY \\cb\n' >> "$profile_file"
-          printf '# set -gx INTELLI_SKIP_ESC_BIND 0\n' >> "$profile_file"
-          printf '# alias is="intelli-shell"\n' >> "$profile_file"
-          printf 'fish_add_path "$INTELLI_HOME/bin"\n' >> "$profile_file"
-          printf 'intelli-shell init fish | source\n' >> "$profile_file"
+        printf '\n# IntelliShell\n' >> "$profile_file"
+        printf 'set -gx INTELLI_HOME "%s"\n' "$INTELLI_HOME" >> "$profile_file"
+        printf '# set -gx INTELLI_SEARCH_HOTKEY \\c@\n' >> "$profile_file"
+        printf '# set -gx INTELLI_VARIABLE_HOTKEY \\cl\n' >> "$profile_file"
+        printf '# set -gx INTELLI_BOOKMARK_HOTKEY \\cb\n' >> "$profile_file"
+        printf '# set -gx INTELLI_SKIP_ESC_BIND 0\n' >> "$profile_file"
+        printf '# alias is="intelli-shell"\n' >> "$profile_file"
+        printf 'fish_add_path "$INTELLI_HOME/bin"\n' >> "$profile_file"
+        printf 'intelli-shell init fish | source\n' >> "$profile_file"
+      elif [ "$shell_type" = "powershell" ]; then
+        printf '\r\n# IntelliShell\r\n' >> "$profile_file"
+        printf '$env:INTELLI_HOME = "%s"\r\n' "$INTELLI_HOME" >> "$profile_file"
+        printf '# $env:INTELLI_SEARCH_HOTKEY = "Ctrl+Spacebar"\r\n' >> "$profile_file"
+        printf '# $env:INTELLI_VARIABLE_HOTKEY = "Ctrl+l"\r\n' >> "$profile_file"
+        printf '# $env:INTELLI_BOOKMARK_HOTKEY = "Ctrl+b"\r\n' >> "$profile_file"
+        printf '# Set-Alias -Name "is" -Value "intelli-shell"\r\n' >> "$profile_file"
+        printf 'iex ((intelli-shell.exe init powershell) -join "`n")\r\n' >> "$profile_file"
       else # bash, zsh
-          printf '\n# IntelliShell\n' >> "$profile_file"
-          printf 'export INTELLI_HOME="%s"\n' "$INTELLI_HOME" >> "$profile_file"
-          printf '# export INTELLI_SEARCH_HOTKEY=\\\\C-@\n' >> "$profile_file"
-          printf '# export INTELLI_VARIABLE_HOTKEY=\\\\C-l\n' >> "$profile_file"
-          printf '# export INTELLI_BOOKMARK_HOTKEY=\\\\C-b\n' >> "$profile_file"
-          printf '# export INTELLI_SKIP_ESC_BIND=0\n' >> "$profile_file"
-          printf '# alias is="intelli-shell"\n' >> "$profile_file"
-          printf 'export PATH="$INTELLI_HOME/bin:$PATH"\n' >> "$profile_file"
-          printf 'eval "$(intelli-shell init %s)"\n' "$shell_type" >> "$profile_file"
+        printf '\n# IntelliShell\n' >> "$profile_file"
+        printf 'export INTELLI_HOME="%s"\n' "$INTELLI_HOME" >> "$profile_file"
+        printf '# export INTELLI_SEARCH_HOTKEY=\\\\C-@\n' >> "$profile_file"
+        printf '# export INTELLI_VARIABLE_HOTKEY=\\\\C-l\n' >> "$profile_file"
+        printf '# export INTELLI_BOOKMARK_HOTKEY=\\\\C-b\n' >> "$profile_file"
+        printf '# export INTELLI_SKIP_ESC_BIND=0\n' >> "$profile_file"
+        printf '# alias is="intelli-shell"\n' >> "$profile_file"
+        printf 'export PATH="$INTELLI_HOME/bin:$PATH"\n' >> "$profile_file"
+        printf 'eval "$(intelli-shell init %s)"\n' "$shell_type" >> "$profile_file"
       fi
     fi
   }
 
+  # Check for PowerShell Profile (Windows-only)
+  case "$os_type" in
+    MSYS*|MINGW*|CYGWIN*)
+      # Convert the POSIX path in INTELLI_HOME to a native Windows path (e.g., C:\Users\...)
+      drive_letter=$(echo "$INTELLI_HOME" | sed -n 's,^/\(.\)/.*,\1,p')
+      drive_letter_upper=$(echo "$drive_letter" | tr 'a-z' 'A-Z')
+      path_without_drive=$(echo "$INTELLI_HOME" | sed 's,^/./,,')
+      path_win_slashes=$(echo "$path_without_drive" | sed 's|/|\\|g')
+      INTELLI_HOME_WIN="$drive_letter_upper:\\$path_win_slashes"
+      pwsh_command=$(printf '
+        $binPath = "%s\\bin";
+        $currentUserPath = [System.Environment]::GetEnvironmentVariable("PATH", [System.EnvironmentVariableTarget]::User)
+        $pathItems = $currentUserPath -split [System.IO.Path]::PathSeparator
+        if ($binPath -notin $pathItems) {
+          $newPath = ($pathItems + $binPath) -join [System.IO.Path]::PathSeparator
+          [System.Environment]::SetEnvironmentVariable("PATH", $newPath, [System.EnvironmentVariableTarget]::User)
+        }
+      ' "$INTELLI_HOME_WIN")
+      if ! powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$pwsh_command"; then
+          echo "Warning: You may need to add $INTELLI_HOME_WIN\bin to your Windows PATH manually" >&2
+      fi
+      pwsh_profile_win_path=$(powershell.exe -NoProfile -Command '$PROFILE.CurrentUserCurrentHost')
+      if [ -n "$pwsh_profile_win_path" ]; then
+        # Convert Windows path (C:\Users\...) to a POSIX path (/c/Users/...) that sh can use
+        pwsh_profile_posix_path=$(echo "$pwsh_profile_win_path" | sed -e 's|\\|/|g' -e 's|^ *\([A-Za-z]\):|/\L\1|' | tr -d '\r')
+        update_rc "$pwsh_profile_posix_path" "powershell"
+      else
+        echo "Warning: Could not determine PowerShell profile path"
+      fi
+      ;;
+  esac
   # Check for .bash_profile or default to .bashrc
   if [ -f "$HOME/.bash_profile" ]; then
     update_rc "$HOME/.bash_profile" "bash"

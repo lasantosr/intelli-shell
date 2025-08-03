@@ -25,12 +25,12 @@ Works on **Bash**, **Zsh**, **Fish**, and **PowerShell**, with standalone binari
 1. Install or update the binaries:
 
    ```sh
-   # For Linux and macOS (Bash, Zsh, Fish)
+   # For sh-compatible shells on Linux/macOS/Windows (Bash, Zsh, Fish, Git Bash)
    curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.sh | sh
    ```
 
    <details>
-   <summary>Windows</summary>
+   <summary>Windows (PowerShell)</summary>
 
    ```powershell
    Set-ExecutionPolicy RemoteSigned -Scope CurrentUser # Optional: Only needed if scripts are disabled
@@ -96,7 +96,8 @@ the [**Book**](https://lasantosr.github.io/intelli-shell/).
   It's the perfect way to define and share common tasks (like build or deploy scripts) with your team.
 
 - **Share your knowledge**: Found a set of commands that could help others? Use the export feature to a public Gist of
-  your bookmarks. Share the link on your blog, with your team, or contribute to a curated list.
+  your bookmarks. Share the link on your blog, with your team, or contribute to a curated list
+  ([example](https://gist.github.com/lasantosr/137846d029efcc59468ff2c9d2098b4f)).
 
 - **Name your variables wisely**: You have full control over which suggestions are shared between commands. Suggestions
   are grouped by variable name and root cmd. Use the same name to share suggestions, or different names to keep them separate.

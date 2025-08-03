@@ -134,8 +134,9 @@ if ($env:INTELLI_SKIP_PROFILE -eq '1') {
       Add-Content -Path $Profile -Value "# IntelliShell"
       Add-Content -Path $Profile -Value "`$env:INTELLI_HOME = `"$($env:INTELLI_HOME)`""
       Add-Content -Path $Profile -Value "# `$env:INTELLI_SEARCH_HOTKEY = 'Ctrl+Spacebar'"
-      Add-Content -Path $Profile -Value "# `$env:INTELLI_BOOKMARK_HOTKEY = 'Ctrl+b'"
       Add-Content -Path $Profile -Value "# `$env:INTELLI_VARIABLE_HOTKEY = 'Ctrl+l'"
+      Add-Content -Path $Profile -Value "# `$env:INTELLI_BOOKMARK_HOTKEY = 'Ctrl+b'"
+      Add-Content -Path $Profile -Value "# Set-Alias -Name 'is' -Value 'intelli-shell'"
       Add-Content -Path $Profile -Value "iex ((intelli-shell.exe init powershell) -join `"``n`")"
       Add-Content -Path $Profile -Value ""
 
