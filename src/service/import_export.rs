@@ -63,7 +63,10 @@ impl IntelliShellService {
                 .await
         } else {
             // Determine which mode based on the location
-            if location == "gist" || location.starts_with("https://gist.github.com") {
+            if location == "gist"
+                || location.starts_with("https://gist.github.com")
+                || location.starts_with("https://api.github.com/gists")
+            {
                 self.import_gist_commands(location, gist_config, filter, dry_run, tags)
                     .await
             } else if location.starts_with("http://") || location.starts_with("https://") {
@@ -396,6 +399,7 @@ impl IntelliShellService {
             if location == "gist"
                 || location.starts_with("https://gist.github.com")
                 || location.starts_with("https://gist.githubusercontent.com")
+                || location.starts_with("https://api.github.com/gists")
             {
                 self.export_gist_commands(location, gist_config, filter).await
             } else if location.starts_with("http://") || location.starts_with("https://") {
@@ -659,7 +663,7 @@ These commands have been exported using [intelli-shell]({}), a command-line tool
 You can easily import all the commands by running:
 
 ```sh
-intelli-shell import {url}
+intelli-shell import --gist {gist_id}
 ```",
                         env!("CARGO_PKG_REPOSITORY")
                     ),
@@ -753,6 +757,8 @@ fn get_gist_token(gist_config: &GistConfig) -> Result<String, ImportExportError>
 /// - `https://gist.githubusercontent.com/{user}/{id}/raw/{file}`
 /// - `https://gist.githubusercontent.com/{user}/{id}/raw/{sha}`
 /// - `https://gist.githubusercontent.com/{user}/{id}/raw/{sha}/{file}`
+/// - `https://api.github.com/gists/{id}`
+/// - `https://api.github.com/gists/{id}/{sha}`
 ///
 /// ### Supported Shorthand Formats
 ///
@@ -784,54 +790,64 @@ fn extract_gist_data(
         // First, attempt to parse the location as a full URL
         if let Ok(url) = Url::parse(location) {
             let host = url.host_str().unwrap_or_default();
-
-            // If it parses as a URL, it MUST be a Gist URL
-            if host != "gist.github.com" && host != "gist.githubusercontent.com" {
-                return Err(ImportExportError::GistInvalidLocation);
-            }
-
-            // A valid Gist URL must have at least a user and an id
             let segments: Vec<&str> = url.path_segments().map(|s| s.collect()).unwrap_or_default();
-            if segments.len() < 2 {
-                return Err(ImportExportError::GistInvalidLocation);
-            }
-
-            let id = segments[1].to_string();
-            let mut sha = None;
-            let mut file = None;
-
-            if host == "gist.github.com" {
-                // Handles:
-                // - https://gist.github.com/{user}/{id}
-                // - https://gist.github.com/{user}/{id}/{sha}
-                if segments.len() > 2 {
-                    if is_sha(segments[2]) {
-                        sha = Some(segments[2].to_string());
-                    } else {
+            let gist_data = match host {
+                "gist.github.com" => {
+                    // Handles: https://gist.github.com/{user}/{id}/{sha?}
+                    if segments.len() < 2 {
                         return Err(ImportExportError::GistInvalidLocation);
                     }
-                }
-            } else {
-                // Handles:
-                // - https://gist.githubusercontent.com/{user}/{id}/raw
-                // - https://gist.githubusercontent.com/{user}/{id}/raw/{file}
-                // - https://gist.githubusercontent.com/{user}/{id}/raw/{sha}
-                // - https://gist.githubusercontent.com/{user}/{id}/raw/{sha}/{file}
-                if segments.len() == 2 || segments[2] != "raw" {
-                    return Err(ImportExportError::GistInvalidLocation);
-                }
-                if segments.len() > 3 {
-                    if is_sha(segments[3]) {
-                        sha = Some(segments[3].to_string());
-                        if segments.len() > 4 {
-                            file = Some(segments[4].to_string());
+                    let id = segments[1].to_string();
+                    let mut sha = None;
+                    if segments.len() > 2 {
+                        if is_sha(segments[2]) {
+                            sha = Some(segments[2].to_string());
+                        } else {
+                            return Err(ImportExportError::GistInvalidLocation);
                         }
-                    } else {
-                        file = Some(segments[3].to_string());
                     }
+                    (id, sha, None)
                 }
-            }
-            return Ok((id, sha, file));
+                "gist.githubusercontent.com" => {
+                    // Handles: https://gist.githubusercontent.com/{user}/{id}/raw/{sha?}/{file?}
+                    if segments.len() < 3 || segments[2] != "raw" {
+                        return Err(ImportExportError::GistInvalidLocation);
+                    }
+                    let id = segments[1].to_string();
+                    let mut sha = None;
+                    let mut file = None;
+                    if segments.len() > 3 {
+                        if is_sha(segments[3]) {
+                            sha = Some(segments[3].to_string());
+                            if segments.len() > 4 {
+                                file = Some(segments[4].to_string());
+                            }
+                        } else {
+                            file = Some(segments[3].to_string());
+                        }
+                    }
+                    (id, sha, file)
+                }
+                "api.github.com" => {
+                    // Handles: https://api.github.com/gists/{id}/{sha?}
+                    if segments.len() < 2 || segments[0] != "gists" {
+                        return Err(ImportExportError::GistInvalidLocation);
+                    }
+                    let id = segments[1].to_string();
+                    let mut sha = None;
+                    if segments.len() > 2 {
+                        if is_sha(segments[2]) {
+                            sha = Some(segments[2].to_string());
+                        } else {
+                            return Err(ImportExportError::GistInvalidLocation);
+                        }
+                    }
+                    (id, sha, None)
+                }
+                // Any other host is considered an invalid location
+                _ => return Err(ImportExportError::GistInvalidLocation),
+            };
+            return Ok(gist_data);
         }
 
         // If it's not a valid URL, treat it as a shorthand format
@@ -1361,6 +1377,24 @@ mod tests {
         assert_eq!(id, TEST_GIST_ID);
         assert_eq!(sha.as_deref(), Some(TEST_GIST_SHA));
         assert_eq!(file.as_deref(), Some(TEST_GIST_FILE));
+    }
+
+    #[test]
+    fn test_extract_gist_data_api() {
+        let location = format!("https://api.github.com/gists/{TEST_GIST_ID}");
+        let (id, sha, file) = extract_gist_data(&location, &GistConfig::default()).unwrap();
+        assert_eq!(id, TEST_GIST_ID);
+        assert_eq!(sha, None);
+        assert_eq!(file, None);
+    }
+
+    #[test]
+    fn test_extract_gist_data_api_with_sha() {
+        let location = format!("https://api.github.com/gists/{TEST_GIST_ID}/{TEST_GIST_SHA}");
+        let (id, sha, file) = extract_gist_data(&location, &GistConfig::default()).unwrap();
+        assert_eq!(id, TEST_GIST_ID);
+        assert_eq!(sha.as_deref(), Some(TEST_GIST_SHA));
+        assert_eq!(file, None);
     }
 
     #[test]
