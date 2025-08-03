@@ -12,6 +12,17 @@ jobs:
     outputs:
       upload_url: ${{ steps.release.outputs.upload_url }}
     steps:
+      - name: Check version matches tag
+        id: check_version
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF#refs/tags/v}"
+          cargo_version=$(grep '^version =' Cargo.toml | head -n1 | sed -E "s/version = \"([^\"]+)\"/\1/")
+          if [ "$cargo_version" != "$tag_version" ]; then
+            echo "Version mismatch: Cargo.toml ($cargo_version) != tag ($tag_version)"
+            exit 1
+          fi
+
       - name: Create draft release
         id: release
         uses: softprops/action-gh-release@v2
