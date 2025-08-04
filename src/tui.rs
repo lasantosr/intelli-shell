@@ -11,7 +11,7 @@ use crossterm::{
     cursor,
     event::{self, Event as CrosstermEvent, EventStream, KeyEvent, KeyEventKind, KeyboardEnhancementFlags, MouseEvent},
     style,
-    terminal::{self, ClearType},
+    terminal::{self, ClearType, supports_keyboard_enhancement},
 };
 use futures_util::{FutureExt, StreamExt};
 use ratatui::{CompletedFrame, Frame, Terminal, backend::CrosstermBackend as Backend, layout::Rect};
@@ -58,6 +58,7 @@ pub struct Tui {
     mouse: bool,
     paste: bool,
     state: Option<State>,
+    keyboard_enhancement_supported: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -80,6 +81,9 @@ impl Tui {
     /// Constructs a new terminal ui with default settings
     pub fn new() -> Result<Self> {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let keyboard_enhancement_supported = supports_keyboard_enhancement()
+            .inspect_err(|err| tracing::error!("{err}"))
+            .unwrap_or(false);
         Ok(Self {
             stdout: stdout(),
             terminal: Terminal::new(Backend::new(stdout()))?,
@@ -92,6 +96,7 @@ impl Tui {
             mouse: false,
             paste: false,
             state: None,
+            keyboard_enhancement_supported,
         })
     }
 
@@ -273,22 +278,24 @@ impl Tui {
             crossterm::execute!(self.stdout, event::EnableBracketedPaste)?;
         }
 
-        #[cfg(not(target_os = "windows"))]
-        crossterm::execute!(
-            self.stdout,
-            event::PushKeyboardEnhancementFlags(
-                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-                    | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
-                    | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
-            ),
-        )?;
+        if self.keyboard_enhancement_supported {
+            crossterm::execute!(
+                self.stdout,
+                event::PushKeyboardEnhancementFlags(
+                    KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                        | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+                        | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+                ),
+            )?;
+        }
 
         Ok(())
     }
 
     fn exit_raw_mode(&mut self, alt_screen: bool) -> Result<()> {
-        #[cfg(not(target_os = "windows"))]
-        crossterm::execute!(self.stdout, event::PopKeyboardEnhancementFlags)?;
+        if self.keyboard_enhancement_supported {
+            crossterm::execute!(self.stdout, event::PopKeyboardEnhancementFlags)?;
+        }
 
         if self.paste {
             crossterm::execute!(self.stdout, event::DisableBracketedPaste)?;
