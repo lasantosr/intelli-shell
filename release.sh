@@ -82,9 +82,10 @@ awk -v new_ver="$new_version" '
     in_package && /^version/ { $2=new_ver; in_package=0 }
     { print }
 ' Cargo.toml > Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
+cargo update -p intelli-shell
 echo "✅ Updated Cargo.toml to version $new_version"
 
-# Add the modified Cargo.toml and the potentially updated Cargo.lock to git
+# Add the modified Cargo.toml and the updated Cargo.lock to git
 git add Cargo.toml Cargo.lock
 echo "✅ Staged Cargo.toml and Cargo.lock"
 
