@@ -45,7 +45,8 @@ Works on **Bash**, **Zsh**, **Fish**, and **PowerShell**, with standalone binari
 
 2. Bookmark your first command by typing it on a terminal and hitting `ctrl+b`
 
-3. _(optional)_ Run `intelli-shell tldr fetch` to download commands from [tldr](https://github.com/tldr-pages/tldr)
+3. _(optional)_ Import commands from shared [gists](https://gist.github.com/search?q=intellishell+commands) or fetch
+   them from [tldr](https://github.com/tldr-pages/tldr).
 
 4. Hit `ctrl+space` to begin the journey and dont forget to checkout the [tips](#tips)!
 
@@ -105,6 +106,35 @@ the [**Book**](https://lasantosr.github.io/intelli-shell/).
   - **Separate**: Keep suggestions for different use cases distinct by using different variable names. For example, you
     can separate your `ssh` connections for `{{prod_server}}` and `{{staging_server}}` environments. Giving each a distinct
     alias like `sshp` and `sshs` lets you quickly access the right set of servers.
+
+## IntelliShell vs. Shell History
+
+A common question is: "How is this different from my shell's history (`ctrl+r`) or enhanced history tools like [Atuin](https://atuin.sh/)?"
+
+The key distinction is that they solve different problems and are **complementary tools**, not competitors.
+
+- **`ctrl+r` (Shell History)** is perfect for recalling a specific, unique command you ran recently.
+  It's a chronological log of _what you've done_.
+- **`ctrl+space` (IntelliShell)** is for your day-to-day, frequently used commands, or for discovering how to perform a
+  task in a new project. It's a curated library of _what you want to do_.
+
+To put it another way: your shell history is an automatic, unfiltered log of everything you've ever typed—the good, the
+bad, and the typos.
+
+IntelliShell, by contrast, is your personal, curated collection of command "recipes" that you've chosen to save,
+organize, and even share.
+
+| Aspect                 | Shell History / Atuin                                                    | IntelliShell                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| **Primary Purpose**    | A chronological log of every command you execute                         | A curated library of reusable command _templates_                                                        |
+| **Content**            | Often cluttered with raw, one-off commands, and typos                    | A clean, organized, and intentional set of useful commands                                               |
+| **Repetitive Tasks**   | Stores every unique variation (e.g., `ssh host1`, `ssh host2`)           | Stores one template (`ssh {{host}}`) and remembers your past inputs for quick reuse                      |
+| **Project Onboarding** | You must read `READMEs` or other docs to find project-specific commands  | Just hit `ctrl+space` in a new repo or devcontainer to instantly discover available tools and commands   |
+| **Command Discovery**  | Limited to commands _you_ have personally run before                     | Discover commands from your team (`.intellishell` files), the community (Gists), or `tldr` pages         |
+| **Core Philosophy**    | **Recall**: "What was that exact command I ran yesterday?"               | **Intent**: "How do I perform this common task?"                                                         |
+
+By using both, you get the best of both worlds: a comprehensive log for forensic searches and a powerful, personal, and
+collaborative knowledge base for everything else.
 
 ## License
 

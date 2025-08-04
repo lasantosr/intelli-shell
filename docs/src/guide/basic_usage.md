@@ -98,14 +98,14 @@ community-driven [tldr pages](https://github.com/tldr-pages/tldr) project.
 
 1. **Fetch `tldr` pages**
 
-   Run the `fetch` command to download all common command examples for your operating system.
+   Run the `fetch` command to download command examples for any tool.
 
    ```sh
-   intelli-shell tldr fetch
+   intelli-shell tldr fetch -c tar
    ```
 
-   This will import hundreds of useful command templates into a separate `tldr` space, which you can choose to
-   include or exclude from your searches.
+   This will import useful command templates into a separate `tldr` space, which you can choose to include or exclude
+   from your searches.
 
 2. **Find and use a `tldr` command**
 
