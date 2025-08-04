@@ -14,3 +14,6 @@ vhs/generate_all_tapes.sh {{--merge-only}}
 
 # Executes an sql query to debug it
 intelli-shell query {{debug/query.sql}}
+
+# Create a new release
+./release.sh {{patch|minor|major}}
