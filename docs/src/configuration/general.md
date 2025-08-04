@@ -11,13 +11,14 @@ The `data_dir` setting specifies the directory where IntelliShell stores its dat
 
 If you leave this setting as an empty string (`""`), IntelliShell will use the default system-specific data directory:
 
-- **Linux/macOS**: `~/.local/share/intelli-shell` (or `$XDG_DATA_HOME/intelli-shell` if set)
+- **Linux**: `~/.local/share/intelli-shell` (or `$XDG_DATA_HOME/intelli-shell` if set)
+- **macOS**: `~/Library/Application Support/org.IntelliShell.Intelli-Shell`
 - **Windows**: `%APPDATA%\IntelliShell\Intelli-Shell\data`
 
 You can specify a custom path to store your data in a different location, such as a synced cloud folder.
 
 ```toml
-{{#include ../../../default_config.toml:15:19}}
+{{#include ../../../default_config.toml:16:21}}
 ```
 
 ### Overriding with `INTELLI_STORAGE`
@@ -44,7 +45,7 @@ ensure you are always using the latest version with the newest features and bug 
 - **`check_updates = false`**: Disables the automatic update check.
 
 ```toml
-{{#include ../../../default_config.toml:21:22}}
+{{#include ../../../default_config.toml:23:24}}
 ```
 
 ## UI Rendering Mode
@@ -59,7 +60,7 @@ a compact, inline view or an immersive, full-screen experience.
     experience.
 
 ```toml
-{{#include ../../../default_config.toml:24:27}}
+{{#include ../../../default_config.toml:26:29}}
 ```
 
 ## Gist Integration
@@ -72,7 +73,7 @@ This is useful if you frequently use the same Gist to back up or share your comm
     Gists.
 
 ```toml
-{{#include ../../../default_config.toml:33:39}}
+{{#include ../../../default_config.toml:35:41}}
 ```
 
 ## Search
@@ -86,7 +87,7 @@ The `[search]` section lets you fine-tune the default behavior of the interactiv
 These settings can be toggled on-the-fly within the search UI using the default keybindings `ctrl+s` and `ctrl+o`.
 
 ```toml
-{{#include ../../../default_config.toml:45:58}}
+{{#include ../../../default_config.toml:47:60}}
 ```
 
 ## Logging
@@ -98,7 +99,7 @@ Note that if the `INTELLI_LOG` environment variable is set, it will override the
 - **`filter`**: Controls the verbosity of the logs using `tracing-subscriber` syntax
 
 ```toml
-{{#include ../../../default_config.toml:64:76}}
+{{#include ../../../default_config.toml:66:78}}
 ```
 
 Now that you've configured the application's basic behavior, you can tailor how you interact with it. Let's move on to

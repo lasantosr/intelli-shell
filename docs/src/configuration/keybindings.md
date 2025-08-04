@@ -34,7 +34,7 @@ The format and a list of available actions are detailed below. Note that if a de
 You can change these bindings by modifying the `[keybindings]` block in your configuration file.
 
 ```toml
-{{#include ../../../default_config.toml:82:105}}
+{{#include ../../../default_config.toml:84:107}}
 ```
 
 ## Standard Controls

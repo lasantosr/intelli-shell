@@ -2,7 +2,8 @@
 # It serves as both a demo of available options and a reference for customization.
 #
 # To customize your configuration, copy this file to your user configuration directory or create a new one:
-# ~/.config/intelli-shell/config.toml (on Linux/macOS)
+# ~/.config/intelli-shell/config.toml (on Linux)
+# ~/Library/Preferences/org.IntelliShell.Intelli-Shell/config.toml (on macOS)
 # %APPDATA%\IntelliShell\Intelli-Shell\config\config.toml (on Windows)
 # $XDG_CONFIG_HOME/intelli-shell/config.toml (if XDG_CONFIG_HOME is set)
 #
@@ -15,6 +16,7 @@
 # The default directory for application data, such as the stored commands database.
 # If this value is left empty, the application will use the system's default data directory:
 # - ~/.local/share/intelli-shell (on Linux/macOS, unless overridden by XDG_DATA_HOME)
+# - ~/Library/Application Support/org.IntelliShell.Intelli-Shell (on macOS)
 # - %APPDATA%\IntelliShell\Intelli-Shell\data (on Windows)
 data_dir = ""
 

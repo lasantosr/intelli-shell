@@ -19,7 +19,7 @@ If hotkeys like <kbd>Ctrl</kbd>+<kbd>Space</kbd> or <kbd>Ctrl</kbd>+<kbd>B</kbd>
    - **Terminal Limitations**: Some terminal emulators do not forward all key combinations to the shell. For instance,
      <kbd>Ctrl</kbd>+<kbd>Enter</kbd> (the default "execute" hotkey) is not supported by many terminals.
    - **Solution**: You can change any conflicting or unsupported hotkey. Set the appropriate environment variable in
-     your shell profile *before* the IntelliShell line. See the [Installation Guide](./guide/installation.md) for a full
+     your shell profile _before_ the IntelliShell line. See the [Installation Guide](./guide/installation.md) for a full
      list of integration variables or the [Keybindings Configuration](./configuration/keybindings.md) for in-app bindings.
 
 ## Installation and Command Issues
@@ -60,12 +60,14 @@ By default, IntelliShell stores its database and configuration in platform-speci
 this by setting the `data_dir` option in your configuration file.
 
 - **Configuration File**:
-  - `~/.config/intelli-shell/config.toml` (Linux/macOS)
-  - `%APPDATA%\IntelliShell\Intelli-Shell\config\config.toml` (Windows)
+  - _Linux_: `~/.config/intelli-shell/config.toml`
+  - _macOS_: `~/Library/Preferences/org.IntelliShell.Intelli-Shell/config.toml`
+  - _Windows_: `%APPDATA%\IntelliShell\Intelli-Shell\config\config.toml`
 
 - **Data Files (Database, Logs)**:
-  - `~/.local/share/intelli-shell` (Linux/macOS)
-  - `%APPDATA%\IntelliShell\Intelli-Shell\data` (Windows)
+  - _Linux_: `~/.local/share/intelli-shell`
+  - _macOS_: `~/Library/Application Support/org.IntelliShell.Intelli-Shell`
+  - _Windows_: `%APPDATA%\IntelliShell\Intelli-Shell\data`
 
 ### How can I sync commands between machines?
 
