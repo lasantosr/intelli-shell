@@ -22,7 +22,7 @@ clap               = { version = "4", features = ["derive"] }
 clap-stdin         = { version = "0.6", features = ["tokio"] }
 color-eyre         = "0.6"
 crossbeam-channel  = "0.5"
-crossterm          = { version = "0.28.1", features = ["serde", "event-stream"] }
+crossterm          = { version = "0.28.1", features = ["serde", "event-stream", "use-dev-tty", "libc"] }
 directories        = "6"
 enum_cycling       = { version = "0.2", features = ["derive"] }
 futures-util       = "0.3"

@@ -58,13 +58,12 @@ pub struct Tui {
     mouse: bool,
     paste: bool,
     state: Option<State>,
-    keyboard_enhancement_supported: bool,
 }
 
 #[derive(Clone, Copy)]
 enum State {
-    FullScreen,
-    Inline(InlineTuiContext),
+    FullScreen(bool),
+    Inline(bool, InlineTuiContext),
 }
 
 #[derive(Clone, Copy)]
@@ -81,9 +80,6 @@ impl Tui {
     /// Constructs a new terminal ui with default settings
     pub fn new() -> Result<Self> {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
-        let keyboard_enhancement_supported = supports_keyboard_enhancement()
-            .inspect_err(|err| tracing::error!("{err}"))
-            .unwrap_or(false);
         Ok(Self {
             stdout: stdout(),
             terminal: Terminal::new(Backend::new(stdout()))?,
@@ -96,7 +92,6 @@ impl Tui {
             mouse: false,
             paste: false,
             state: None,
-            keyboard_enhancement_supported,
         })
     }
 
@@ -150,10 +145,10 @@ impl Tui {
         tracing::trace!(mouse = self.mouse, paste = self.paste, "Entering a full-screen TUI");
 
         // Enter raw mode and set up the terminal
-        self.enter_raw_mode(true)?;
+        let keyboard_enhancement_supported = self.enter_raw_mode(true)?;
 
         // Store the state and start the event loop
-        self.state = Some(State::FullScreen);
+        self.state = Some(State::FullScreen(keyboard_enhancement_supported));
         self.start();
 
         Ok(())
@@ -174,6 +169,7 @@ impl Tui {
 
         // Save the original cursor position
         let (orig_cursor_x, orig_cursor_y) = cursor::position()?;
+        tracing::trace!("Initial cursor position: ({orig_cursor_x},{orig_cursor_y})");
         // Prepare the area for the inline content
         crossterm::execute!(
             self.stdout,
@@ -189,18 +185,22 @@ impl Tui {
         // Calculate where the cursor should be restored to
         let restore_cursor_x = orig_cursor_x;
         let restore_cursor_y = cmp::min(orig_cursor_y, cmp::max(cursor_y, extra_line) - extra_line);
+        tracing::trace!("Cursor shall be restored at: ({restore_cursor_x},{restore_cursor_y})");
 
         // Enter raw mode and set up the terminal
-        self.enter_raw_mode(false)?;
+        let keyboard_enhancement_supported = self.enter_raw_mode(false)?;
 
         // Store the state and start the event loop
-        self.state = Some(State::Inline(InlineTuiContext {
-            min_height,
-            x: cursor_x,
-            y: cursor_y,
-            restore_cursor_x,
-            restore_cursor_y,
-        }));
+        self.state = Some(State::Inline(
+            keyboard_enhancement_supported,
+            InlineTuiContext {
+                min_height,
+                x: cursor_x,
+                y: cursor_y,
+                restore_cursor_x,
+                restore_cursor_y,
+            },
+        ));
         self.start();
 
         Ok(())
@@ -220,8 +220,8 @@ impl Tui {
 
         self.terminal.draw(|frame| {
             let area = match state {
-                State::FullScreen => frame.area(),
-                State::Inline(inline) => {
+                State::FullScreen(_) => frame.area(),
+                State::Inline(_, inline) => {
                     let frame = frame.area();
                     let min_height = cmp::min(frame.height, inline.min_height);
                     let available_height = frame.height - inline.y;
@@ -245,15 +245,15 @@ impl Tui {
     fn restore_terminal(&mut self) -> Result<()> {
         match self.state.take() {
             None => (),
-            Some(State::FullScreen) => {
+            Some(State::FullScreen(keyboard_enhancement_supported)) => {
                 tracing::trace!("Leaving the full-screen TUI");
                 self.flush()?;
-                self.exit_raw_mode(true)?;
+                self.exit_raw_mode(true, keyboard_enhancement_supported)?;
             }
-            Some(State::Inline(ctx)) => {
+            Some(State::Inline(keyboard_enhancement_supported, ctx)) => {
                 tracing::trace!("Leaving the inline TUI");
                 self.flush()?;
-                self.exit_raw_mode(false)?;
+                self.exit_raw_mode(false, keyboard_enhancement_supported)?;
                 crossterm::execute!(
                     self.stdout,
                     cursor::MoveTo(ctx.restore_cursor_x, ctx.restore_cursor_y),
@@ -265,7 +265,7 @@ impl Tui {
         Ok(())
     }
 
-    fn enter_raw_mode(&mut self, alt_screen: bool) -> Result<()> {
+    fn enter_raw_mode(&mut self, alt_screen: bool) -> Result<bool> {
         terminal::enable_raw_mode()?;
         crossterm::execute!(self.stdout, cursor::Hide)?;
         if alt_screen {
@@ -278,7 +278,13 @@ impl Tui {
             crossterm::execute!(self.stdout, event::EnableBracketedPaste)?;
         }
 
-        if self.keyboard_enhancement_supported {
+        tracing::trace!("Checking keyboard enhancement support");
+        let keyboard_enhancement_supported = supports_keyboard_enhancement()
+            .inspect_err(|err| tracing::error!("{err}"))
+            .unwrap_or(false);
+
+        if keyboard_enhancement_supported {
+            tracing::trace!("Keyboard enhancement flags enabled");
             crossterm::execute!(
                 self.stdout,
                 event::PushKeyboardEnhancementFlags(
@@ -287,13 +293,15 @@ impl Tui {
                         | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
                 ),
             )?;
+        } else {
+            tracing::trace!("Keyboard enhancement flags not enabled");
         }
 
-        Ok(())
+        Ok(keyboard_enhancement_supported)
     }
 
-    fn exit_raw_mode(&mut self, alt_screen: bool) -> Result<()> {
-        if self.keyboard_enhancement_supported {
+    fn exit_raw_mode(&mut self, alt_screen: bool, keyboard_enhancement_supported: bool) -> Result<()> {
+        if keyboard_enhancement_supported {
             crossterm::execute!(self.stdout, event::PopKeyboardEnhancementFlags)?;
         }
 
