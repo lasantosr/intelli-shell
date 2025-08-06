@@ -46,7 +46,7 @@ function Invoke-IntelliShellAction {
     $stderrTempFilePath = [System.IO.Path]::GetTempFileName()
     
     # Construct the full argument list for intelli-shell.exe
-    $fullArgumentList = (@('--skip-execution', '--file-output', $stdoutTempFilePath, $Subcommand, '--full-screen') + $processedArgs) -join ' '
+    $fullArgumentList = (@('--extra-line', '--skip-execution', '--file-output', $stdoutTempFilePath, $Subcommand) + $processedArgs) -join ' '
 
     Write-Verbose "Starting process: $exeName $fullArgumentList"
     Write-Verbose "Redirecting stderr to: $stderrTempFilePath"
