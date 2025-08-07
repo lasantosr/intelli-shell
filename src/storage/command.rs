@@ -586,11 +586,12 @@ fn rerank_query_results(items: Vec<QueryResultItem>, tuning: &SearchCommandTunin
     }
 
     // Find min / max for all three scores
-    let mut min_text = f64::INFINITY;
+    // Minimums are set to zero to avoid penalizing when all results are high-scoring
+    let mut min_text = 0f64;
+    let mut min_path = 0f64;
+    let mut min_usage = 0f64;
     let mut max_text = f64::NEG_INFINITY;
-    let mut min_path = f64::INFINITY;
     let mut max_path = f64::NEG_INFINITY;
-    let mut min_usage = f64::INFINITY;
     let mut max_usage = f64::NEG_INFINITY;
     for item in &other_items {
         min_text = min_text.min(item.text_score);
