@@ -1178,7 +1178,7 @@ dependencies = [
 
 [[package]]
 name = "intelli-shell"
-version = "1.0.5"
+version = "2.0.0"
 dependencies = [
  "async-trait",
  "chrono",
