@@ -5,7 +5,7 @@ machines. This is all handled by the `intelli-shell export` and `intelli-shell i
 
 You can export your commands to a local file, a remote HTTP endpoint, or a GitHub Gist, and then import them elsewhere.
 The tool automatically detects the location type (file, http, or gist) based on the provided string, but you can also
-specify it explicitly with the `--file`, `--http`, or `--gist` flags.
+specify it explicitly.
 
 Commands are stored in a simple, human-readable text format. Any commented lines (`#`) directly preceding a command are
 treated as its description, making the files easy to edit by hand.
@@ -19,30 +19,18 @@ docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Status}}"
 pwd
 ```
 
----
-
 ## Local Backup & Restore
 
 The simplest way to back up your commands is by exporting them to a local file. This creates a portable snapshot of
 your library that you can store or move to another machine.
 
-### 1. Backing Up to a File
-
-To export all your user-defined commands into a single file, provide the file path to the `export` command.
-
 ```sh
+# Back up to a file
 intelli-shell export my_commands.bak
-```
 
-### 2. Restoring from a File
-
-To restore your commands from a backup file, provide the file path to the `import` command.
-
-```sh
+# Restore from the file
 intelli-shell import my_commands.bak
 ```
-
----
 
 ## Syncing with a GitHub Gist
 
@@ -50,44 +38,38 @@ Using a GitHub Gist is a flexible way to manage your command library. You can us
 sync across your devices, or a **public** Gist to share useful commands with the community. It's also an effective
 method for sharing project-related commands with teammates.
 
-### Supported Gist Locations
-
-IntelliShell can understand various Gist location formats:
-
-* **Full URL**: A standard URL to a Gist (e.g., `https://gist.github.com/user/gist-id`)
-* **Shorthand ID**: Just the unique ID of the Gist (e.g., `b3a462e23db5c99d1f3f4abf0dae5bd8`)
-* **ID and File**: You can target a specific file within a Gist by appending the filename (e.g., `gist-id/commands.sh`)
-
-### 1. Exporting to a Gist
-
-Before you can export to a Gist, you must first create it on GitHub to get its unique ID. IntelliShell updates existing
-Gists; it does not create new ones.
-
-When specifying the Gist location:
-
-* **Using a URL**: IntelliShell automatically detects that the location is a Gist
-* **Using an ID**: If you use just the Gist ID, you **must** add the `--gist` flag to distinguish it from a local file
-  with the same name
+Before you can export to a Gist for the first time, you must create it on GitHub to get its unique ID.
 
 ```sh
-# The --gist flag is required when using only the ID
-intelli-shell export --gist {{gist-id}}
+# The --gist flag is required when the location could be mistaken for a file name
+intelli-shell export --gist 137846d029efcc59468ff2c9d2098b4f/command.sh
+
+# Or use the URL
+intelli-shell import https://gist.github.com/lasantosr/137846d029efcc59468ff2c9d2098b4f
 ```
 
 > **Gist Authentication**: To export to a Gist, you need a GitHub Personal Access Token with `gist` scope. You can set
 > this using the `GIST_TOKEN` environment variable or in your `config.toml` file. For more details, see the
-> [**Configuration**](../configuration/index.md) chapter.
+> [**Configuration**](../configuration/general.md#gist-integration) chapter.
 
-### 2. Importing from a Gist
+### Supported Gist Locations
 
-Similarly, you can import from the Gist on another machine to sync your commands.
+IntelliShell is flexible and can understand various Gist location formats.
 
-```sh
-# The --gist flag is also required here when using only the ID
-intelli-shell import --gist {{gist-id}}
-```
+#### Full URLs
 
-> **Tip: Set a Default Gist**
+You can use almost any URL related to your Gist, including the main Gist page, the raw content URL, or the API endpoint.
+
+#### Shorthand Formats
+
+For convenience, you can also use shorter formats (these require `--gist` flag to disambiguate):
+
+- `{id}`: Just the unique ID of the Gist
+- `{id}/{file}`: Target a specific file within the Gist
+- `{id}/{sha}`: Target a specific version (commit SHA) of the Gist
+- `{id}/{sha}/{file}`: Target a specific file at a specific version
+
+> 💡 **Tip**: Set a Default Gist
 >
 > You can set a default Gist ID in your `config.toml` file. Once configured, you can sync with even shorter
 > commands, as IntelliShell will use the default ID when it sees `"gist"` as the location:
@@ -100,12 +82,10 @@ intelli-shell import --gist {{gist-id}}
 > intelli-shell import gist
 > ```
 
----
-
 ## Syncing with a Custom HTTP Endpoint
 
-If you prefer to host your own command storage, you can configure IntelliShell to sync with any custom HTTP endpoint you
-control. This is ideal for teams who want to maintain a private, centralized command library on their own infrastructure.
+If you prefer to host your own command storage, you can configure IntelliShell to sync with any custom HTTP endpoint.
+This is ideal for teams who want to maintain a private, centralized command library on their own infrastructure.
 
 When exporting, IntelliShell sends a `PUT` request with a JSON payload of your commands. When importing, it can handle
 either the standard plain text format (`Content-Type: text/plain`) or a JSON array (`Content-Type: application/json`).
@@ -119,11 +99,31 @@ intelli-shell export -H "Authorization: Bearer {{{private-token}}}" https://my-s
 intelli-shell import -H "Authorization: Bearer {{{private-token}}}" https://my-server.com/commands
 ```
 
----
-
-## Advanced Options
+## Fine-Tuning Your Workflow
 
 Here are a few more options to customize your import and export workflows.
+
+### Interactive Review
+
+For more control over what gets imported or exported, you can use the `--interactive` (`-i`) flag. This opens a
+terminal UI that displays a list of all commands _before_ the action is performed.
+
+In this interactive view, you can:
+
+- **Review** every command
+- **Edit** a command or its description on the fly
+- **Discard/Undiscard** specific commands by pressing <kbd>Space</kbd>
+
+This is especially useful when importing from a new or untrusted source, or when using the AI parser, as it gives you a
+final chance to clean up and validate the results.
+
+```sh
+# Interactively review commands from a file before importing them
+intelli-shell import -i --gist {{gist-url}}
+
+# Interactively choose which docker commands to export
+intelli-shell export -i --filter docker
+```
 
 ### Filtering Commands
 
@@ -132,10 +132,7 @@ exporting.
 
 ```sh
 # Export only docker commands to a local file
-intelli-shell export docker_commands.sh --filter "^docker"
-
-# Import only git commands from a file
-intelli-shell import all_commands.sh --filter "^git"
+intelli-shell export --filter "^docker" docker_commands.sh
 ```
 
 ### Tagging on Import
@@ -144,7 +141,7 @@ When importing commands from a shared source, you can use `--add-tag` (`-t`) to 
 
 ```sh
 # Import commands for a specific project, tagging them with #project
-intelli-shell import -t project https://gist.githubusercontent.com/user/id/raw/project.sh
+intelli-shell import -t project path/to/commands.file
 ```
 
 ### Previewing with Dry Run
@@ -155,6 +152,8 @@ commands that would be imported to the terminal without actually saving them to 
 ```sh
 intelli-shell import --dry-run https://example.com/some-commands.sh 
 ```
+
+---
 
 Now that you're familiar with syncing, let's look at how to customize IntelliShell in the
 [**Configuration**](../configuration/index.md) section.

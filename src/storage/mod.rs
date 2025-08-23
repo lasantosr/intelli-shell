@@ -4,13 +4,16 @@ use std::{
 };
 
 use client::{SqliteClient, SqliteClientBuilder};
-use color_eyre::{Result, eyre::Context};
+use color_eyre::eyre::Context;
 use itertools::Itertools;
 use migrations::MIGRATIONS;
 use regex::Regex;
 use rusqlite::{OpenFlags, functions::FunctionFlags};
 
-use crate::utils::{COMMAND_VARIABLE_REGEX_QUOTES, SplitCaptures, SplitItem};
+use crate::{
+    errors::Result,
+    utils::{COMMAND_VARIABLE_REGEX_QUOTES, SplitCaptures, SplitItem},
+};
 
 mod client;
 mod migrations;
@@ -79,8 +82,9 @@ impl SqliteStorage {
         // Use Write-Ahead Logging (WAL) mode for better concurrency and performance.
         client
             .conn(|conn| {
-                conn.pragma_update(None, "journal_mode", "wal")
-                    .wrap_err("Error applying journal mode pragma")
+                Ok(conn
+                    .pragma_update(None, "journal_mode", "wal")
+                    .wrap_err("Error applying journal mode pragma")?)
             })
             .await?;
 
@@ -88,8 +92,9 @@ impl SqliteStorage {
         // than FULL, offering a good balance between safety and performance.
         client
             .conn(|conn| {
-                conn.pragma_update(None, "synchronous", "normal")
-                    .wrap_err("Error applying synchronous pragma")
+                Ok(conn
+                    .pragma_update(None, "synchronous", "normal")
+                    .wrap_err("Error applying synchronous pragma")?)
             })
             .await?;
 
@@ -97,105 +102,109 @@ impl SqliteStorage {
         // This has a slight performance cost but is crucial for relational data.
         client
             .conn(|conn| {
-                conn.pragma_update(None, "foreign_keys", "on")
-                    .wrap_err("Error applying foreign keys pragma")
+                Ok(conn
+                    .pragma_update(None, "foreign_keys", "on")
+                    .wrap_err("Error applying foreign keys pragma")?)
             })
             .await?;
 
         // Store temp schema in memory
         client
             .conn(|conn| {
-                conn.pragma_update(None, "temp_store", "memory")
-                    .wrap_err("Error applying temp store pragma")
+                Ok(conn
+                    .pragma_update(None, "temp_store", "memory")
+                    .wrap_err("Error applying temp store pragma")?)
             })
             .await?;
 
         // Apply all defined database migrations to bring the schema to the latest version.
         // This is done atomically within a transaction.
         client
-            .conn_mut(|conn| MIGRATIONS.to_latest(conn).wrap_err("Error applying migrations"))
+            .conn_mut(|conn| Ok(MIGRATIONS.to_latest(conn).wrap_err("Error applying migrations")?))
             .await?;
 
         // Add a regexp function to the client
         client
             .conn(|conn| {
-                conn.create_scalar_function(
-                    "regexp",
-                    2,
-                    FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
-                    |ctx| {
-                        assert_eq!(ctx.len(), 2, "regexp() called with unexpected number of arguments");
+                Ok(conn
+                    .create_scalar_function(
+                        "regexp",
+                        2,
+                        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+                        |ctx| {
+                            assert_eq!(ctx.len(), 2, "regexp() called with unexpected number of arguments");
 
-                        let text = ctx
-                            .get_raw(1)
-                            .as_str_or_null()
-                            .map_err(|e| rusqlite::Error::UserFunctionError(e.into()))?;
+                            let text = ctx
+                                .get_raw(1)
+                                .as_str_or_null()
+                                .map_err(|e| rusqlite::Error::UserFunctionError(e.into()))?;
 
-                        let Some(text) = text else {
-                            return Ok(false);
-                        };
+                            let Some(text) = text else {
+                                return Ok(false);
+                            };
 
-                        let cached_re: Arc<Regex> =
-                            ctx.get_or_create_aux(0, |vr| Ok::<_, BoxError>(Regex::new(vr.as_str()?)?))?;
+                            let cached_re: Arc<Regex> =
+                                ctx.get_or_create_aux(0, |vr| Ok::<_, BoxError>(Regex::new(vr.as_str()?)?))?;
 
-                        Ok(cached_re.is_match(text))
-                    },
-                )
-                .wrap_err("Error adding regexp function")
+                            Ok(cached_re.is_match(text))
+                        },
+                    )
+                    .wrap_err("Error adding regexp function")?)
             })
             .await?;
 
         // Add a cmd-to-regex function
         client
             .conn(|conn| {
-                conn.create_scalar_function(
-                    "cmd_to_regex",
-                    1,
-                    FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
-                    |ctx| {
-                        assert_eq!(
-                            ctx.len(),
-                            1,
-                            "cmd_to_regex() called with unexpected number of arguments"
-                        );
-                        let cmd_template = ctx.get::<String>(0)?;
+                Ok(conn
+                    .create_scalar_function(
+                        "cmd_to_regex",
+                        1,
+                        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+                        |ctx| {
+                            assert_eq!(
+                                ctx.len(),
+                                1,
+                                "cmd_to_regex() called with unexpected number of arguments"
+                            );
+                            let cmd_template = ctx.get::<String>(0)?;
 
-                        // Use the SplitCaptures iterator to process both unmatched literals and captured variables
-                        let regex_body = SplitCaptures::new(&COMMAND_VARIABLE_REGEX_QUOTES, &cmd_template)
-                            .filter_map(|item| match item {
-                                // For unmatched parts, trim them and escape any special regex chars
-                                SplitItem::Unmatched(s) => {
-                                    let trimmed = s.trim();
-                                    if trimmed.is_empty() {
-                                        None
-                                    } else {
-                                        Some(regex::escape(trimmed))
+                            // Use the SplitCaptures iterator to process both unmatched literals and captured variables
+                            let regex_body = SplitCaptures::new(&COMMAND_VARIABLE_REGEX_QUOTES, &cmd_template)
+                                .filter_map(|item| match item {
+                                    // For unmatched parts, trim them and escape any special regex chars
+                                    SplitItem::Unmatched(s) => {
+                                        let trimmed = s.trim();
+                                        if trimmed.is_empty() {
+                                            None
+                                        } else {
+                                            Some(regex::escape(trimmed))
+                                        }
                                     }
-                                }
-                                // For captured parts (the variables), replace them with a capture group
-                                SplitItem::Captured(caps) => {
-                                    // Check which capture group matched to see if the placeholder was quoted
-                                    let placeholder_regex = if caps.get(1).is_some() {
-                                        // Group 1 matched '{{...}}', so expect a single-quoted argument
-                                        r"('[^']*')"
-                                    } else if caps.get(2).is_some() {
-                                        // Group 2 matched "{{...}}", so expect a double-quoted argument
-                                        r#"("[^"]*")"#
-                                    } else {
-                                        // Group 3 matched {{...}}, so expect a generic argument
-                                        r#"('[^']*'|"[^"]*"|\S+)"#
-                                    };
-                                    Some(String::from(placeholder_regex))
-                                },
-                            })
-                            // Join them by any number of whitespaces
-                            .join(r"\s+");
+                                    // For captured parts (the variables), replace them with a capture group
+                                    SplitItem::Captured(caps) => {
+                                        // Check which capture group matched to see if the placeholder was quoted
+                                        let placeholder_regex = if caps.get(1).is_some() {
+                                            // Group 1 matched '{{...}}', so expect a single-quoted argument
+                                            r"('[^']*')"
+                                        } else if caps.get(2).is_some() {
+                                            // Group 2 matched "{{...}}", so expect a double-quoted argument
+                                            r#"("[^"]*")"#
+                                        } else {
+                                            // Group 3 matched {{...}}, so expect a generic argument
+                                            r#"('[^']*'|"[^"]*"|\S+)"#
+                                        };
+                                        Some(String::from(placeholder_regex))
+                                    },
+                                })
+                                // Join them by any number of whitespaces
+                                .join(r"\s+");
 
-                        // Build the final regex
-                        Ok(format!("^{regex_body}$"))
-                    },
-                )
-                .wrap_err("Error adding cmd-to-regex function")
+                            // Build the final regex
+                            Ok(format!("^{regex_body}$"))
+                        },
+                    )
+                    .wrap_err("Error adding cmd-to-regex function")?)
             })
             .await?;
 

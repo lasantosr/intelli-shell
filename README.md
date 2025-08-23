@@ -11,18 +11,18 @@ Works on **Bash**, **Zsh**, **Fish**, and **PowerShell**, with standalone binari
 
 ## Features
 
-- **Standalone & Dependency-Free**: Distributed as a single binary with no external runtimes or dependencies
-- **Seamless Shell Integration**: Search commands with `ctrl+space` or bookmark them with `ctrl+b`
-- **Flexible Interface**: Choose between a non-intrusive (inline) or an immersive (full-screen) TUI
+- **Seamless Shell Integration**: Search with `ctrl+space`, bookmark with `ctrl+b` or fix with `ctrl+x`
 - **Dynamic Variables**: Create command templates with `{{variables}}` and replace them on the fly
+- **AI-Powered Commands**: Generate, fix, and import commands effortlessly using local or remote LLMs
 - **Highly Configurable**: Tailor search modes, keybindings, themes, and even search-ranking algorithms
-- **Workspace-Aware Commands**: Automatically discovers and loads commands from your workspace's directory
-- **Import/Export**: Share your command library by importing or exporting to files, HTTP endpoints, or even Gists
+- **Workspace-Aware**: Automatically discovers and loads commands from your workspace's directory
+- **Import / Export**: Share your command library using files, HTTP endpoints, or even Gists
 - **TLDR Integration**: Fetch and import command examples from [tldr](https://github.com/tldr-pages/tldr) pages
+- **Flexible Interface**: Choose between a non-intrusive (inline) or an immersive (full-screen) TUI
 
 ## Quick Start
 
-1. Install or update the binaries:
+1. Install or update the binary:
 
    ```sh
    # For sh-compatible shells on Linux/macOS/Windows (Bash, Zsh, Fish, Git Bash)
@@ -45,30 +45,53 @@ Works on **Bash**, **Zsh**, **Fish**, and **PowerShell**, with standalone binari
 
 2. Bookmark your first command by typing it on a terminal and hitting `ctrl+b`
 
-3. _(optional)_ Import commands from shared [gists](https://gist.github.com/search?q=intellishell+commands) or fetch
-   them from [tldr](https://github.com/tldr-pages/tldr).
+3. _(optional)_ [Enable AI features](https://lasantosr.github.io/intelli-shell/configuration/ai.html#enabling-ai-features),
+   import commands from shared [gists](https://gist.github.com/search?q=intellishell+commands) or fetch them from
+   [tldr](https://lasantosr.github.io/intelli-shell/guide/basic_usage.html#from-tldr-pages)
 
-4. Hit `ctrl+space` to begin the journey and dont forget to checkout the [tips](#tips)!
+4. Hit `ctrl+space` to begin the journey and don't forget to checkout the [tips](#tips)!
 
 ## Basic Usage
 
-IntelliShell is designed to be used interactively through keybindings:
+IntelliShell is designed to be used interactively through keybindings, for detailed information on installation,
+configuration, or advanced usage examples, please refer to the [_**Book**_](https://lasantosr.github.io/intelli-shell/).
+
+### Shell Integration
+
+These hotkeys work directly in your terminal line:
 
 - **`ctrl+space`**: Search for a command
 - **`ctrl+b`**: Bookmark the command currently typed in your terminal
 - **`ctrl+l`**: Replace `{{variables}}` in the current command
-- **`esc`** clean current line, this binding can be skipped if `INTELLI_SKIP_ESC_BIND=1`
+- **`ctrl+x`**: Diagnose and try to fix a failing command (requires AI to be enabled)
+- **`esc`**: Clean the current line, this binding can be skipped by setting `INTELLI_SKIP_ESC_BIND=1`
 
-You can customize everything from keybindings and themes to the search behavior.
-For a complete list of available options, check out the [default configuration file](./default_config.toml).
+_These keybindings can be changed, see [Customizing Shell Integration](https://lasantosr.github.io/intelli-shell/guide/installation.html#customizing-shell-integration)
+for details._
 
-For detailed information on installation, configuration or advanced usage examples, please refer to
-the [**Book**](https://lasantosr.github.io/intelli-shell/).
+### Inside the Application
+
+Once any interface is shown, you can use these keys:
+
+- **`esc`**: Quit without making a selection or go back
+- **`F2` / `ctrl+u` / `ctrl+e`**: Edit the highlighted item
+- **`ctrl+d`**: Delete the highlighted item
+- **`enter` / `tab`**: Confirm a selection or move to the next step
+- **`ctrl+enter` / `ctrl+r`**: Execute the highlighted command immediately
+- **`ctrl+i` / `ctrl+x`**: Prompt AI (when searching or creating commands)
+
+_These keybindings are fully customizable; in fact, you can configure everything from themes to search behavior. See
+the [Keybindings Configuration](https://lasantosr.github.io/intelli-shell/configuration/keybindings.html) page for
+binding specifics, or check out the [default configuration file](./default_config.toml) for a complete list of all
+available options._
 
 ## Tips
 
 - **Quick autocomplete**: If your search query matches an alias, it will be autocompleted instantly. The variable
   replacement UI will still appear if the command has variables.
+
+- **Learn Commands on the Fly**: Can't find the command you're looking for? Just describe it in natural language and
+  press `ctrl+i` while searching to let the AI write it for you.
 
 - **Alias your favorites**: Use aliases to "pin" different sets of favorite values for the same command. For example,
   bookmark `cd {{path}}` with a `cd` alias and you can regularly use `cd` but if you hit `ctrl+space` it will show your
@@ -76,6 +99,9 @@ the [**Book**](https://lasantosr.github.io/intelli-shell/).
 
 - **Quickly re-prompt variables**: Need to run a command again with different inputs? Hit the up arrow in your shell to
   recall the last command, then press `ctrl+space`. You'll get the original template back, ready for new values.
+
+- **Fix errors instantly**: Typed a long command only to have it fail? Instead of manually debugging, just hit the up
+  arrow to recall it and press `ctrl+x`. The AI will analyze the command and the error message to suggest a working version.
 
 - **Organize with hashtags**: Add hashtags like `#work` or `#gcp` to your command descriptions. You can then find and use
   these hashtags in your search query to quickly filter your bookmarks.
@@ -99,6 +125,9 @@ the [**Book**](https://lasantosr.github.io/intelli-shell/).
 - **Share your knowledge**: Found a set of commands that could help others? Use the export feature to a public Gist of
   your bookmarks. Share the link on your blog, with your team, or contribute to a curated list
   ([example](https://gist.github.com/lasantosr/137846d029efcc59468ff2c9d2098b4f)).
+
+- **Import everything**: Use the AI-powered import to extract command templates from virtually any text. Point it at a
+  blog post, a cheatsheet, or even your own shell history to turn useful examples into reusable commands.
 
 - **Name your variables wisely**: You have full control over which suggestions are shared between commands. Suggestions
   are grouped by variable name and root cmd. Use the same name to share suggestions, or different names to keep them separate.

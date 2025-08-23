@@ -85,6 +85,7 @@ file (e.g., `~/.bashrc`, `~/.zshrc`) **before** the line that sources the Intell
 - `INTELLI_SEARCH_HOTKEY`: Overrides the default `ctrl+space` hotkey for searching commands.
 - `INTELLI_BOOKMARK_HOTKEY`: Overrides the default `ctrl+b` hotkey to bookmark a command.
 - `INTELLI_VARIABLE_HOTKEY`: Overrides the default `ctrl+l` hotkey for replacing variables.
+- `INTELLI_FIX_HOTKEY`: Overrides the default `ctrl+x` hotkey for fixing commands.
 - `INTELLI_SKIP_ESC_BIND=1`: Prevents IntelliShell from binding the `esc` key to clear the current line in the terminal.
 
 > For keybinding syntax, refer to your shell's documentation (`bindkey` for Zsh, `bind` for Bash). For example, to
@@ -98,6 +99,8 @@ binary is working by running:
 ```sh
 intelli-shell --version
 ```
+
+---
 
 If the command is found and you can use shortcuts (if configured), you are ready to go!
 Let's move on to [**Basic Usage**](./basic_usage.md).

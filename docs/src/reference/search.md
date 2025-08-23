@@ -1,10 +1,10 @@
 # `search`
 
-The `search` command finds stored commands based on a query.
+The `search` command finds stored commands based on a query and can also use AI to generate new ones on the fly.
 
-By default, this command performs a non-interactive search and prints the matching commands directly to your terminal's
-standard output. To open the interactive search TUI (the behavior typically associated with the `ctrl+space` hotkey), you
-must use the `-i` or `--interactive` flag.
+By default, this command performs a non-interactive search and prints matching commands to standard output. To open the
+interactive search TUI (the behavior of the <kbd>Ctrl</kbd>+<kbd>Space</kbd> hotkey), you must use the `-i` or
+`--interactive` flag.
 
 ## Usage
 
@@ -17,22 +17,29 @@ intelli-shell search [OPTIONS] [QUERY]
 - **`QUERY`**
   
   The search query used to filter commands.
+  
+  - When used with the `--ai` flag, this string is treated as a **natural language prompt** for the AI to generate a
+    command.
 
 ## Options
 
 - `-m, --mode <MODE>`
-  
-  Specifies the search algorithm to use, overriding the default set in your configuration file.
-  See the "Advanced Search Syntax" section below for syntax specific to `auto` and `fuzzy` modes.
-  - `auto`: Uses an internal algorithm to best match common search patterns.
-  - `fuzzy`: Finds commands that are similar to the query using special syntax.
-  - `regex`: Treats the query as a regular expression for complex pattern matching.
-  - `exact`: Returns only commands that precisely match the entire query.
-  - `relaxed`: Broadens the search to find the maximum number of potentially relevant commands.
+  Specifies the search algorithm to use. See the "Advanced Search Syntax" section below for details on `auto` and `fuzzy`
+  modes.
+  - `auto`: Uses an internal algorithm to best match common search patterns
+  - `fuzzy`: Finds commands that are similar to the query using special syntax
+  - `regex`: Treats the query as a regular expression for complex pattern matching
+  - `exact`: Returns only commands that precisely match the entire query
+  - `relaxed`: Broadens the search to find the maximum number of potentially relevant commands
 
 - `-u, --user-only`
   
-  If set, the search will exclude commands imported from `tldr` pages.
+  Excludes commands imported from `tldr` pages from the search results.
+
+- `--ai`
+  
+  Uses AI to generate commands based on the `QUERY` prompt instead of searching your local library. This is most
+  effective in interactive mode (`-i`).
 
 - `-i, --interactive`
   
@@ -77,7 +84,7 @@ as a logical AND, unless grouped by the `|` (OR) operator.
 
 ## Examples
 
-### 1. Open the Interactive Search
+### Open the Interactive Search
 
 To launch the TUI, you must use the `--interactive` flag.
 
@@ -85,7 +92,7 @@ To launch the TUI, you must use the `--interactive` flag.
 intelli-shell search --interactive
 ```
 
-### 2. Perform a Non-Interactive Search
+### Perform a Non-Interactive Search
 
 To search for commands matching "docker" and print them to the console:
 
@@ -93,7 +100,7 @@ To search for commands matching "docker" and print them to the console:
 intelli-shell search docker
 ```
 
-### 3. Non-Interactive Search with Options
+### Non-Interactive Search with Options
 
 To find only your custom commands that exactly match "docker":
 
@@ -101,10 +108,28 @@ To find only your custom commands that exactly match "docker":
 intelli-shell search -m exact --user-only docker
 ```
 
-### 4. Open the Interface in Full-Screen Mode
+### Open the Interface in Full-Screen Mode
 
 To launch the interactive TUI and force it into full-screen mode:
 
 ```sh
 intelli-shell search -i --full-screen
 ```
+
+### Use AI to Suggest Commands
+
+To use AI to suggest commands based on a natural language prompt:
+
+```sh
+intelli-shell search -i --ai 'undo last n commits'
+```
+
+This will open the interactive interface with AI-suggested commands, which you can then review and select.
+
+> 💡 **Tip: Saving AI-Generated Commands**
+>
+> Commands generated using `--ai` in the search interface are for **one-time use** and are not saved to your library
+> automatically.
+>
+> To save a generated command for future use, you can place it on your terminal line from the search results and then
+> use either the <kbd>Ctrl</kbd>+<kbd>B</kbd> hotkey or the [`new`](./new.md) command to bookmark it.

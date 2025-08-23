@@ -1,0 +1,3 @@
+Examples:
+  # Get help and try to fix the command
+  intelli-shell fix "git comit amend"

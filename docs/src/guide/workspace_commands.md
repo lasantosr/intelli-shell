@@ -55,6 +55,8 @@ npm run lint && npm run format
 npx playwright test
 ```
 
+---
+
 Between your personal library and workspace-specific files, you have a powerful system for managing commands. Let's now
 see how you can back up, restore, and share your personal commands across different machines in
 [**Syncing and Sharing**](./syncing.md).

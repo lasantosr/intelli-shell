@@ -12,7 +12,6 @@ use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
 };
-use semver::Version;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 use tui_textarea::CursorMove;
@@ -25,7 +24,7 @@ use crate::{
         variable::VariableReplacementComponent,
     },
     config::{Config, KeyBindingsConfig, SearchConfig, Theme},
-    errors::{SearchError, UpdateError},
+    errors::AppError,
     format_msg,
     model::{Command, DynamicCommand, SOURCE_WORKSPACE, SearchMode},
     process::ProcessOutput,
@@ -46,12 +45,12 @@ pub struct SearchCommandsComponent {
     theme: Theme,
     /// Whether the TUI is in inline mode or not
     inline: bool,
+    /// Whether to directly execute the command if it matches an alias exactly
+    exec_on_alias_match: bool,
     /// Service for interacting with command storage
     service: IntelliShellService,
     /// The component layout
     layout: Layout,
-    /// The new version banner
-    new_version: NewVersionBanner,
     /// The delay before triggering a search after user input
     search_delay: Duration,
     /// Cancellation token for the current refresh task
@@ -60,12 +59,16 @@ pub struct SearchCommandsComponent {
     state: Arc<RwLock<SearchCommandsComponentState<'static>>>,
 }
 struct SearchCommandsComponentState<'a> {
+    /// The nexxt component initialization must prompt AI
+    initialize_with_ai: bool,
     /// The default search mode
     mode: SearchMode,
     /// Whether to search for user commands only by default (excluding tldr)
     user_only: bool,
     /// The active query
     query: CustomTextArea<'a>,
+    /// Whether ai mode is currently enabled
+    ai_mode: bool,
     /// List of tags, if currently editing a tag
     tags: Option<CustomList<'a, TagWidget>>,
     /// Whether the command search was an alias match
@@ -82,8 +85,8 @@ impl SearchCommandsComponent {
         service: IntelliShellService,
         config: Config,
         inline: bool,
-        new_version: Option<Version>,
         query: impl Into<String>,
+        initialize_with_ai: bool,
     ) -> Self {
         let query = CustomTextArea::new(config.theme.primary, inline, false, query.into()).focused();
 
@@ -92,7 +95,6 @@ impl SearchCommandsComponent {
             .highlight_symbol_mode(HighlightSymbolMode::Last)
             .highlight_symbol_style(config.theme.highlight_primary_full().into());
 
-        let new_version = NewVersionBanner::new(&config.theme, new_version);
         let error = ErrorPopup::empty(&config.theme);
 
         let layout = if inline {
@@ -101,20 +103,27 @@ impl SearchCommandsComponent {
             Layout::vertical([Constraint::Length(3), Constraint::Min(5)]).margin(1)
         };
 
-        let SearchConfig { delay, mode, user_only } = config.search;
+        let SearchConfig {
+            delay,
+            mode,
+            user_only,
+            exec_on_alias_match,
+        } = config.search;
 
         let ret = Self {
             theme: config.theme,
             inline,
+            exec_on_alias_match,
             service,
             layout,
-            new_version,
             search_delay: Duration::from_millis(delay),
             refresh_token: Arc::new(Mutex::new(None)),
             state: Arc::new(RwLock::new(SearchCommandsComponentState {
+                initialize_with_ai,
                 mode,
                 user_only,
                 query,
+                ai_mode: false,
                 tags: None,
                 alias_match: false,
                 commands,
@@ -122,23 +131,32 @@ impl SearchCommandsComponent {
             })),
         };
 
-        ret.update_config(config.search.mode, config.search.user_only);
+        ret.update_config(None, None, None);
 
         ret
     }
 
     /// Updates the search config
-    fn update_config(&self, search_mode: SearchMode, user_only: bool) {
-        let inline = self.inline;
+    fn update_config(&self, search_mode: Option<SearchMode>, user_only: Option<bool>, ai_mode: Option<bool>) {
         let mut state = self.state.write();
-        state.mode = search_mode;
-        state.user_only = user_only;
+        if let Some(search_mode) = search_mode {
+            state.mode = search_mode;
+        }
+        if let Some(user_only) = user_only {
+            state.user_only = user_only;
+        }
+        if let Some(ai_mode) = ai_mode {
+            state.ai_mode = ai_mode;
+        }
 
-        let title = match (inline, user_only) {
-            (true, true) => format!("({search_mode},user)"),
-            (true, false) => format!("({search_mode})"),
-            (false, true) => format!(" Query ({search_mode},user) "),
-            (false, false) => format!(" Query ({search_mode}) "),
+        let search_mode = state.mode;
+        let title = match (state.ai_mode, self.inline, state.user_only) {
+            (true, true, _) => String::from("(ai)"),
+            (false, true, true) => format!("({search_mode},user)"),
+            (false, true, false) => format!("({search_mode})"),
+            (true, false, _) => String::from(" Query (ai) "),
+            (false, false, true) => format!(" Query ({search_mode},user) "),
+            (false, false, false) => format!(" Query ({search_mode}) "),
         };
 
         state.query.set_title(title);
@@ -156,39 +174,45 @@ impl Component for SearchCommandsComponent {
         1 + 10
     }
 
-    async fn init(&mut self) -> Result<()> {
-        let tags = {
-            let state = self.state.read();
-            state.query.lines_as_string() == "#"
-        };
-        if tags {
-            self.refresh_tags().await
-        } else {
-            self.refresh_commands().await
-        }
-    }
-
     #[instrument(skip_all)]
-    async fn peek(&mut self) -> Result<Action> {
-        if self.service.is_storage_empty().await? {
+    async fn init_and_peek(&mut self) -> Result<Action> {
+        // Check if the component should initialize prompting the AI
+        let initialize_with_ai = self.state.read().initialize_with_ai;
+        if initialize_with_ai {
+            let res = self.prompt_ai().await;
+            self.state.write().initialize_with_ai = false;
+            return res;
+        }
+        // If the strorage is empty, quit with a message
+        if self.service.is_storage_empty().await.map_err(AppError::into_report)? {
             Ok(Action::Quit(
                 ProcessOutput::success().stderr(format_msg!(self.theme, "{EMPTY_STORAGE_MESSAGE}")),
             ))
         } else {
-            let command = {
+            // Otherwise initialize the tags or commands based on the current query
+            let tags = {
                 let state = self.state.read();
-                if state.alias_match && state.commands.len() == 1 {
-                    state.commands.selected().cloned().map(Command::from)
-                } else {
-                    None
-                }
+                state.query.lines_as_string() == "#"
             };
-            if let Some(command) = command {
-                tracing::info!("Found a single alias command: {command}");
-                self.confirm_command(command, false).await
+            if tags {
+                self.refresh_tags().await?;
             } else {
-                Ok(Action::NoOp)
+                self.refresh_commands().await?;
+                // And peek into the commands to check if we can give a straight answer without the TUI rendered
+                let command = {
+                    let state = self.state.read();
+                    if state.alias_match && state.commands.len() == 1 {
+                        state.commands.selected().cloned().map(Command::from)
+                    } else {
+                        None
+                    }
+                };
+                if let Some(command) = command {
+                    tracing::info!("Found a single alias command: {}", command.cmd);
+                    return self.confirm_command(command, self.exec_on_alias_match, false).await;
+                }
             }
+            Ok(Action::NoOp)
         }
     }
 
@@ -210,28 +234,41 @@ impl Component for SearchCommandsComponent {
         }
 
         // Render the new version banner and error message as an overlay
-        self.new_version.render_in(frame, area);
+        if let Some(new_version) = self.service.check_new_version() {
+            NewVersionBanner::new(&self.theme, new_version).render_in(frame, area);
+        }
         state.error.render_in(frame, area);
     }
 
     fn tick(&mut self) -> Result<Action> {
         let mut state = self.state.write();
+        state.query.tick();
         state.error.tick();
         Ok(Action::NoOp)
     }
 
-    fn exit(&mut self) -> Result<Option<ProcessOutput>> {
-        let mut state = self.state.write();
-        if state.tags.is_some() {
+    fn exit(&mut self) -> Result<Action> {
+        let (ai_mode, tags) = {
+            let state = self.state.read();
+            (state.ai_mode, state.tags.is_some())
+        };
+        if ai_mode {
+            tracing::debug!("Closing ai mode: user request");
+            self.update_config(None, None, Some(false));
+            self.schedule_debounced_command_refresh();
+            Ok(Action::NoOp)
+        } else if tags {
             tracing::debug!("Closing tag mode: user request");
+            let mut state = self.state.write();
             state.tags = None;
             state.commands.set_focus(true);
             self.schedule_debounced_command_refresh();
-            Ok(None)
+            Ok(Action::NoOp)
         } else {
             tracing::info!("User requested to exit");
+            let state = self.state.read();
             let query = state.query.lines_as_string();
-            Ok(Some(if query.is_empty() {
+            Ok(Action::Quit(if query.trim().is_empty() {
                 ProcessOutput::success()
             } else {
                 ProcessOutput::success().fileout(query)
@@ -255,28 +292,32 @@ impl Component for SearchCommandsComponent {
 
     fn process_mouse_event(&mut self, mouse: MouseEvent) -> Result<Action> {
         match mouse.kind {
-            MouseEventKind::ScrollDown => Ok(self.move_next()?),
-            MouseEventKind::ScrollUp => Ok(self.move_prev()?),
+            MouseEventKind::ScrollDown => Ok(self.move_down()?),
+            MouseEventKind::ScrollUp => Ok(self.move_up()?),
             _ => Ok(Action::NoOp),
         }
     }
 
     fn move_up(&mut self) -> Result<Action> {
         let mut state = self.state.write();
-        if let Some(ref mut tags) = state.tags {
-            tags.select_prev();
-        } else {
-            state.commands.select_prev();
+        if !state.query.is_ai_loading() {
+            if let Some(ref mut tags) = state.tags {
+                tags.select_prev();
+            } else {
+                state.commands.select_prev();
+            }
         }
         Ok(Action::NoOp)
     }
 
     fn move_down(&mut self) -> Result<Action> {
         let mut state = self.state.write();
-        if let Some(ref mut tags) = state.tags {
-            tags.select_next();
-        } else {
-            state.commands.select_next();
+        if !state.query.is_ai_loading() {
+            if let Some(ref mut tags) = state.tags {
+                tags.select_next();
+            } else {
+                state.commands.select_next();
+            }
         }
         Ok(Action::NoOp)
     }
@@ -307,46 +348,54 @@ impl Component for SearchCommandsComponent {
 
     fn move_home(&mut self, absolute: bool) -> Result<Action> {
         let mut state = self.state.write();
-        if let Some(ref mut tags) = state.tags {
-            tags.select_first();
-        } else if absolute {
-            state.commands.select_first();
-        } else {
-            state.query.move_home(false);
+        if !state.query.is_ai_loading() {
+            if let Some(ref mut tags) = state.tags {
+                tags.select_first();
+            } else if absolute {
+                state.commands.select_first();
+            } else {
+                state.query.move_home(false);
+            }
         }
         Ok(Action::NoOp)
     }
 
     fn move_end(&mut self, absolute: bool) -> Result<Action> {
         let mut state = self.state.write();
-        if let Some(ref mut tags) = state.tags {
-            tags.select_last();
-        } else if absolute {
-            state.commands.select_last();
-        } else {
-            state.query.move_end(false);
+        if !state.query.is_ai_loading() {
+            if let Some(ref mut tags) = state.tags {
+                tags.select_last();
+            } else if absolute {
+                state.commands.select_last();
+            } else {
+                state.query.move_end(false);
+            }
         }
         Ok(Action::NoOp)
     }
 
     fn undo(&mut self) -> Result<Action> {
         let mut state = self.state.write();
-        state.query.undo();
-        if state.tags.is_some() {
-            self.debounced_refresh_tags();
-        } else {
-            self.schedule_debounced_command_refresh();
+        if !state.query.is_ai_loading() {
+            state.query.undo();
+            if state.tags.is_some() {
+                self.debounced_refresh_tags();
+            } else {
+                self.schedule_debounced_command_refresh();
+            }
         }
         Ok(Action::NoOp)
     }
 
     fn redo(&mut self) -> Result<Action> {
         let mut state = self.state.write();
-        state.query.redo();
-        if state.tags.is_some() {
-            self.debounced_refresh_tags();
-        } else {
-            self.schedule_debounced_command_refresh();
+        if !state.query.is_ai_loading() {
+            state.query.redo();
+            if state.tags.is_some() {
+                self.debounced_refresh_tags();
+            } else {
+                self.schedule_debounced_command_refresh();
+            }
         }
         Ok(Action::NoOp)
     }
@@ -385,11 +434,19 @@ impl Component for SearchCommandsComponent {
     }
 
     fn toggle_search_mode(&mut self) -> Result<Action> {
-        let (search_mode, user_only, tags) = {
+        let (search_mode, ai_mode, tags) = {
             let state = self.state.read();
-            (state.mode.down(), state.user_only, state.tags.is_some())
+            if state.query.is_ai_loading() {
+                return Ok(Action::NoOp);
+            }
+            (state.mode, state.ai_mode, state.tags.is_some())
         };
-        self.update_config(search_mode, user_only);
+        if ai_mode {
+            tracing::debug!("Closing ai mode: user toggled search mode");
+            self.update_config(None, None, Some(false));
+        } else {
+            self.update_config(Some(search_mode.down()), None, None);
+        }
         if tags {
             self.debounced_refresh_tags();
         } else {
@@ -399,15 +456,17 @@ impl Component for SearchCommandsComponent {
     }
 
     fn toggle_search_user_only(&mut self) -> Result<Action> {
-        let (search_mode, user_only, tags) = {
+        let (user_only, ai_mode, tags) = {
             let state = self.state.read();
-            (state.mode, !state.user_only, state.tags.is_some())
+            (state.user_only, state.ai_mode, state.tags.is_some())
         };
-        self.update_config(search_mode, user_only);
-        if tags {
-            self.debounced_refresh_tags();
-        } else {
-            self.schedule_debounced_command_refresh();
+        if !ai_mode {
+            self.update_config(None, Some(!user_only), None);
+            if tags {
+                self.debounced_refresh_tags();
+            } else {
+                self.schedule_debounced_command_refresh();
+            }
         }
         Ok(Action::NoOp)
     }
@@ -416,7 +475,9 @@ impl Component for SearchCommandsComponent {
     async fn selection_delete(&mut self) -> Result<Action> {
         let command = {
             let mut state = self.state.write();
-            if let Some(selected) = state.commands.selected() {
+            if !state.ai_mode
+                && let Some(selected) = state.commands.selected()
+            {
                 if selected.source != SOURCE_WORKSPACE {
                     state.commands.delete_selected()
                 } else {
@@ -428,7 +489,10 @@ impl Component for SearchCommandsComponent {
         };
 
         if let Some(command) = command {
-            self.service.delete_command(command.id).await?;
+            self.service
+                .delete_command(command.id)
+                .await
+                .map_err(AppError::into_report)?;
         }
 
         Ok(Action::NoOp)
@@ -438,17 +502,19 @@ impl Component for SearchCommandsComponent {
     async fn selection_update(&mut self) -> Result<Action> {
         let command = {
             let state = self.state.read();
+            if state.ai_mode {
+                return Ok(Action::NoOp);
+            }
             state.commands.selected().cloned().map(Command::from)
         };
         if let Some(command) = command
             && command.source != SOURCE_WORKSPACE
         {
-            tracing::info!("Entering command update for: {command}");
+            tracing::info!("Entering command update for: {}", command.cmd);
             Ok(Action::SwitchComponent(Box::new(EditCommandComponent::new(
                 self.service.clone(),
                 self.theme.clone(),
                 self.inline,
-                self.new_version.inner().clone(),
                 command,
                 EditCommandComponentMode::Edit {
                     parent: Box::new(self.clone()),
@@ -461,14 +527,18 @@ impl Component for SearchCommandsComponent {
 
     #[instrument(skip_all)]
     async fn selection_confirm(&mut self) -> Result<Action> {
-        let (selected_tag, cursor_pos, query, command) = {
+        let (selected_tag, cursor_pos, query, command, ai_mode) = {
             let state = self.state.read();
+            if state.query.is_ai_loading() {
+                return Ok(Action::NoOp);
+            }
             let selected_tag = state.tags.as_ref().and_then(|s| s.selected().map(TagWidget::text));
             (
                 selected_tag.map(String::from),
                 state.query.cursor().1,
                 state.query.lines_as_string(),
                 state.commands.selected().cloned().map(Command::from),
+                state.ai_mode,
             )
         };
 
@@ -476,8 +546,8 @@ impl Component for SearchCommandsComponent {
             tracing::debug!("Selected tag: {tag}");
             self.confirm_tag(tag, query, cursor_pos).await
         } else if let Some(command) = command {
-            tracing::info!("Selected command: {command}");
-            self.confirm_command(command, false).await
+            tracing::info!("Selected command: {}", command.cmd);
+            self.confirm_command(command, false, ai_mode).await
         } else {
             Ok(Action::NoOp)
         }
@@ -485,16 +555,63 @@ impl Component for SearchCommandsComponent {
 
     #[instrument(skip_all)]
     async fn selection_execute(&mut self) -> Result<Action> {
-        let command = {
+        let (command, ai_mode) = {
             let state = self.state.read();
-            state.commands.selected().cloned().map(Command::from)
+            if state.query.is_ai_loading() {
+                return Ok(Action::NoOp);
+            }
+            (state.commands.selected().cloned().map(Command::from), state.ai_mode)
         };
         if let Some(command) = command {
-            tracing::info!("Selected command to execute: {command}");
-            self.confirm_command(command, true).await
+            tracing::info!("Selected command to execute: {}", command.cmd);
+            self.confirm_command(command, true, ai_mode).await
         } else {
             Ok(Action::NoOp)
         }
+    }
+
+    async fn prompt_ai(&mut self) -> Result<Action> {
+        let mut state = self.state.write();
+        if state.tags.is_some() || state.query.is_ai_loading() {
+            return Ok(Action::NoOp);
+        }
+        let query = state.query.lines_as_string();
+        if !query.is_empty() {
+            state.query.set_ai_loading(true);
+            drop(state);
+            self.update_config(None, None, Some(true));
+            let this = self.clone();
+            tokio::spawn(async move {
+                let res = this.service.suggest_commands(&query).await;
+                let mut state = this.state.write();
+                let command_widgets = match res {
+                    Ok(suggestions) => {
+                        if !suggestions.is_empty() {
+                            state.error.clear_message();
+                            state.alias_match = false;
+                            suggestions
+                                .into_iter()
+                                .map(|command| CommandWidget::new(&this.theme, this.inline, command))
+                                .collect()
+                        } else {
+                            state
+                                .error
+                                .set_temp_message("AI did not return any suggestion".to_string());
+                            Vec::new()
+                        }
+                    }
+                    Err(AppError::UserFacing(err)) => {
+                        tracing::warn!("{err}");
+                        state.error.set_temp_message(err.to_string());
+                        Vec::new()
+                    }
+                    Err(AppError::Unexpected(err)) => panic!("Error prompting for command suggestions: {err:?}"),
+                };
+                state.commands.update_items(command_widgets);
+                state.query.set_ai_loading(false);
+            });
+        }
+        Ok(Action::NoOp)
     }
 }
 
@@ -534,10 +651,20 @@ impl SearchCommandsComponent {
     #[instrument(skip_all)]
     async fn refresh_commands(&self) -> Result<()> {
         // Retrieve the user query
-        let (mode, user_only, query) = {
+        let (mode, user_only, ai_mode, query) = {
             let state = self.state.read();
-            (state.mode, state.user_only, state.query.lines_as_string())
+            (
+                state.mode,
+                state.user_only,
+                state.ai_mode,
+                state.query.lines_as_string(),
+            )
         };
+
+        // Skip when ai mode is enabled
+        if ai_mode {
+            return Ok(());
+        }
 
         // Search for commands
         let res = self.service.search_commands(mode, user_only, &query).await;
@@ -553,17 +680,12 @@ impl SearchCommandsComponent {
                     .map(|c| CommandWidget::new(&self.theme, self.inline, c))
                     .collect()
             }
-            Err(SearchError::InvalidFuzzy) => {
-                tracing::warn!("Invalid fuzzy search");
-                state.error.set_perm_message("Invalid fuzzy seach");
+            Err(AppError::UserFacing(err)) => {
+                tracing::warn!("{err}");
+                state.error.set_perm_message(err.to_string());
                 Vec::new()
             }
-            Err(SearchError::InvalidRegex(err)) => {
-                tracing::warn!("Invalid regex search: {}", err);
-                state.error.set_perm_message("Invalid regex search");
-                Vec::new()
-            }
-            Err(SearchError::Unexpected(err)) => return Err(err),
+            Err(AppError::Unexpected(err)) => return Err(err),
         };
         state.commands.update_items(command_widgets);
 
@@ -584,15 +706,21 @@ impl SearchCommandsComponent {
     #[instrument(skip_all)]
     async fn refresh_tags(&self) -> Result<()> {
         // Retrieve the user query
-        let (mode, user_only, query, cursor_pos) = {
+        let (mode, user_only, ai_mode, query, cursor_pos) = {
             let state = self.state.read();
             (
                 state.mode,
                 state.user_only,
+                state.ai_mode,
                 state.query.lines_as_string(),
                 state.query.cursor().1,
             )
         };
+
+        // Skip when ai mode is enabled
+        if ai_mode {
+            return Ok(());
+        }
 
         // Find tags for that query
         let res = self.service.search_tags(mode, user_only, &query, cursor_pos).await;
@@ -653,27 +781,17 @@ impl SearchCommandsComponent {
 
                 Ok(())
             }
-            Err(SearchError::InvalidFuzzy) => {
-                tracing::warn!("Invalid fuzzy search");
-                state.error.set_perm_message("Invalid fuzzy seach");
+            Err(AppError::UserFacing(err)) => {
+                tracing::warn!("{err}");
+                state.error.set_perm_message(err.to_string());
                 if state.tags.is_some() {
-                    tracing::debug!("Closing tag mode: invalid fuzzy search");
+                    tracing::debug!("Closing tag mode");
                     state.tags = None;
                     state.commands.set_focus(true);
                 }
                 Ok(())
             }
-            Err(SearchError::InvalidRegex(err)) => {
-                tracing::warn!("Invalid regex search: {}", err);
-                state.error.set_perm_message("Invalid regex search");
-                if state.tags.is_some() {
-                    tracing::debug!("Closing tag mode: invalid regex search");
-                    state.tags = None;
-                    state.commands.set_focus(true);
-                }
-                Ok(())
-            }
-            Err(SearchError::Unexpected(err)) => Err(err),
+            Err(AppError::Unexpected(err)) => Err(err),
         }
     }
 
@@ -711,16 +829,16 @@ impl SearchCommandsComponent {
     /// Confirms the command by increasing the usage counter storing it and quits or switches to the variable
     /// replacement component if needed
     #[instrument(skip_all)]
-    async fn confirm_command(&mut self, command: Command, execute: bool) -> Result<Action> {
+    async fn confirm_command(&mut self, command: Command, execute: bool, ai_command: bool) -> Result<Action> {
         // Increment usage count
-        if command.source != SOURCE_WORKSPACE {
+        if !ai_command && command.source != SOURCE_WORKSPACE {
             self.service
                 .increment_command_usage(command.id)
                 .await
-                .map_err(UpdateError::into_report)?;
+                .map_err(AppError::into_report)?;
         }
         // Determine if the command has some variables
-        let dynamic = DynamicCommand::parse(&command.cmd);
+        let dynamic = DynamicCommand::parse(&command.cmd, false);
         if dynamic.has_pending_variable() {
             // If it does, switch to the variable replacement component
             Ok(Action::SwitchComponent(Box::new(VariableReplacementComponent::new(
@@ -729,7 +847,6 @@ impl SearchCommandsComponent {
                 self.inline,
                 execute,
                 false,
-                self.new_version.inner().clone(),
                 dynamic,
             ))))
         } else if execute {

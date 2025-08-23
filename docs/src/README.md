@@ -5,12 +5,12 @@ _Like IntelliSense, but for shells!_
 ![intelli-shell demo](images/demo.gif)
 
 Welcome to the official guide for IntelliShell. If you find yourself constantly searching your shell history for that
-one-trick `awk` command, forgetting the exact flags for `tar` or `ffmpeg`, or re-typing long commands with only minor changes,
+one-trick `awk` command, forgetting the exact flags for `tar`, or re-typing long commands with only minor changes,
 then you've come to the right place.
 
-IntelliShell is a smart command-line bookmark manager designed to solve these exact problems. It helps you save, find,
-organize, and reuse your most valuable commands directly within your terminal, turning your shell history from a chaotic
-log into a structured, searchable library.
+IntelliShell is a smart command-line assistant designed to solve these exact problems. It helps you save, find,
+generate, and fix your most valuable commands directly within your terminal, turning your command line from a
+simple execution tool into a structured, searchable, and **intelligent library**.
 
 ## Key Features
 
@@ -21,6 +21,9 @@ IntelliShell is built with a focus on efficiency and seamless integration:
 
 - **Dynamic Commands**: Create powerful command templates using `{{variables}}`. IntelliShell will prompt you to fill
   them in on the fly, making your commands reusable for any scenario.
+
+- **AI-Powered Assistance**: Generate complex commands from natural language, instantly fix errors in your last command,
+  and import templates from any text source—all powered by your favorite language models.
 
 - **Effortless Organization**: Use descriptions and hashtags (`#work`, `#gcp`) to categorize your commands, making them
   easy to filter and find.
@@ -38,19 +41,21 @@ IntelliShell is built with a focus on efficiency and seamless integration:
 
 This documentation is structured into three main sections to help you find what you need quickly:
 
-- **Quick Start** If you're new to IntelliShell, start here.
+- **Quick Start**: If you're new to IntelliShell, start here.
   
   The guide contains step-by-step tutorials that will take you from installation and basic usage to mastering advanced
   workflows like shell integration and command syncing.
 
-- **Configuration** This section is your reference for personalizing IntelliShell.
+- **Configuration**: This section is your reference for personalizing IntelliShell.
   
-  Learn how to change keybindings, customize the theme,
+  Learn how to change keybindings, customize themes, configure AI providers,
   and even fine-tune the search-ranking algorithms to make the tool truly your own.
 
-- **Command Line Tool** Here you will find a detailed, technical breakdown of every command.
+- **Command Line Tool**: Here you will find a detailed, technical breakdown of every command.
   
   It's the perfect place for quick lookups when you need to know exactly which flags are available or what a specific
   option does.
+
+---
 
 Ready to get started? Let's head over to the [**Installation**](./guide/installation.md) page.

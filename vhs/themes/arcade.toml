@@ -1,0 +1,12 @@
+[theme]
+primary = "default"
+secondary = "dim"
+accent = "136"
+comment = "rgb(106, 153, 66)"
+error = "dark red"
+highlight = "none"
+highlight_symbol = "» "
+highlight_primary = "220"
+highlight_secondary = "222"
+highlight_accent = "208"
+highlight_comment = "rgb(143, 221, 75)"

@@ -3,7 +3,10 @@
     "dockerFile": "Dockerfile",
     "postCreateCommand": ".devcontainer/post-create.sh \"${containerWorkspaceFolder}\"",
     "containerEnv": {
-        "GIST_TOKEN": "${localEnv:GIST_TOKEN}"
+        "GIST_TOKEN": "${localEnv:GIST_TOKEN}",
+        "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+        "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}",
+        "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
     },
     "customizations": {
         "vscode": {
@@ -19,7 +22,8 @@
                 "gruntfuggly.todo-tree",
                 "skyapps.fish-vscode",
                 "yzhang.markdown-all-in-one",
-                "davidanson.vscode-markdownlint"
+                "davidanson.vscode-markdownlint",
+                "streetsidesoftware.code-spell-checker"
             ],
             "settings": {
                 "terminal.integrated.defaultProfile.linux": "bash",

@@ -1,10 +1,7 @@
-use std::{cmp::Ordering, pin::pin};
+use std::{cmp::Ordering, pin::pin, sync::atomic::Ordering as AtomicOrdering};
 
 use chrono::{DateTime, Utc};
-use color_eyre::{
-    Report, Result,
-    eyre::{Context, eyre},
-};
+use color_eyre::{Report, eyre::eyre};
 use futures_util::StreamExt;
 use regex::Regex;
 use rusqlite::{Row, fallible_iterator::FallibleIterator, ffi, types::Type};
@@ -18,7 +15,7 @@ use uuid::Uuid;
 use super::{SqliteStorage, queries::*};
 use crate::{
     config::SearchCommandTuning,
-    errors::{InsertError, SearchError, UpdateError},
+    errors::{AppError, Result, UserFacingError},
     model::{CATEGORY_USER, Command, SOURCE_TLDR, SearchCommandsFilter},
 };
 
@@ -28,7 +25,7 @@ impl SqliteStorage {
     #[instrument(skip_all)]
     pub async fn setup_workspace_storage(&self) -> Result<()> {
         self.client
-            .conn_mut::<_, _, Report>(|conn| {
+            .conn_mut(|conn| {
                 // Fetch the schema for the main tables and triggers
                 let schemas: Vec<String> = conn
                     .prepare(
@@ -56,11 +53,9 @@ impl SqliteStorage {
                 tx.commit()?;
                 Ok(())
             })
-            .await
-            .wrap_err("Failed to create temporary workspace storage from schema")?;
+            .await?;
 
-        self.workspace_tables_loaded
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        self.workspace_tables_loaded.store(true, AtomicOrdering::SeqCst);
 
         Ok(())
     }
@@ -68,9 +63,9 @@ impl SqliteStorage {
     /// Determines if the storage is empty, i.e., if there are no commands in the database
     #[instrument(skip_all)]
     pub async fn is_empty(&self) -> Result<bool> {
-        let workspace_tables_loaded = self.workspace_tables_loaded.load(std::sync::atomic::Ordering::SeqCst);
+        let workspace_tables_loaded = self.workspace_tables_loaded.load(AtomicOrdering::SeqCst);
         self.client
-            .conn::<_, _, Report>(move |conn| {
+            .conn(move |conn| {
                 if workspace_tables_loaded {
                     Ok(conn.query_row(
                         "SELECT NOT EXISTS (SELECT 1 FROM command UNION ALL SELECT 1 FROM workspace_command)",
@@ -82,7 +77,6 @@ impl SqliteStorage {
                 }
             })
             .await
-            .wrap_err("Couldn't check if storage is empty")
     }
 
     /// Retrieves all tags from the database along with their usage statistics and if it's an exact match for the prefix
@@ -92,23 +86,21 @@ impl SqliteStorage {
         filter: SearchCommandsFilter,
         tag_prefix: Option<String>,
         tuning: &SearchCommandTuning,
-    ) -> Result<Vec<(String, u64, bool)>, SearchError> {
-        let workspace_tables_loaded = self.workspace_tables_loaded.load(std::sync::atomic::Ordering::SeqCst);
+    ) -> Result<Vec<(String, u64, bool)>> {
+        let workspace_tables_loaded = self.workspace_tables_loaded.load(AtomicOrdering::SeqCst);
         let query = query_find_tags(filter, tag_prefix, tuning, workspace_tables_loaded)?;
         if tracing::enabled!(tracing::Level::TRACE) {
             tracing::trace!("Querying tags:\n{}", query.to_string(SqliteQueryBuilder));
         }
         let (stmt, values) = query.build_rusqlite(SqliteQueryBuilder);
-        Ok(self
-            .client
-            .conn::<_, _, Report>(move |conn| {
+        self.client
+            .conn(move |conn| {
                 conn.prepare(&stmt)?
                     .query(&*values.as_params())?
                     .and_then(|r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
                     .collect()
             })
             .await
-            .wrap_err("Couldn't find tags")?)
     }
 
     /// Finds and retrieves commands from the database.
@@ -121,24 +113,39 @@ impl SqliteStorage {
         filter: SearchCommandsFilter,
         working_path: impl Into<String>,
         tuning: &SearchCommandTuning,
-    ) -> Result<(Vec<Command>, bool), SearchError> {
-        let workspace_tables_loaded = self.workspace_tables_loaded.load(std::sync::atomic::Ordering::SeqCst);
+    ) -> Result<(Vec<Command>, bool)> {
+        let workspace_tables_loaded = self.workspace_tables_loaded.load(AtomicOrdering::SeqCst);
         let cleaned_filter = filter.cleaned();
 
         // When there's a search term
         let mut query_alias = None;
         if let Some(ref term) = cleaned_filter.search_term {
-            // Prepare the query for the alias as well
-            query_alias = Some((
-                format!(
-                    r#"SELECT c.rowid, c.* 
-                    FROM command c 
-                    WHERE c.alias IS NOT NULL AND c.alias = ?1 
-                    ORDER BY c.cmd ASC
-                    LIMIT {QUERY_LIMIT}"#
-                ),
-                (term.clone(),),
-            ));
+            // Try to find a command matching the alias exactly
+            if workspace_tables_loaded {
+                query_alias = Some((
+                    format!(
+                        r#"SELECT * 
+                        FROM (
+                            SELECT rowid, * FROM workspace_command
+                            UNION ALL
+                            SELECT rowid, * FROM command
+                        ) c 
+                        WHERE c.alias IS NOT NULL AND c.alias = ?1 
+                        LIMIT {QUERY_LIMIT}"#
+                    ),
+                    (term.clone(),),
+                ));
+            } else {
+                query_alias = Some((
+                    format!(
+                        r#"SELECT c.rowid, c.* 
+                        FROM command c 
+                        WHERE c.alias IS NOT NULL AND c.alias = ?1 
+                        LIMIT {QUERY_LIMIT}"#
+                    ),
+                    (term.clone(),),
+                ));
+            }
         }
 
         // Build the commands query when no alias is matched
@@ -152,9 +159,8 @@ impl SqliteStorage {
 
         // Execute the queries
         let tuning = *tuning;
-        Ok(self
-            .client
-            .conn::<_, _, Report>(move |conn| {
+        self.client
+            .conn(move |conn| {
                 // If there's a query to find the command by alias
                 if let Some((query_alias, a_params)) = query_alias {
                     // Run the query
@@ -184,7 +190,6 @@ impl SqliteStorage {
                 ))
             })
             .await
-            .wrap_err("Couldn't search commands")?)
     }
 
     /// Imports a collection of commands into the database.
@@ -197,7 +202,6 @@ impl SqliteStorage {
     pub async fn import_commands(
         &self,
         commands: impl Stream<Item = Result<Command>> + Send + 'static,
-        filter: Option<Regex>,
         overwrite: bool,
         workspace: bool,
     ) -> Result<(u64, u64)> {
@@ -221,7 +225,7 @@ impl SqliteStorage {
         let table = if workspace { "workspace_command" } else { "command" };
 
         self.client
-            .conn_mut::<_, _, Report>(move |conn| {
+            .conn_mut(move |conn| {
                 let mut inserted = 0;
                 let mut skipped_or_updated = 0;
                 let tx = conn.transaction()?;
@@ -271,16 +275,6 @@ impl SqliteStorage {
                 while let Some(command_result) = rx.blocking_recv() {
                     let command = command_result?;
 
-                    // If there's a filter for imported commands
-                    if let Some(ref filter) = filter {
-                        // Skip the command when it doesn't pass the filter
-                        let matches_filter = filter.is_match(&command.cmd)
-                            || command.description.as_ref().is_some_and(|d| filter.is_match(d));
-                        if !matches_filter {
-                            continue;
-                        }
-                    }
-
                     let mut rows = stmt.query((
                         &command.id,
                         &command.category,
@@ -315,7 +309,6 @@ impl SqliteStorage {
                 Ok((inserted, skipped_or_updated))
             })
             .await
-            .wrap_err("Couldn't import commands")
     }
 
     /// Export user commands
@@ -330,7 +323,7 @@ impl SqliteStorage {
         // Spawn a new task to run the query and send results back through the channel
         let client = self.client.clone();
         tokio::spawn(async move {
-            let res: Result<(), Report> = client
+            let res = client
                 .conn_mut(move |conn| {
                     // Prepare the query
                     let mut q_values = vec![CATEGORY_USER.to_owned()];
@@ -364,10 +357,7 @@ impl SqliteStorage {
 
                     // Iterate and send each record back through the channel
                     for record_result in records_iter {
-                        if tx
-                            .blocking_send(record_result.wrap_err("Error fetching command"))
-                            .is_err()
-                        {
+                        if tx.blocking_send(record_result.map_err(AppError::from)).is_err() {
                             tracing::debug!("Async stream receiver dropped, closing db query");
                             break;
                         }
@@ -376,8 +366,8 @@ impl SqliteStorage {
                     Ok(())
                 })
                 .await;
-            if let Err(e) = res {
-                panic!("Couldn't fetch commands to export: {e:?}");
+            if let Err(err) = res {
+                panic!("Couldn't fetch commands to export: {err:?}");
             }
         });
 
@@ -389,7 +379,7 @@ impl SqliteStorage {
     #[instrument(skip_all)]
     pub async fn delete_tldr_commands(&self, category: Option<String>) -> Result<u64> {
         self.client
-            .conn_mut::<_, _, Report>(move |conn| {
+            .conn_mut(move |conn| {
                 let mut query = String::from("DELETE FROM command WHERE source = ?1");
                 let mut params: Vec<String> = vec![SOURCE_TLDR.to_owned()];
                 if let Some(cat) = category {
@@ -400,14 +390,13 @@ impl SqliteStorage {
                 Ok(affected as u64)
             })
             .await
-            .wrap_err("Couldn't remove tldr commands")
     }
 
     /// Inserts a new command into the database.
     ///
     /// If a command with the same `id` or `cmd` already exists in the database, an error will be returned.
     #[instrument(skip_all)]
-    pub async fn insert_command(&self, command: Command) -> Result<Command, InsertError> {
+    pub async fn insert_command(&self, command: Command) -> Result<Command> {
         self.client
             .conn(move |conn| {
                 let res = conn.execute(
@@ -433,7 +422,7 @@ impl SqliteStorage {
                         &command.flat_cmd,
                         &command.description,
                         &command.flat_description,
-                        serde_json::to_value(&command.tags).wrap_err("Couldn't insert a command")?,
+                        serde_json::to_value(&command.tags)?,
                         &command.created_at,
                         &command.updated_at,
                     ),
@@ -443,9 +432,9 @@ impl SqliteStorage {
                     Err(err) => {
                         let code = err.sqlite_error().map(|e| e.extended_code).unwrap_or_default();
                         if code == ffi::SQLITE_CONSTRAINT_UNIQUE || code == ffi::SQLITE_CONSTRAINT_PRIMARYKEY {
-                            Err(InsertError::AlreadyExists)
+                            Err(UserFacingError::CommandAlreadyExists.into())
                         } else {
-                            Err(Report::from(err).wrap_err("Couldn't insert a command").into())
+                            Err(Report::from(err).into())
                         }
                     }
                 }
@@ -457,7 +446,7 @@ impl SqliteStorage {
     ///
     /// If the command to be updated does not exist, an error will be returned.
     #[instrument(skip_all)]
-    pub async fn update_command(&self, command: Command) -> Result<Command, UpdateError> {
+    pub async fn update_command(&self, command: Command) -> Result<Command> {
         self.client
             .conn(move |conn| {
                 let res = conn.execute(
@@ -482,22 +471,20 @@ impl SqliteStorage {
                         &command.flat_cmd,
                         &command.description,
                         &command.flat_description,
-                        serde_json::to_value(&command.tags).wrap_err("Couldn't update a command")?,
+                        serde_json::to_value(&command.tags)?,
                         &command.created_at,
                         &command.updated_at,
                     ),
                 );
                 match res {
-                    Ok(0) => Err(eyre!("Command not found: {}", command.id)
-                        .wrap_err("Couldn't update a command")
-                        .into()),
+                    Ok(0) => Err(eyre!("Command not found: {}", command.id).into()),
                     Ok(_) => Ok(command),
                     Err(err) => {
                         let code = err.sqlite_error().map(|e| e.extended_code).unwrap_or_default();
                         if code == ffi::SQLITE_CONSTRAINT_UNIQUE {
-                            Err(UpdateError::AlreadyExists)
+                            Err(UserFacingError::CommandAlreadyExists.into())
                         } else {
-                            Err(Report::from(err).wrap_err("Couldn't update a command").into())
+                            Err(Report::from(err).into())
                         }
                     }
                 }
@@ -511,10 +498,10 @@ impl SqliteStorage {
         &self,
         command_id: Uuid,
         path: impl AsRef<str> + Send + 'static,
-    ) -> Result<i32, UpdateError> {
+    ) -> Result<i32> {
         self.client
             .conn_mut(move |conn| {
-                let res = conn.query_row(
+                Ok(conn.query_row(
                     r#"
                     INSERT INTO command_usage (command_id, path, usage_count)
                     VALUES (?1, ?2, 1)
@@ -523,11 +510,7 @@ impl SqliteStorage {
                     RETURNING usage_count;"#,
                     (&command_id, &path.as_ref()),
                     |r| r.get(0),
-                );
-                match res {
-                    Ok(u) => Ok(u),
-                    Err(err) => Err(Report::from(err).wrap_err("Couldn't update a command usage").into()),
-                }
+                )?)
             })
             .await
     }
@@ -541,9 +524,9 @@ impl SqliteStorage {
             .conn(move |conn| {
                 let res = conn.execute("DELETE FROM command WHERE id = ?1", (&command_id,));
                 match res {
-                    Ok(0) => Err(eyre!("Command not found: {command_id}").wrap_err("Couldn't delete a command")),
+                    Ok(0) => Err(eyre!("Command not found: {command_id}").into()),
                     Ok(_) => Ok(()),
-                    Err(err) => Err(Report::from(err).wrap_err("Couldn't delete a command")),
+                    Err(err) => Err(Report::from(err).into()),
                 }
             })
             .await
@@ -701,7 +684,10 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::model::{CATEGORY_USER, SOURCE_IMPORT, SOURCE_USER, SearchMode};
+    use crate::{
+        errors::AppError,
+        model::{CATEGORY_USER, SOURCE_IMPORT, SOURCE_USER, SearchMode},
+    };
 
     const PROJ_A_PATH: &str = "/home/user/project-a";
     const PROJ_A_API_PATH: &str = "/home/user/project-a/api";
@@ -748,7 +734,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_find_tags_no_filters() -> Result<(), SearchError> {
+    async fn test_find_tags_no_filters() -> Result<()> {
         let storage = setup_ranking_storage().await;
 
         let result = storage
@@ -775,7 +761,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_find_tags_filter_by_tags_only() -> Result<(), SearchError> {
+    async fn test_find_tags_filter_by_tags_only() -> Result<()> {
         let storage = setup_ranking_storage().await;
 
         let filter1 = SearchCommandsFilter {
@@ -813,7 +799,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_find_tags_filter_by_prefix_only() -> Result<(), SearchError> {
+    async fn test_find_tags_filter_by_prefix_only() -> Result<()> {
         let storage = setup_ranking_storage().await;
 
         let result = storage
@@ -831,7 +817,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_find_tags_filter_by_tags_and_prefix() -> Result<(), SearchError> {
+    async fn test_find_tags_filter_by_tags_and_prefix() -> Result<()> {
         let storage = setup_ranking_storage().await;
 
         let filter1 = SearchCommandsFilter {
@@ -976,6 +962,7 @@ mod tests {
     #[tokio::test]
     async fn test_find_commands_search_mode_exact() {
         let storage = setup_ranking_storage().await;
+        storage.setup_workspace_storage().await.unwrap();
         let filter_token_match = SearchCommandsFilter {
             search_term: Some("commit".to_string()),
             search_mode: SearchMode::Exact,
@@ -1004,6 +991,7 @@ mod tests {
     #[tokio::test]
     async fn test_find_commands_search_mode_relaxed() {
         let storage = setup_ranking_storage().await;
+        storage.setup_workspace_storage().await.unwrap();
         let filter = SearchCommandsFilter {
             search_term: Some("docker list".to_string()),
             search_mode: SearchMode::Relaxed,
@@ -1021,6 +1009,7 @@ mod tests {
     #[tokio::test]
     async fn test_find_commands_search_mode_regex() {
         let storage = setup_ranking_storage().await;
+        storage.setup_workspace_storage().await.unwrap();
         let filter = SearchCommandsFilter {
             search_term: Some(r"git\s.*it".to_string()),
             search_mode: SearchMode::Regex,
@@ -1043,13 +1032,14 @@ mod tests {
             storage
                 .find_commands(filter_invalid, "/some/path", &SearchCommandTuning::default())
                 .await,
-            Err(SearchError::InvalidRegex(_))
+            Err(AppError::UserFacing(UserFacingError::InvalidRegex))
         ));
     }
 
     #[tokio::test]
     async fn test_find_commands_search_mode_fuzzy() {
         let storage = setup_ranking_storage().await;
+        storage.setup_workspace_storage().await.unwrap();
         let filter = SearchCommandsFilter {
             search_term: Some("gtcomit".to_string()),
             search_mode: SearchMode::Fuzzy,
@@ -1072,7 +1062,7 @@ mod tests {
             storage
                 .find_commands(filter_empty_fuzzy, "/some/path", &SearchCommandTuning::default())
                 .await,
-            Err(SearchError::InvalidFuzzy)
+            Err(AppError::UserFacing(UserFacingError::InvalidFuzzy))
         ));
     }
 
@@ -1191,7 +1181,7 @@ mod tests {
             },
         ];
         let stream = iter(commands_to_import.clone().into_iter().map(Ok));
-        storage.import_commands(stream, None, false, true).await.unwrap();
+        storage.import_commands(stream, false, true).await.unwrap();
 
         let (commands, _) = storage
             .find_commands(
@@ -1215,7 +1205,7 @@ mod tests {
             ..Default::default()
         }];
         let stream = iter(commands_to_import.clone().into_iter().map(Ok));
-        storage.import_commands(stream, None, false, true).await.unwrap();
+        storage.import_commands(stream, false, true).await.unwrap();
 
         let filter = SearchCommandsFilter {
             search_term: Some("git".to_string()),
@@ -1252,14 +1242,14 @@ mod tests {
         ];
 
         let stream = iter(commands_to_import.clone().into_iter().map(Ok));
-        let (inserted, skipped_or_updated) = storage.import_commands(stream, None, false, false).await.unwrap();
+        let (inserted, skipped_or_updated) = storage.import_commands(stream, false, false).await.unwrap();
 
         assert_eq!(inserted, 2, "Expected 2 commands inserted");
         assert_eq!(skipped_or_updated, 0, "Expected 0 commands skipped or updated");
 
         // Import the same commands again with no overwrite
         let stream = iter(commands_to_import.into_iter().map(Ok));
-        let (inserted, skipped_or_updated) = storage.import_commands(stream, None, false, false).await.unwrap();
+        let (inserted, skipped_or_updated) = storage.import_commands(stream, false, false).await.unwrap();
 
         assert_eq!(
             inserted, 0,
@@ -1305,7 +1295,7 @@ mod tests {
         ];
 
         let stream = iter(commands_to_import.into_iter().map(Ok));
-        let (inserted, skipped_or_updated) = storage.import_commands(stream, None, true, false).await.unwrap();
+        let (inserted, skipped_or_updated) = storage.import_commands(stream, true, false).await.unwrap();
 
         assert_eq!(inserted, 1, "Expected 1 new command inserted");
         assert_eq!(skipped_or_updated, 1, "Expected 1 existing command updated");
@@ -1340,46 +1330,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_import_commands_with_filter() {
-        let storage = SqliteStorage::new_in_memory().await.unwrap();
-
-        let commands_to_import = vec![
-            Command {
-                id: Uuid::now_v7(),
-                cmd: "git commit".to_string(),
-                ..Default::default()
-            },
-            Command {
-                id: Uuid::now_v7(),
-                cmd: "docker ps".to_string(),
-                ..Default::default()
-            },
-            Command {
-                id: Uuid::now_v7(),
-                cmd: "git push".to_string(),
-                ..Default::default()
-            },
-        ];
-
-        let filter = Some(Regex::new("^git").unwrap());
-        let stream = iter(commands_to_import.into_iter().map(Ok));
-        let (inserted, _) = storage.import_commands(stream, filter, false, false).await.unwrap();
-
-        assert_eq!(inserted, 2, "Expected 2 commands to be inserted");
-
-        let (all_commands, _) = storage
-            .find_commands(
-                SearchCommandsFilter::default(),
-                "/some/path",
-                &SearchCommandTuning::default(),
-            )
-            .await
-            .unwrap();
-        assert!(all_commands.iter().all(|c| c.cmd.starts_with("git")));
-        assert!(!all_commands.iter().any(|c| c.cmd.starts_with("docker")));
-    }
-
-    #[tokio::test]
     async fn test_import_workspace_commands() {
         let storage = SqliteStorage::new_in_memory().await.unwrap();
         storage.setup_workspace_storage().await.unwrap();
@@ -1398,7 +1348,7 @@ mod tests {
         ];
 
         let stream = iter(commands_to_import.clone().into_iter().map(Ok));
-        let (inserted, skipped_or_updated) = storage.import_commands(stream, None, false, true).await.unwrap();
+        let (inserted, skipped_or_updated) = storage.import_commands(stream, false, true).await.unwrap();
 
         assert_eq!(inserted, 2, "Expected 2 commands inserted");
         assert_eq!(skipped_or_updated, 0, "Expected 0 commands skipped or updated");
@@ -1512,15 +1462,15 @@ mod tests {
         // Test duplicate id insert fails
         inserted.cmd = "other_cmd".to_string();
         match storage.insert_command(inserted).await {
-            Err(InsertError::AlreadyExists) => (),
-            _ => panic!("Expected AlreadyExists error on duplicate id"),
+            Err(AppError::UserFacing(UserFacingError::CommandAlreadyExists)) => (),
+            _ => panic!("Expected CommandAlreadyExists error on duplicate id"),
         }
 
         // Test duplicate cmd insert fails
         cmd.id = Uuid::now_v7();
         match storage.insert_command(cmd).await {
-            Err(InsertError::AlreadyExists) => (),
-            _ => panic!("Expected AlreadyExists error on duplicate cmd"),
+            Err(AppError::UserFacing(UserFacingError::CommandAlreadyExists)) => (),
+            _ => panic!("Expected CommandAlreadyExists error on duplicate cmd"),
         }
     }
 
@@ -1562,8 +1512,8 @@ mod tests {
         let mut result = storage.insert_command(another_cmd.clone()).await.unwrap();
         result.cmd = "updated".to_string();
         match storage.update_command(result).await {
-            Err(UpdateError::AlreadyExists) => (),
-            _ => panic!("Expected AlreadyExists error when updating to existing cmd"),
+            Err(AppError::UserFacing(UserFacingError::CommandAlreadyExists)) => (),
+            _ => panic!("Expected CommandAlreadyExists error when updating to existing cmd"),
         }
     }
 
@@ -1709,7 +1659,7 @@ mod tests {
         async fn check_sqlite_version(&self) {
             let version: String = self
                 .client
-                .conn_mut::<_, _, Report>(|conn| {
+                .conn_mut(|conn| {
                     conn.query_row("SELECT sqlite_version()", [], |row| row.get(0))
                         .map_err(Into::into)
                 })
@@ -1727,7 +1677,7 @@ mod tests {
         ) -> Command {
             let command = self.insert_command(command).await.unwrap();
             self.client
-                .conn_mut::<_, _, Report>(move |conn| {
+                .conn_mut(move |conn| {
                     for (path, usage_count) in usage {
                         conn.execute(
                             r#"

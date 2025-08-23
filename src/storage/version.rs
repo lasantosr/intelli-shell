@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
-use color_eyre::{Report, Result, eyre::Context};
 use semver::Version;
 use tracing::instrument;
 
 use super::SqliteStorage;
+use crate::errors::Result;
 
 impl SqliteStorage {
     /// Gets the current version info from the database
@@ -11,7 +11,7 @@ impl SqliteStorage {
     pub async fn get_version_info(&self) -> Result<(Version, DateTime<Utc>)> {
         self.client
             .conn(move |conn| {
-                conn.query_one(
+                Ok(conn.query_one(
                     "SELECT latest_version, last_checked_at FROM version_info LIMIT 1",
                     [],
                     |r| {
@@ -20,11 +20,9 @@ impl SqliteStorage {
                             r.get(1)?,
                         ))
                     },
-                )
-                .map_err(Report::from)
+                )?)
             })
             .await
-            .wrap_err("Couldn't retrieve latest version info")
     }
 
     /// Updates the version info in the database
@@ -32,14 +30,12 @@ impl SqliteStorage {
     pub async fn update_version_info(&self, latest_version: Version, last_checked_at: DateTime<Utc>) -> Result<()> {
         self.client
             .conn_mut(move |conn| {
-                conn.execute(
+                Ok(conn.execute(
                     "UPDATE version_info SET latest_version = ?1, last_checked_at = ?2",
                     (latest_version.to_string(), last_checked_at),
-                )
-                .map_err(Report::from)
+                )?)
             })
-            .await
-            .wrap_err("Couldn't update latest version info")?;
+            .await?;
         Ok(())
     }
 }

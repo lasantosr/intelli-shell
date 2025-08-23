@@ -7,10 +7,10 @@ let
       { };
 in
 # To learn more about how to use Nix to configure your environment
-# see: https://developers.google.com/idx/guides/customize-idx-env
+  # see: https://developers.google.com/idx/guides/customize-idx-env
 { pkgs, ... }: {
   # Which nixpkgs channel to use.
-  channel = "stable-24.11";
+  channel = "stable-25.05";
   # Use https://search.nixos.org/packages to find packages
   packages = [
     pkgs.rustup
@@ -23,12 +23,16 @@ in
     pkgs.cargo-binstall
     pkgs.cargo-audit
     pkgs.cargo-nextest
+    pkgs.openssl
     pkgs.stdenv.cc
     pkgs.pkg-config
   ];
   # Sets environment variables in the workspace (including secrets)
   env = pkgs.lib.recursiveUpdate
     {
+      OPENSSL_NO_VENDOR = "1";
+      OPENSSL_LIB_DIR = "${pkgs.openssl.out}/lib";
+      OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
       PKG_CONFIG_PATH = "${pkgs.openssl.dev}/lib/pkgconfig";
     }
     secrets;
@@ -53,21 +57,21 @@ in
       "skyapps.fish-vscode"
       "yzhang.markdown-all-in-one"
       "davidanson.vscode-markdownlint"
+      "streetsidesoftware.code-spell-checker"
     ];
     workspace = {
       # Runs when a workspace is first created with this `dev.nix` file
       onCreate = {
-        init-rustup = ''
-          rustup toolchain install stable nightly
-          rustup default stable
-          rustup component add rust-src
-        '';
         init-secrets = ''
           if [[ ! -f ".idx/secrets.nix" ]]; then
             cat > .idx/secrets.nix <<EOF
           {
             # GitHub Personal Access Token for Gists
             GIST_TOKEN = "...";
+            # API Keys for AI integration
+            OPENAI_API_KEY = "...";
+            GEMINI_API_KEY = "...";
+            ANTHROPIC_API_KEY = "...";
           }
           EOF
           fi
@@ -84,7 +88,11 @@ in
             echo "bindkey '^[[B' down-line-or-search" >> ~/.zshrc
           fi
         '';
-        post-create = ''
+        init = ''
+          rustup toolchain install stable nightly
+          rustup default stable
+          rustup component add rust-src
+
           .devcontainer/post-create.sh .
         '';
         # Open editors for the following files by default, if they exist:

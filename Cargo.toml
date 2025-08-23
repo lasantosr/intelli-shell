@@ -19,7 +19,7 @@ required-features = []
 async-trait        = "0.1"
 chrono             = "0.4"
 clap               = { version = "4", features = ["derive"] }
-clap-stdin         = { version = "0.6", features = ["tokio"] }
+clap-stdin         = { version = "0.7", features = ["tokio"] }
 color-eyre         = "0.6"
 crossbeam-channel  = "0.5"
 crossterm          = { version = "0.28.1", features = ["serde", "event-stream", "use-dev-tty", "libc"] }
@@ -28,8 +28,10 @@ enum_cycling       = { version = "0.2", features = ["derive"] }
 futures-util       = "0.3"
 git2               = { version = "0.20", default-features = false, features = ["https", "vendored-openssl", "vendored-libgit2"] }
 heck               = "0.5"
+ignore             = "0.4"
 indicatif          = "0.18"
 itertools          = "0.14"
+os_info            = "3"
 parking_lot        = "0.12"
 percent-encoding   = "2"
 prettytable-rs     = "0.10"
@@ -39,6 +41,7 @@ regex              = { version = "1" }
 reqwest            = { version = "0.12", features = ["stream", "json"] }
 rusqlite           = { version = "0.37", features = ["bundled", "functions", "chrono", "uuid", "serde_json"] }
 rusqlite_migration = "2.3"
+schemars           = "1"
 sea-query          = { version = "1.0.0-rc.7", features = ["derive", "thread-safe", "backend-sqlite"] }
 sea-query-rusqlite = { version = "0.8.0-rc.7", features = ["with-chrono", "with-uuid", "with-json"] }
 semver             = "1"
@@ -47,8 +50,8 @@ serde_json         = "1"
 signal-hook        = "0.3"
 strip-ansi-escapes = "0.2"
 strum              = { version = "0.27", features = ["derive"] }
-sysinfo            = "0.36"
-tokio              = { version = "1", features = ["sync", "macros", "rt-multi-thread", "time", "process"] }
+sysinfo            = "0.37"
+tokio              = { version = "1", features = ["sync", "macros", "rt-multi-thread", "time", "process", "signal"] }
 tokio-stream       = "0.1"
 tokio-util         = "0.7"
 toml               = "0.9"
@@ -61,6 +64,7 @@ tui-widget-list    = "0.13"
 unicode-width      = "0.2"
 unidecode          = "0.3"
 uuid               = { version = "1", features = ["serde", "v7"] }
+wait-timeout       = "0.2"
 walkdir            = "2"
 
 [dev-dependencies]

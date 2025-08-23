@@ -8,6 +8,13 @@ function _intelli_exec --description "Executes intelli-shell and updates command
   set -l temp_result_file (mktemp)
   set -l execute_prefix "____execute____"
 
+  # Clear the buffer
+  set -l buffer_len (string length -- (commandline))
+  if test $buffer_len -gt 0
+    echo -ne "\e[$buffer_len"D'\e[K'
+  end
+
+  # Run intelli-shell
   intelli-shell --extra-line --skip-execution --file-output "$temp_result_file" $argv
   set -l exit_status $status
 
@@ -59,12 +66,20 @@ function _intelli_replace --description "IntelliShell Variable Replacement"
   _intelli_exec replace -i "$current_line"
 end
 
+# Fix function
+function _intelli_fix --description "IntelliShell Fix Command"
+  set -l current_line (commandline)
+  string join \n $history[5..1] | read -z history_str
+  _intelli_exec fix --history "$history_str" "$current_line"
+end
+
 # --- Key Bindings ---
 function fish_user_key_bindings
   # Use defaults if environment variables are not set
   set -l search_key '-k nul'
   set -l bookmark_key \cb
   set -l variable_key \cl
+  set -l fix_key \cx
 
   # Override defaults if environment variables are set
   if set -q INTELLI_SEARCH_HOTKEY; and test -n "$INTELLI_SEARCH_HOTKEY"
@@ -75,6 +90,9 @@ function fish_user_key_bindings
   end
   if set -q INTELLI_VARIABLE_HOTKEY; and test -n "$INTELLI_VARIABLE_HOTKEY"
     set variable_key $INTELLI_VARIABLE_HOTKEY
+  end
+  if set -q INTELLI_FIX_HOTKEY; and test -n "$INTELLI_FIX_HOTKEY"
+    set fix_key $INTELLI_FIX_HOTKEY
   end
 
   # Bind ESC to kill the whole line if not skipped
@@ -90,6 +108,7 @@ function fish_user_key_bindings
   end
   bind $bookmark_key _intelli_save
   bind $variable_key _intelli_replace
+  bind $fix_key _intelli_fix
 
 end
 

@@ -1,12 +1,16 @@
-use std::{collections::HashSet, fmt::Display};
+use std::{
+    collections::HashSet,
+    fmt::{self, Display},
+};
 
 use chrono::{DateTime, Utc};
 use clap::ValueEnum;
 use enum_cycling::EnumCycle;
+use regex::Regex;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::utils::{extract_tags_from_description, flatten_str};
+use crate::utils::{extract_tags_from_description, flatten_str, remove_newlines};
 
 /// Category for user defined commands
 pub const CATEGORY_USER: &str = "user";
@@ -16,6 +20,9 @@ pub const CATEGORY_WORKSPACE: &str = "workspace";
 
 /// Source for user defined commands
 pub const SOURCE_USER: &str = "user";
+
+/// Source for ai suggested commands
+pub const SOURCE_AI: &str = "ai";
 
 /// Source for tldr fetched commands
 pub const SOURCE_TLDR: &str = "tldr";
@@ -54,7 +61,7 @@ pub enum SearchMode {
 pub struct SearchCommandsFilter {
     /// Filter commands by a specific category (`user`, `workspace` or tldr's category)
     pub category: Option<Vec<String>>,
-    /// Filter commands by their original source (`user`, `tldr`, `import`, `workspace`)
+    /// Filter commands by their original source (`user`, `ai`, `tldr`, `import`, `workspace`)
     pub source: Option<String>,
     /// Filter commands by a list of tags, only commands matching all of the provided tags will be included
     pub tags: Option<Vec<String>>,
@@ -118,7 +125,7 @@ pub struct Command {
     pub id: Uuid,
     /// Category of the command (`user`, `workspace` or tldr's category)
     pub category: String,
-    /// Category of the command (`user`, `tldr`, `import`, `workspace`)
+    /// Category of the command (`user`, `ai`, `tldr`, `import`, `workspace`)
     pub source: String,
     /// Optional alias for easier recall
     pub alias: Option<String>,
@@ -141,7 +148,7 @@ pub struct Command {
 impl Command {
     /// Creates a new command, with zero usage
     pub fn new(category: impl Into<String>, source: impl Into<String>, cmd: impl Into<String>) -> Self {
-        let cmd = cmd.into();
+        let cmd = remove_newlines(cmd.into());
         Self {
             id: Uuid::now_v7(),
             category: category.into(),
@@ -185,10 +192,49 @@ impl Command {
         self.tags = tags.filter(|t| !t.is_empty());
         self
     }
+
+    /// Checks whether a command matches a regex filter
+    pub fn matches(&self, regex: &Regex) -> bool {
+        regex.is_match(&self.cmd) || self.description.as_ref().is_some_and(|d| regex.is_match(d))
+    }
 }
 
 impl Display for Command {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.cmd)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Get the description and alias, treating empty strings or None as absent
+        let cmd = &self.cmd;
+        let desc = self.description.as_deref().filter(|s| !s.is_empty());
+        let alias = self.alias.as_deref();
+
+        match (desc, alias) {
+            // If there's no description or alias, output an empty comment and the command
+            (None, None) => return writeln!(f, "#\n{cmd}"),
+            // Both description and alias exist
+            (Some(d), Some(a)) => {
+                if d.contains('\n') {
+                    // For multi-line descriptions, place the alias on its own line for clarity
+                    writeln!(f, "# [alias:{a}]")?;
+                    for line in d.lines() {
+                        writeln!(f, "# {line}")?;
+                    }
+                } else {
+                    // For single-line descriptions, combine them on one line
+                    writeln!(f, "# [alias:{a}] {d}")?;
+                }
+            }
+            // Only a description exists
+            (Some(d), None) => {
+                for line in d.lines() {
+                    writeln!(f, "# {line}")?;
+                }
+            }
+            // Only an alias exists
+            (None, Some(a)) => {
+                writeln!(f, "# [alias:{a}]")?;
+            }
+        };
+
+        // Finally, write the command itself
+        writeln!(f, "{cmd}")
     }
 }

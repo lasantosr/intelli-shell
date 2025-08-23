@@ -1,13 +1,12 @@
 use std::{env, path::PathBuf};
 
-use color_eyre::Result;
 use tokio::fs::File;
 use tracing::instrument;
 use uuid::Uuid;
 
 use super::IntelliShellService;
 use crate::{
-    errors::{InsertError, SearchError, UpdateError},
+    errors::{Result, UserFacingError},
     model::{CATEGORY_USER, CATEGORY_WORKSPACE, Command, SOURCE_WORKSPACE, SearchCommandsFilter, SearchMode},
     service::import_export::parse_commands,
     utils::{extract_tags_and_cleaned_text, extract_tags_with_editing_and_cleaned_text, get_working_dir},
@@ -26,7 +25,7 @@ impl IntelliShellService {
         if env::var("INTELLI_SKIP_WORKSPACE")
             .map(|v| v != "1" && v.to_lowercase() != "true")
             .unwrap_or(true)
-            && let Some(workspace_commands) = find_workspace_commands_file()
+            && let Some((workspace_commands, folder_name)) = find_workspace_commands_file()
         {
             tracing::debug!("Found workspace commands at {}", workspace_commands.display());
 
@@ -35,10 +34,11 @@ impl IntelliShellService {
 
             // Parse the commands from the file
             let file = File::open(&workspace_commands).await?;
-            let commands_stream = parse_commands(file, vec!["#workspace".into()], CATEGORY_WORKSPACE, SOURCE_WORKSPACE);
+            let tag = format!("#{}", folder_name.as_deref().unwrap_or("workspace"));
+            let commands_stream = parse_commands(file, vec![tag], CATEGORY_WORKSPACE, SOURCE_WORKSPACE);
 
             // Import commands into the temp tables
-            let (loaded, _) = self.storage.import_commands(commands_stream, None, false, true).await?;
+            let (loaded, _) = self.storage.import_commands(commands_stream, false, true).await?;
 
             tracing::info!(
                 "Loaded {loaded} workspace commands from {}",
@@ -59,23 +59,23 @@ impl IntelliShellService {
 
     /// Bookmarks a new command
     #[instrument(skip_all)]
-    pub async fn insert_command(&self, command: Command) -> Result<Command, InsertError> {
+    pub async fn insert_command(&self, command: Command) -> Result<Command> {
         // Validate
         if command.cmd.is_empty() {
-            return Err(InsertError::Invalid("Command cannot be empty"));
+            return Err(UserFacingError::EmptyCommand.into());
         }
 
         // Insert it
-        tracing::info!("Bookmarking command: {command}");
+        tracing::info!("Bookmarking command: {}", command.cmd);
         self.storage.insert_command(command).await
     }
 
     /// Updates an existing command
     #[instrument(skip_all)]
-    pub async fn update_command(&self, command: Command) -> Result<Command, UpdateError> {
+    pub async fn update_command(&self, command: Command) -> Result<Command> {
         // Validate
         if command.cmd.is_empty() {
-            return Err(UpdateError::Invalid("Command cannot be empty"));
+            return Err(UserFacingError::EmptyCommand.into());
         }
 
         // Update it
@@ -85,7 +85,7 @@ impl IntelliShellService {
 
     /// Increases the usage of a command, returning the new usage count
     #[instrument(skip_all)]
-    pub async fn increment_command_usage(&self, command_id: Uuid) -> Result<i32, UpdateError> {
+    pub async fn increment_command_usage(&self, command_id: Uuid) -> Result<i32> {
         tracing::info!("Increasing usage for command '{command_id}'");
         self.storage
             .increment_command_usage(command_id, get_working_dir())
@@ -107,7 +107,7 @@ impl IntelliShellService {
         user_only: bool,
         query: &str,
         cursor_pos: usize,
-    ) -> Result<Option<Vec<Tag>>, SearchError> {
+    ) -> Result<Option<Vec<Tag>>> {
         let Some((editing_tag, other_tags, cleaned_text)) =
             extract_tags_with_editing_and_cleaned_text(query, cursor_pos)
         else {
@@ -142,7 +142,7 @@ impl IntelliShellService {
         mode: SearchMode,
         user_only: bool,
         query: &str,
-    ) -> Result<(Vec<Command>, bool), SearchError> {
+    ) -> Result<(Vec<Command>, bool)> {
         tracing::info!(
             "Searching for commands{} [{mode:?}]: {query}",
             if user_only { " (user only)" } else { "" }
@@ -183,17 +183,18 @@ impl IntelliShellService {
             .await
     }
 }
-
 /// Searches upwards from the current working dir for a `.intellishell` file.
 ///
 /// The search stops if a `.git` directory or the filesystem root is found.
-fn find_workspace_commands_file() -> Option<PathBuf> {
+/// Returns a tuple of (file_path, folder_name) if found.
+fn find_workspace_commands_file() -> Option<(PathBuf, Option<String>)> {
     let working_dir = PathBuf::from(get_working_dir());
     let mut current = Some(working_dir.as_path());
     while let Some(parent) = current {
         let candidate = parent.join(".intellishell");
         if candidate.is_file() {
-            return Some(candidate);
+            let folder_name = parent.file_name().and_then(|n| n.to_str()).map(String::from);
+            return Some((candidate, folder_name));
         }
 
         if parent.join(".git").is_dir() {

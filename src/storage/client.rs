@@ -7,6 +7,8 @@ use crossbeam_channel::{Sender, bounded, unbounded};
 use rusqlite::{Connection, OpenFlags};
 use tokio::sync::oneshot;
 
+use crate::errors::Result;
+
 /// A `SqliteClientBuilder` can be used to create a [`Client`] with custom configuration.
 #[derive(Clone, Debug, Default)]
 pub struct SqliteClientBuilder {
@@ -93,11 +95,10 @@ impl SqliteClient {
 
 impl SqliteClient {
     /// Invokes the provided function with a [`rusqlite::Connection`].
-    pub async fn conn<F, T, E>(&self, func: F) -> Result<T, E>
+    pub async fn conn<F, T>(&self, func: F) -> Result<T>
     where
-        F: FnOnce(&Connection) -> Result<T, E> + Send + 'static,
+        F: FnOnce(&Connection) -> Result<T> + Send + 'static,
         T: Send + 'static,
-        E: From<Error> + Send + 'static,
     {
         let (tx, rx) = oneshot::channel();
         self.conn_tx
@@ -111,11 +112,10 @@ impl SqliteClient {
     }
 
     /// Invokes the provided function with a mutable [`rusqlite::Connection`]
-    pub async fn conn_mut<F, T, E>(&self, func: F) -> Result<T, E>
+    pub async fn conn_mut<F, T>(&self, func: F) -> Result<T>
     where
-        F: FnOnce(&mut Connection) -> Result<T, E> + Send + 'static,
+        F: FnOnce(&mut Connection) -> Result<T> + Send + 'static,
         T: Send + 'static,
-        E: From<Error> + Send + 'static,
     {
         let (tx, rx) = oneshot::channel();
         self.conn_tx

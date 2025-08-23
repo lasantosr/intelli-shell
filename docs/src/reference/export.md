@@ -1,13 +1,12 @@
-# export
+# `export`
 
 The `export` command allows you to share or back up your user-defined commands by writing them to an external location.
-This is useful for moving your library between machines, sharing it with teammates, or integrating it with version control.
+This is useful for moving your library between machines or sharing it with teammates.
 
-By default, commands are exported in a simple, human-readable format, but the primary use case is to create backups or
-share your library.
+By default, commands are exported in a simple, human-readable text format.
 
 > 📝 **Note**: This command only exports your personal, bookmarked commands. Examples fetched from `tldr` pages or
-> workspace commands from `.intellishell` file are not included.
+> workspace-specific commands from `.intellishell` file are not included.
 
 ## Usage
 
@@ -17,72 +16,80 @@ intelli-shell export [OPTIONS] [LOCATION]
 
 ## Arguments
 
-- `[LOCATION]`
+- **`LOCATION`**
+  
+  Specifies the destination for the exported commands. This can be a file path, an HTTP(S) URL, or a GitHub Gist
+  ID/URL.
 
-  Specifies the destination for the exported commands. This can be a file path, an HTTP(S) URL, or a GitHub Gist ID/URL.
-  If omitted or set to `-`, the output is written to standard output (stdout), which is useful for piping to other tools.
-
-  - **File**: `intelli-shell export ./my_commands.json`
-  - **HTTP**: `intelli-shell export https://my-server.com/api/commands`
-  - **Gist**: `intelli-shell export https://gist.github.com/user/1a2b3c4d5e6f7g8h9i0j`
+  If omitted or set to `-`, the output is written to standard output (`stdout`), which is useful for piping.
 
 ## Options
 
 - `--file`, `--http`, `--gist`
-
-  Forces IntelliShell to treat the `LOCATION` as a specific type. This is useful if the location string is ambiguous.
-  For example, `intelli-shell export --gist 12345` will export to a gist with id `12345` instead of treating it as a file.
+  
+  Forces IntelliShell to treat the `LOCATION` as a specific type. This is useful if the location string is ambiguous
+  (e.g., `12345`), to distinguish between a local file and a Gist ID.
 
 - `--filter <REGEX>`
-
-  Exports only the commands whose command string or description matches the provided regular expression. This is a
-  powerful way to export specific subsets of your library.
-
-  ```sh
-  # Export only commands with the #docker or #k8s tag
-  intelli-shell export --filter "#(docker|k8s)" > docker_commands.json
-  ```
+  
+  Exports only the commands whose content or description matches the provided regular expression.
 
 - `-X, --request <METHOD>`
-
-  Specifies the HTTP method to use when the `LOCATION` is an HTTP(S) URL.
-  - **Default**: `PUT`
-  - **Allowed values**: `GET`, `POST`, `PUT`, `PATCH`
+  
+  Specifies the HTTP method to use when the `LOCATION` is an HTTP(S) URL (default: `PUT`).
 
 - `-H, --header <KEY: VALUE>`
-
+  
   Adds a custom HTTP header to the request when exporting to an HTTP(S) URL. This can be specified multiple times.
 
-  ```sh
-  intelli-shell export --http https://my-api/commands -H "Authorization: Bearer my-token"
-  ```
+- `-i, --interactive`
+  
+  Opens an interactive TUI to review, edit, and select specific commands before exporting. In this interface, you can
+  update commands before exporting and use <kbd>Space</kbd> / <kbd>Ctrl</kbd>+<kbd>Space</kbd> to discard or include
+  highlighted / all commands.
 
 ## Examples
 
-- **Export all commands to a local file**:
+### Export All Commands to a File
 
-  ```sh
-  intelli-shell export my_commands.json
-  ```
+This is the simplest way to create a local backup of your library.
 
-- **Export to a private GitHub Gist**:
+```sh
+intelli-shell export my_commands.bak
+```
 
-  Requires a GitHub personal access token with the `gist` scope. The token can be provided via the `GIST_TOKEN`
-  environment variable or directly in the configuration file.
+### Export to a Private GitHub Gist
 
-  ```sh
-  # GIST_TOKEN is set in the environment
-  intelli-shell export --gist 1a2b3c4d5e6f7g8h9i0j
-  ```
+To sync your commands across machines, you can export to a Gist. This requires a GitHub Personal Access Token with the
+`gist` scope, provided via the `GIST_TOKEN` environment variable or in your config file.
 
-- **Export commands tagged with `#gcp` to standard output**:
+```sh
+# GIST_TOKEN is set in the environment
+intelli-shell export --gist 1a2b3c4d5e6f7g8h9i0j
+```
 
-  ```sh
-  intelli-shell export --filter "#gcp"
-  ```
+### Export a Subset of Commands
 
-- **Send commands to a custom server using `POST`**:
+Use `--filter` to export only the commands you need. This example exports commands tagged with `#gcp` to standard
+output.
 
-  ```sh
-  intelli-shell export --http https://my-backup-service.com/store -X POST
-  ```
+```sh
+intelli-shell export --filter "#gcp"
+```
+
+### Send Commands to a Custom Server
+
+You can integrate IntelliShell with your own infrastructure by exporting to a custom HTTP endpoint.
+
+```sh
+intelli-shell export -H "Authorization: Bearer my-token" -X POST https://my-api/commands 
+```
+
+### Interactively Select Commands to Export
+
+For fine-grained control, use interactive mode. This example finds all commands related to "docker" and then opens a
+TUI where you can hand-pick which ones to save to the file.
+
+```sh
+intelli-shell export -i --filter "docker" docker_commands.bak
+```

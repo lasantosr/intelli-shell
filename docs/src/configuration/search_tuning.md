@@ -14,7 +14,7 @@ The final score for a searched command is a weighted sum of points from three so
 query, how often the command has been used, and the directory where it was last used.
 
 ```toml
-{{#include ../../../default_config.toml:172:205}}
+{{#include ../../../default_config.toml:176:209}}
 ```
 
 ### Command Scoring Parameters
@@ -50,7 +50,7 @@ is determined by a score calculated from two sources: the context of other varia
 the value was used. Total usage count is used as a tie-breaker.
 
 ```toml
-{{#include ../../../default_config.toml:154:170}}
+{{#include ../../../default_config.toml:158:174}}
 ```
 
 ### Variable Scoring Parameters
@@ -64,5 +64,7 @@ the value was used. Total usage count is used as a tie-breaker.
 | `path.descendant` | Multiplier for a value used in a child directory                                              |
 | `path.unrelated`  | Multiplier for a value used in an unrelated directory                                         |
 
-This concludes the configuration guide. With your setup perfectly tuned, let's dive into the detailed breakdown of each
-[**Command Line Tool**](../reference/index.md).
+---
+
+Now that you have the search ranking system fine-tuned to your workflow, you can enhance your productivity even further
+by leveraging artificial intelligence. Let's explore how to set up [**AI Integration**](./ai.md).

@@ -1,5 +1,4 @@
 use color_eyre::eyre::Result;
-use semver::Version;
 use tracing::instrument;
 
 use super::{InteractiveProcess, Process, ProcessOutput};
@@ -27,21 +26,14 @@ impl Process for VariableReplaceProcess {
 
 impl InteractiveProcess for VariableReplaceProcess {
     #[instrument(skip_all)]
-    fn into_component(
-        self,
-        config: Config,
-        service: IntelliShellService,
-        inline: bool,
-        new_version: Option<Version>,
-    ) -> Result<Box<dyn Component>> {
-        let command = DynamicCommand::parse(self.command.into_inner());
+    fn into_component(self, config: Config, service: IntelliShellService, inline: bool) -> Result<Box<dyn Component>> {
+        let command = DynamicCommand::parse(self.command.into_inner(), true);
         Ok(Box::new(VariableReplacementComponent::new(
             service,
             config.theme,
             inline,
             false,
             true,
-            new_version,
             command,
         )))
     }

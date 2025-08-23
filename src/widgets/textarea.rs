@@ -8,12 +8,13 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Modifier, Style},
     text::Text,
-    widgets::{Block, Borders, Widget},
+    widgets::{Block, Borders, Paragraph, Widget},
 };
 use tui_textarea::{CursorMove, TextArea};
 
 use crate::utils::remove_newlines;
 
+const SPINNER_CHARS: [char; 6] = ['✸', '✷', '✹', '✺', '✹', '✷'];
 const DEFAULT_STYLE: Style = Style::new();
 
 /// A custom text area widget
@@ -25,6 +26,9 @@ pub struct CustomTextArea<'a> {
     cursor_style: Style,
     focus: bool,
     multiline: bool,
+    ai_loading: bool,
+    spinner_state: usize,
+    original_title: Option<Cow<'a, str>>,
 }
 
 impl<'a> CustomTextArea<'a> {
@@ -59,6 +63,9 @@ impl<'a> CustomTextArea<'a> {
             cursor_style,
             focus: false,
             multiline,
+            ai_loading: false,
+            spinner_state: 0,
+            original_title: None,
         }
     }
 
@@ -113,16 +120,21 @@ impl<'a> CustomTextArea<'a> {
 
     /// Updates the title of the text area
     pub fn set_title(&mut self, new_title: impl Into<Cow<'a, str>>) {
+        let new_title = new_title.into();
+        self.original_title = Some(new_title.clone());
         let style = self.textarea.style();
+
         if self.inline {
-            self.inline_title = Some(Text::from(new_title.into()).style(style));
+            self.inline_title = Some(Text::from(new_title).style(style));
         } else {
-            self.textarea.set_block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .style(style)
-                    .title(new_title.into()),
-            );
+            let title_content = if self.ai_loading {
+                let spinner_char = SPINNER_CHARS[self.spinner_state];
+                Cow::from(format!("{new_title}{spinner_char}  "))
+            } else {
+                new_title
+            };
+            let new_block = Block::default().borders(Borders::ALL).style(style).title(title_content);
+            self.textarea.set_block(new_block);
         }
     }
 
@@ -143,6 +155,42 @@ impl<'a> CustomTextArea<'a> {
         }
     }
 
+    /// Sets the AI loading state, showing or hiding a spinner
+    pub fn set_ai_loading(&mut self, loading: bool) {
+        self.ai_loading = loading;
+        if !loading {
+            self.spinner_state = 0;
+            if !self.inline
+                && let Some(title) = self.original_title.clone()
+            {
+                let style = self.textarea.style();
+                let new_block = Block::default().borders(Borders::ALL).style(style).title(title);
+                self.textarea.set_block(new_block);
+            }
+        }
+    }
+
+    /// Checks if the textarea has the ai loading state
+    pub fn is_ai_loading(&self) -> bool {
+        self.ai_loading
+    }
+
+    /// Advances the spinner animation if active
+    pub fn tick(&mut self) {
+        if self.ai_loading {
+            self.spinner_state = (self.spinner_state + 1) % SPINNER_CHARS.len();
+            if !self.inline
+                && let Some(title) = &self.original_title
+            {
+                let style = self.textarea.style();
+                let spinner_char = SPINNER_CHARS[self.spinner_state];
+                let new_title = format!("{title}{spinner_char}  ");
+                let new_block = Block::default().borders(Borders::ALL).style(style).title(new_title);
+                self.textarea.set_block(new_block);
+            }
+        }
+    }
+
     /// Retrieves the current text in the text area as a single string
     pub fn lines_as_string(&self) -> String {
         self.textarea.lines().join("\n")
@@ -150,7 +198,7 @@ impl<'a> CustomTextArea<'a> {
 
     /// Moves the cursor to the left, optionally by word
     pub fn move_cursor_left(&mut self, word: bool) {
-        if self.focus {
+        if self.focus && !self.ai_loading {
             self.textarea
                 .move_cursor(if word { CursorMove::WordBack } else { CursorMove::Back });
         }
@@ -158,7 +206,7 @@ impl<'a> CustomTextArea<'a> {
 
     /// Moves the cursor to the right, optionally by word
     pub fn move_cursor_right(&mut self, word: bool) {
-        if self.focus {
+        if self.focus && !self.ai_loading {
             self.textarea.move_cursor(if word {
                 CursorMove::WordForward
             } else {
@@ -169,7 +217,7 @@ impl<'a> CustomTextArea<'a> {
 
     /// Moves the cursor to the head of the line, or the absolute head
     pub fn move_home(&mut self, absolute: bool) {
-        if self.focus {
+        if self.focus && !self.ai_loading {
             self.textarea.move_cursor(if absolute {
                 CursorMove::Jump(0, 0)
             } else {
@@ -180,7 +228,7 @@ impl<'a> CustomTextArea<'a> {
 
     /// Moves the cursor to the end of the line, or the absolute end
     pub fn move_end(&mut self, absolute: bool) {
-        if self.focus {
+        if self.focus && !self.ai_loading {
             self.textarea.move_cursor(if absolute {
                 CursorMove::Jump(u16::MAX, u16::MAX)
             } else {
@@ -191,7 +239,7 @@ impl<'a> CustomTextArea<'a> {
 
     /// Inserts a char at the current cursor position
     pub fn insert_char(&mut self, c: char) {
-        if self.focus && self.multiline || c != '\n' {
+        if self.focus && !self.ai_loading && self.multiline || c != '\n' {
             self.textarea.insert_char(c);
         }
     }
@@ -201,7 +249,7 @@ impl<'a> CustomTextArea<'a> {
     where
         S: AsRef<str>,
     {
-        if self.focus {
+        if self.focus && !self.ai_loading {
             if self.multiline {
                 self.textarea.insert_str(text);
             } else {
@@ -212,14 +260,14 @@ impl<'a> CustomTextArea<'a> {
 
     /// Inserts a newline at the current cursor position, if multiline is enabled
     pub fn insert_newline(&mut self) {
-        if self.focus && self.multiline {
+        if self.focus && !self.ai_loading && self.multiline {
             self.textarea.insert_newline();
         }
     }
 
     /// Delete characters at the cursor position based on the backspace and word flags
     pub fn delete(&mut self, backspace: bool, word: bool) {
-        if self.focus {
+        if self.focus && !self.ai_loading {
             match (backspace, word) {
                 (true, true) => self.textarea.delete_word(),
                 (true, false) => self.textarea.delete_char(),
@@ -233,10 +281,28 @@ impl<'a> CustomTextArea<'a> {
 impl<'a> Widget for &CustomTextArea<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         if let Some(ref inline_title) = self.inline_title {
-            let layout = Layout::horizontal([Constraint::Length(inline_title.width() as u16 + 1), Constraint::Min(1)]);
-            let [inline_title_area, textarea_area] = layout.areas(area);
-            inline_title.render(inline_title_area, buf);
-            self.textarea.render(textarea_area, buf);
+            if self.ai_loading {
+                let layout = Layout::horizontal([
+                    Constraint::Length(inline_title.width() as u16 + 1),
+                    Constraint::Length(3),
+                    Constraint::Min(1),
+                ]);
+                let [title_area, spinner_area, textarea_area] = layout.areas(area);
+
+                inline_title.render(title_area, buf);
+
+                let spinner_char = SPINNER_CHARS[self.spinner_state];
+                let spinner_widget = Paragraph::new(format!("{spinner_char}  ")).style(self.textarea.style());
+                spinner_widget.render(spinner_area, buf);
+
+                self.textarea.render(textarea_area, buf);
+            } else {
+                let layout =
+                    Layout::horizontal([Constraint::Length(inline_title.width() as u16 + 1), Constraint::Min(1)]);
+                let [title_area, textarea_area] = layout.areas(area);
+                inline_title.render(title_area, buf);
+                self.textarea.render(textarea_area, buf);
+            }
         } else {
             self.textarea.render(area, buf);
         }

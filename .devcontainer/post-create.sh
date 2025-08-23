@@ -75,9 +75,27 @@ mkdir -p "$INTELLI_SHELL_CONFIG_DIR"
 if [ ! -f "$INTELLI_SHELL_CONFIG_FILE" ]; then
   echo "Creating IntelliShell configuration file..."
   cat << EOF > "$INTELLI_SHELL_CONFIG_FILE"
+check_updates = false
+inline = true
+
+[search]
+exec_on_alias_match = true
+
 [logs]
 enabled = true
 filter = "info,intelli_shell=trace"
+
+[theme]
+accent = "136"
+comment = "rgb(106, 153, 66)"
+highlight = "none"
+highlight_primary = "220"
+highlight_secondary = "222"
+highlight_accent = "208"
+highlight_comment = "rgb(143, 221, 75)"
+
+[ai]
+enabled = true
 EOF
 else
   echo "IntelliShell configuration file already exists."

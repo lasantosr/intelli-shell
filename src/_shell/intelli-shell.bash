@@ -5,6 +5,7 @@
 intelli_search_key="${INTELLI_SEARCH_HOTKEY:-\C-@}"
 intelli_bookmark_key="${INTELLI_BOOKMARK_HOTKEY:-\C-b}"
 intelli_variable_key="${INTELLI_VARIABLE_HOTKEY:-\C-l}"
+intelli_fix_key="${INTELLI_FIX_HOTKEY:-\C-x}"
 
 # Helper function to execute intelli-shell and update the Readline buffer
 function _intelli_exec {
@@ -60,6 +61,13 @@ function _intelli_variable {
   _intelli_exec replace -i "$READLINE_LINE"
 }
 
+# Readline callable function for fixing commands
+function _intelli_fix {
+  local hist
+  hist=$(fc -l -n -5)
+  _intelli_exec fix --history "$hist" "$READLINE_LINE"
+}
+
 # Bind ESC to kill the whole line if not skipped
 if [[ "${INTELLI_SKIP_ESC_BIND:-0}" == "0" ]]; then
   bind '"\e": kill-whole-line'
@@ -69,6 +77,7 @@ fi
 bind -x '"'"$intelli_search_key"'":"_intelli_search"'
 bind -x '"'"$intelli_bookmark_key"'":"_intelli_save"'
 bind -x '"'"$intelli_variable_key"'":"_intelli_variable"'
+bind -x '"'"$intelli_fix_key"'":"_intelli_fix"'
 
 # Export the execution prompt variable
 export INTELLI_EXEC_PROMPT=$(printf '%s' "$PS2" | sed 's/\\\[//g; s/\\\]//g')

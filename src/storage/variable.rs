@@ -1,16 +1,13 @@
 use std::collections::BTreeMap;
 
-use color_eyre::{
-    Report, Result,
-    eyre::{Context, eyre},
-};
+use color_eyre::{Report, eyre::eyre};
 use rusqlite::{ErrorCode, Row, types::Value};
 use tracing::instrument;
 
 use super::SqliteStorage;
 use crate::{
     config::SearchVariableTuning,
-    errors::{InsertError, UpdateError},
+    errors::{Result, UserFacingError},
     model::VariableValue,
     utils::{flatten_str, flatten_variable},
 };
@@ -134,7 +131,7 @@ impl SqliteStorage {
 
         // Execute the query
         self.client
-            .conn::<_, _, Report>(move |conn| {
+            .conn(move |conn| {
                 tracing::trace!("Querying variable values:\n{query}");
                 tracing::trace!("With parameters:\n{all_sql_params:?}");
                 Ok(conn
@@ -144,12 +141,11 @@ impl SqliteStorage {
                     .collect::<Result<Vec<_>, _>>()?)
             })
             .await
-            .wrap_err("Couldn't find variable values")
     }
 
     /// Inserts a new variable value into the database if it doesn't already exist
     #[instrument(skip_all)]
-    pub async fn insert_variable_value(&self, mut value: VariableValue) -> Result<VariableValue, InsertError> {
+    pub async fn insert_variable_value(&self, mut value: VariableValue) -> Result<VariableValue> {
         // Check if the value already has an ID
         if value.id.is_some() {
             return Err(eyre!("ID should not be set when inserting a new value").into());
@@ -171,8 +167,8 @@ impl SqliteStorage {
                         Ok(value)
                     }
                     Err(err) => match err.sqlite_error_code() {
-                        Some(ErrorCode::ConstraintViolation) => Err(InsertError::AlreadyExists),
-                        _ => Err(Report::from(err).wrap_err("Couldn't insert a variable value").into()),
+                        Some(ErrorCode::ConstraintViolation) => Err(UserFacingError::VariableValueAlreadyExists.into()),
+                        _ => Err(Report::from(err).into()),
                     },
                 }
             })
@@ -181,7 +177,7 @@ impl SqliteStorage {
 
     /// Updates an existing variable value
     #[instrument(skip_all)]
-    pub async fn update_variable_value(&self, value: VariableValue) -> Result<VariableValue, UpdateError> {
+    pub async fn update_variable_value(&self, value: VariableValue) -> Result<VariableValue> {
         // Check if the value doesn't have an ID to update
         let Some(value_id) = value.id else {
             return Err(eyre!("ID must be set when updating a variable value").into());
@@ -206,8 +202,8 @@ impl SqliteStorage {
                         .into()),
                     Ok(_) => Ok(value),
                     Err(err) => match err.sqlite_error_code() {
-                        Some(ErrorCode::ConstraintViolation) => Err(UpdateError::AlreadyExists),
-                        _ => Err(Report::from(err).wrap_err("Couldn't update a variable value").into()),
+                        Some(ErrorCode::ConstraintViolation) => Err(UserFacingError::VariableValueAlreadyExists.into()),
+                        _ => Err(Report::from(err).into()),
                     },
                 }
             })
@@ -221,11 +217,11 @@ impl SqliteStorage {
         value_id: i32,
         path: impl AsRef<str> + Send + 'static,
         context: &BTreeMap<String, String>,
-    ) -> Result<i32, UpdateError> {
+    ) -> Result<i32> {
         let context = serde_json::to_string(context)?;
         self.client
             .conn_mut(move |conn| {
-                let res = conn.query_row(
+                Ok(conn.query_row(
                     r#"
                     INSERT INTO variable_value_usage (value_id, path, context_json, usage_count)
                     VALUES (?1, ?2, ?3, 1)
@@ -234,13 +230,7 @@ impl SqliteStorage {
                     RETURNING usage_count;"#,
                     (&value_id, &path.as_ref(), &context),
                     |r| r.get(0),
-                );
-                match res {
-                    Ok(u) => Ok(u),
-                    Err(err) => Err(Report::from(err)
-                        .wrap_err("Couldn't update a variable value usage")
-                        .into()),
-                }
+                )?)
             })
             .await
     }
@@ -254,11 +244,9 @@ impl SqliteStorage {
             .conn_mut(move |conn| {
                 let res = conn.execute("DELETE FROM variable_value WHERE rowid = ?1", (&value_id,));
                 match res {
-                    Ok(0) => {
-                        Err(eyre!("Variable value not found: {value_id}").wrap_err("Couldn't delete a variable value"))
-                    }
+                    Ok(0) => Err(eyre!("Variable value not found: {value_id}").into()),
                     Ok(_) => Ok(()),
-                    Err(err) => Err(Report::from(err).wrap_err("Couldn't delete a variable value")),
+                    Err(err) => Err(Report::from(err).into()),
                 }
             })
             .await
@@ -283,6 +271,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use super::*;
+    use crate::errors::AppError;
 
     #[tokio::test]
     async fn test_find_variable_values_empty() {
@@ -467,8 +456,8 @@ mod tests {
 
         // Try inserting the same value again
         match storage.insert_variable_value(sug.clone()).await {
-            Err(InsertError::AlreadyExists) => (),
-            res => panic!("Expected AlreadyExists error, got {res:?}"),
+            Err(AppError::UserFacing(UserFacingError::VariableValueAlreadyExists)) => (),
+            res => panic!("Expected VariableValueAlreadyExists error, got {res:?}"),
         }
     }
 
@@ -500,8 +489,8 @@ mod tests {
         let mut sug2 = storage.insert_variable_value(var2).await.unwrap();
         sug2.value = "value_updated".to_string();
         match storage.update_variable_value(sug2).await {
-            Err(UpdateError::AlreadyExists) => (),
-            res => panic!("Expected AlreadyExists error for constraint violation, got {res:?}"),
+            Err(AppError::UserFacing(UserFacingError::VariableValueAlreadyExists)) => (),
+            res => panic!("Expected VariableValueAlreadyExists error for constraint violation, got {res:?}"),
         }
     }
 
@@ -569,7 +558,7 @@ mod tests {
             .unwrap();
 
             self.client
-                .conn_mut::<_, _, Report>(move |conn| {
+                .conn_mut(move |conn| {
                     let sug = conn.query_row(
                         r#"INSERT INTO variable_value (flat_root_cmd, flat_variable, value) 
                     VALUES (?1, ?2, ?3)

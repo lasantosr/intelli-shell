@@ -22,6 +22,7 @@ use crate::model::SearchMode;
 /// - `ctrl + space` to search for commands
 /// - `ctrl + b` to bookmark a new command
 /// - `ctrl + l` to replace variables from a command
+/// - `ctrl + x` to fix a command that is failing
 #[derive(Parser)]
 #[cfg_attr(debug_assertions, derive(Debug))]
 #[command(
@@ -60,10 +61,10 @@ pub struct Cli {
 #[cfg_attr(debug_assertions, derive(Debug))]
 pub enum CliProcess {
     #[cfg(debug_assertions)]
-    /// Runs an sql query against the database
+    /// (debug) Runs an sql query against the database
     Query(QueryProcess),
 
-    /// Generates the integration shell script
+    /// Generates the shell integration script
     #[command(after_long_help = include_str!("_examples/init.txt"))]
     Init(InitProcess),
 
@@ -78,18 +79,27 @@ pub enum CliProcess {
     /// Replace the variables of a command
     ///
     /// Anything enclosed in double brackets is considered a variable: echo {{message}}
+    ///
+    /// This command also supports an alternative <variable> syntax, to improve compatibility
     #[command(after_long_help = include_str!("_examples/replace.txt"))]
     Replace(Interactive<VariableReplaceProcess>),
 
-    /// Exports stored user commands to a file
+    /// Fix a command that is failing
+    ///
+    /// The command will be run in order to capture its output and exit code, only non-interactive commands are
+    /// supported
+    #[command(after_long_help = include_str!("_examples/fix.txt"))]
+    Fix(CommandFixProcess),
+
+    /// Exports stored user commands to an external location
     ///
     /// Commands fetched from tldr are not exported
     #[command(after_long_help = include_str!("_examples/export.txt"))]
-    Export(ExportCommandsProcess),
+    Export(Interactive<ExportCommandsProcess>),
 
-    /// Imports user commands from a file or stdin
+    /// Imports user commands from an external location
     #[command(after_long_help = include_str!("_examples/import.txt"))]
-    Import(ImportCommandsProcess),
+    Import(Interactive<ImportCommandsProcess>),
 
     /// Manages tldr integration
     #[command(name = "tldr", subcommand)]
@@ -181,6 +191,10 @@ pub struct BookmarkCommandProcess {
     /// Description of the command
     #[arg(short = 'd', long)]
     pub description: Option<String>,
+
+    /// Use AI to suggest the command and description
+    #[arg(long)]
+    pub ai: bool,
 }
 
 /// Search stored commands
@@ -196,6 +210,10 @@ pub struct SearchCommandsProcess {
     /// Whether to search for user commands only (ignoring tldr), overwriting the config
     #[arg(short = 'u', long)]
     pub user_only: bool,
+
+    /// Use AI to suggest commands instead of searching for them on the database
+    #[arg(long, requires = "query")]
+    pub ai: bool,
 }
 
 /// Replace the variables of a command
@@ -225,8 +243,21 @@ pub struct VariableReplaceProcess {
     pub use_env: bool,
 }
 
-/// Exports stored user commands
+/// Fix a command that is failing
 #[derive(Args, Debug)]
+pub struct CommandFixProcess {
+    /// The non-interactive failing command
+    pub command: String,
+
+    /// Recent history from the shell, to be used as additional context in the prompt
+    ///
+    /// It has to contain recent commands, separated by a newline, from oldest to newest
+    #[arg(long, value_name = "HISTORY")]
+    pub history: Option<String>,
+}
+
+/// Exports stored user commands
+#[derive(Args, Clone, Debug)]
 pub struct ExportCommandsProcess {
     /// Location to export commands to (writes to stdout if '-')
     ///
@@ -261,13 +292,21 @@ pub struct ExportCommandsProcess {
 }
 
 /// Imports user commands
-#[derive(Args, Debug)]
+#[derive(Args, Clone, Debug)]
 pub struct ImportCommandsProcess {
     /// Location to import commands from (reads from stdin if '-')
     ///
     /// The location type will be auto detected based on the content, if no type is specified
-    #[arg(default_value = "-")]
+    #[arg(default_value = "-", required_unless_present = "history")]
     pub location: String,
+    /// Use AI to parse and extract commands
+    #[arg(long)]
+    pub ai: bool,
+    /// Do not import the commands, just output them
+    ///
+    /// This is useful when we're not sure about the format of the location we're importing
+    #[arg(long)]
+    pub dry_run: bool,
     /// Treat the location as a file path
     #[arg(long, group = "location_type")]
     pub file: bool,
@@ -277,16 +316,14 @@ pub struct ImportCommandsProcess {
     /// Treat the location as a GitHub Gist URL or ID
     #[arg(long, group = "location_type")]
     pub gist: bool,
+    /// Treat the location as a shell history (requires --ai)
+    #[arg(long, value_enum, group = "location_type", requires = "ai")]
+    pub history: Option<HistorySource>,
     /// Import commands matching the given regular expression only
     ///
     /// The regular expression will be checked against both the command and the description
     #[arg(long, value_name = "REGEX")]
     pub filter: Option<Regex>,
-    /// Do not import the commands, just output them
-    ///
-    /// This is useful when we're not sure about the format of the location we're importing
-    #[arg(long)]
-    pub dry_run: bool,
     /// Add hastags to imported commands
     ///
     /// This argument can be specified multiple times to add more than one, hastags will be included at the end of the
@@ -304,6 +341,15 @@ pub struct ImportCommandsProcess {
     /// It will be only used for http locations
     #[arg(short = 'X', long = "request", value_enum, default_value_t = HttpMethod::GET)]
     pub method: HttpMethod,
+}
+
+#[derive(ValueEnum, Copy, Clone, PartialEq, Eq, Debug)]
+pub enum HistorySource {
+    Bash,
+    Zsh,
+    Fish,
+    Powershell,
+    Atuin,
 }
 
 #[derive(ValueEnum, Copy, Clone, PartialEq, Eq, Debug)]

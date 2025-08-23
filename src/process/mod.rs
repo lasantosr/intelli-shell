@@ -1,10 +1,9 @@
 use clap::{Args, FromArgMatches};
-use color_eyre::Result;
-use semver::Version;
 
 use crate::{component::Component, config::Config, service::IntelliShellService};
 
 pub mod export;
+pub mod fix;
 pub mod import;
 pub mod new;
 pub mod replace;
@@ -120,7 +119,7 @@ impl ProcessOutput {
 #[trait_variant::make(Send)]
 pub trait Process {
     /// Executes the process non-interactively and returns the output
-    async fn execute(self, config: Config, service: IntelliShellService) -> Result<ProcessOutput>;
+    async fn execute(self, config: Config, service: IntelliShellService) -> color_eyre::Result<ProcessOutput>;
 }
 
 /// Trait for interactive processes
@@ -131,6 +130,5 @@ pub trait InteractiveProcess: Process + FromArgMatches + Args {
         config: Config,
         service: IntelliShellService,
         inline: bool,
-        new_version: Option<Version>,
-    ) -> Result<Box<dyn Component>>;
+    ) -> color_eyre::Result<Box<dyn Component>>;
 }

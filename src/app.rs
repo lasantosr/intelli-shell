@@ -6,6 +6,7 @@ use crate::{
     cli::{CliProcess, Interactive, TldrProcess},
     component::{Component, EmptyComponent},
     config::{Config, KeyBindingsConfig},
+    errors::AppError,
     process::{InteractiveProcess, Process, ProcessOutput},
     service::IntelliShellService,
     tui::{Event, Tui},
@@ -54,8 +55,9 @@ impl App {
             CliProcess::Query(query_process) => {
                 tracing::info!("Running 'query' process");
                 tracing::debug!("Options: {:?}", query_process);
-                service.load_workspace_commands().await?;
-                self.run_non_interactive(query_process, config, service).await
+                service.load_workspace_commands().await.map_err(AppError::into_report)?;
+                self.run_non_interactive(query_process, config, service, extra_line)
+                    .await
             }
             CliProcess::Init(_) => unreachable!("Handled in main"),
             CliProcess::New(bookmark_command) => {
@@ -67,7 +69,7 @@ impl App {
             CliProcess::Search(search_commands) => {
                 tracing::info!("Running 'search' process");
                 tracing::debug!("Options: {:?}", search_commands);
-                service.load_workspace_commands().await?;
+                service.load_workspace_commands().await.map_err(AppError::into_report)?;
                 self.run_interactive(search_commands, config, service, extra_line).await
             }
             CliProcess::Replace(variable_replace) => {
@@ -76,25 +78,30 @@ impl App {
                 self.run_interactive(variable_replace, config, service, extra_line)
                     .await
             }
+            CliProcess::Fix(fix_command) => {
+                tracing::info!("Running 'fix' process");
+                tracing::debug!("Options: {:?}", fix_command);
+                self.run_non_interactive(fix_command, config, service, extra_line).await
+            }
             CliProcess::Export(export_commands) => {
                 tracing::info!("Running 'export' process");
                 tracing::debug!("Options: {:?}", export_commands);
-                self.run_non_interactive(export_commands, config, service).await
+                self.run_interactive(export_commands, config, service, extra_line).await
             }
             CliProcess::Import(import_commands) => {
                 tracing::info!("Running 'import' process");
                 tracing::debug!("Options: {:?}", import_commands);
-                self.run_non_interactive(import_commands, config, service).await
+                self.run_interactive(import_commands, config, service, extra_line).await
             }
             CliProcess::Tldr(TldrProcess::Fetch(tldr_fetch)) => {
                 tracing::info!("Running tldr 'fetch' process");
                 tracing::debug!("Options: {:?}", tldr_fetch);
-                self.run_non_interactive(tldr_fetch, config, service).await
+                self.run_non_interactive(tldr_fetch, config, service, extra_line).await
             }
             CliProcess::Tldr(TldrProcess::Clear(tldr_clear)) => {
                 tracing::info!("Running tldr 'clear' process");
                 tracing::debug!("Options: {:?}", tldr_clear);
-                self.run_non_interactive(tldr_clear, config, service).await
+                self.run_non_interactive(tldr_clear, config, service, extra_line).await
             }
         }
     }
@@ -107,7 +114,11 @@ impl App {
         process: impl Process,
         config: Config,
         service: IntelliShellService,
+        extra_line: bool,
     ) -> Result<ProcessOutput> {
+        if extra_line {
+            println!();
+        }
         process.execute(config, service).await
     }
 
@@ -121,32 +132,18 @@ impl App {
     ) -> Result<ProcessOutput> {
         // If the process hasn't enabled the interactive flag, just run it
         if !it.opts.interactive {
-            return self.run_non_interactive(it.process, config, service).await;
+            return self.run_non_interactive(it.process, config, service, extra_line).await;
         }
-
-        // Check if there's a new version available
-        let new_version = match service.check_new_version().await {
-            Ok(None) => None,
-            Ok(Some(v)) => {
-                tracing::info!("New version available: v{v}");
-                Some(v)
-            }
-            Err(err) => {
-                tracing::error!("Failed to check for new version: {err:#?}");
-                None
-            }
-        };
 
         // Converts the process into the renderable component and initializes it
         let inline = it.opts.inline || (!it.opts.full_screen && config.inline);
         let keybindings = config.keybindings.clone();
-        self.active_component = it.process.into_component(config, service, inline, new_version)?;
-        self.active_component.init().await?;
+        self.active_component = it.process.into_component(config, service, inline)?;
 
-        // Peek into the component, in case we can give a straight result
-        let peek_action = self.active_component.peek().await?;
+        // Initialize and peek into the component, in case we can give a straight result
+        let peek_action = self.active_component.init_and_peek().await?;
         if let Some(output) = self.process_action(peek_action).await? {
-            tracing::debug!("A result was received from `peek`, returning it");
+            tracing::debug!("A result was received from `init_and_peek`, returning it");
             return Ok(output);
         }
 
@@ -230,11 +227,10 @@ impl App {
                     next_component.name()
                 );
                 self.active_component = next_component;
-                self.active_component.init().await?;
-                // Peek into the new component to see if it can provide an immediate result
-                let peek_action = self.active_component.peek().await?;
+                // Initialize and peek into the new component to see if it can provide an immediate result
+                let peek_action = self.active_component.init_and_peek().await?;
                 if let Some(output) = Box::pin(self.process_action(peek_action)).await? {
-                    tracing::debug!("A result was received from `peek`, returning it");
+                    tracing::debug!("A result was received from `init_and_peek`, returning it");
                     return Ok(Some(output));
                 }
             }

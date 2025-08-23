@@ -4,3 +4,5 @@
 #
 # See https://rust-lang.github.io/rust-clippy/master/index.html for
 # the complete list of lints.
+
+too-many-arguments-threshold = 10

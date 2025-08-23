@@ -58,6 +58,8 @@ delay = 250
 mode = "auto"
 # Whether to search for user commands only by default when initiating a search (excluding tldr and workspace)
 user_only = false
+# Whether to directly execute the command if it matches an alias exactly, instead of just selecting
+exec_on_alias_match = false
 
 # --------------------------------------------------------------
 #   Logs 
@@ -101,6 +103,8 @@ delete = "ctrl-d"
 confirm = ["tab", "enter"]
 # Execute the action associated with the highlighted record or item (e.g., run a command)
 execute = ["ctrl-enter", "ctrl-r"]
+# Prompt ai about suggestions (e.g. when searching for commands)
+ai = ["ctrl-i", "ctrl-x"]
 # Toggle the search mode
 search_mode = "ctrl-s"
 # Toggle whether to search for user commands only or include workspace and tldr's
@@ -135,13 +139,13 @@ comment = "italic green"
 # The style used for errors
 error = "dark red"
 # The background color for the highlighted item in a list. Use "none" for no background color
-highlight = "dark gray"
+highlight = "249"
 # The string symbol displayed next to the highlighted item
 highlight_symbol = "» "
 # The primary style applied specifically to a highlighted item
 highlight_primary = "default"
 # The secondary style applied specifically to a highlighted item
-highlight_secondary = "dim"
+highlight_secondary = "default"
 # The accent style applied specifically to a highlighted item
 highlight_accent = "yellow"
 # The comments style applied specifically to a highlighted item
@@ -203,3 +207,153 @@ text.auto.fuzzy = 1.0
 text.auto.relaxed = 0.5
 # A boost multiplier to add when the search term matches the start of a command
 text.auto.root = 2.0
+
+# --------------------------------------------------------------
+#   AI Integration
+# --------------------------------------------------------------
+
+# Configures all AI-powered features, such as command suggestions, error correction, and automated command imports.
+#
+# This section is organized into three main parts:
+# 1. Task Assignment: Assign a model alias to a specific task, like `suggest` or `fix`
+# 2. Model Catalog: Define the details for each model alias used in the task assignment
+# 3. Custom Prompts: Fine-tune the instruction templates sent to the AI for each task
+[ai]
+# A global switch to enable or disable all AI-powered functionality
+enabled = false
+
+# --- Task Assignment ---
+# Assign models to tasks by their alias (which must be defined in the Model Catalog below)
+[ai.models]
+# The alias of the model to use for generating command templates from natural language
+suggest = "gemini"
+# The alias of the model used to fix or explain a failing command
+fix = "gemini"
+# The alias of the model to use when importing commands
+import = "gemini"
+# The alias of a model to use as a fallback if the primary model fails due to rate limits
+fallback = "gemini-fallback"
+
+# --- Model Catalog ---
+# This is where you define the specific configuration for each AI model alias used above.
+#
+# Supported Providers and Default API Key Environment Variables:
+# - "openai":    OPENAI_API_KEY
+# - "gemini":    GEMINI_API_KEY
+# - "anthropic": ANTHROPIC_API_KEY
+# - "ollama":    OLLAMA_API_KEY (often not required for local instances)
+
+[ai.catalog.gemini]
+provider = "gemini"
+model = "gemini-2.5-flash"
+
+[ai.catalog.gemini-fallback]
+provider = "gemini"
+model = "gemini-2.0-flash-lite"
+
+# --- AI Prompts ---
+# This section allows for the customization of the prompts sent to the AI for different tasks.
+# You can modify the text to better suit your needs or instruct the AI to behave differently.
+#
+# The following placeholders are available and will be replaced with contextual information before the prompt is sent to the model:
+# - ##OS_SHELL_INFO##: Replaced with details about the current operating system and shell
+# - ##WORKING_DIR##: Replaced with the current working directory, including a tree-like view of its immediate contents
+# - ##SHELL_HISTORY##: Replaced with the last few commands from the shell history (only available for the `fix` prompt)
+[ai.prompts]
+# Prompt used to generate command templates from natural language
+suggest = """
+##OS_SHELL_INFO##
+##WORKING_DIR##
+### Instructions
+You are an expert CLI assistant. Your task is to generate shell command templates based on the user's request.
+
+Your entire response MUST be a single, valid JSON object conforming to the provided schema and nothing else.
+
+### Command Template Syntax
+When creating the `command` template string, you must use the following placeholder syntax:
+
+- **Standard Placeholder**: `{{variable-name}}`
+  - Use for regular arguments that the user needs to provide.
+  - _Example_: `echo "Hello, {{user-name}}!"`
+
+- **Choice Placeholder**: `{{option1|option2}}`
+  - Use when the user must choose from a specific set of options.
+  - _Example_: `git reset {{--soft|--hard}} HEAD~1`
+
+- **Function Placeholder**: `{{variable:function}}`
+  - Use to apply a transformation function to the user's input. Multiple functions can be chained (e.g., `{{variable:snake:upper}}`).
+  - Allowed functions: `kebab`, `snake`, `upper`, `lower`, `url`.
+  - _Example_: For a user input of "My New Feature", `git checkout -b {{branch-name:kebab}}` would produce `git checkout -b my-new-feature`.
+
+- **Secret/Ephemeral Placeholder**: `{{{...}}}`
+  - Use triple curly braces for sensitive values (like API keys, passwords) or for ephemeral content (like a commit message or a description). 
+    This syntax can wrap any of the placeholder types above.
+  - _Example_: `export GITHUB_TOKEN={{{api-key}}}` or `git commit -m "{{{message}}}"`
+
+### Suggestion Strategy
+- If the user's request is **clear and unambiguous**, provide a single suggestion object in the list.
+- If the user's request is **ambiguous** or has multiple valid interpretations (e.g., "undo a commit" could mean `reset` or `revert`), 
+  provide a distinct suggestion object for each interpretation, ordered by descending relevance.
+"""
+# Prompt used to fix or explain a failing command
+fix = """
+##OS_SHELL_INFO##
+##WORKING_DIR##
+##SHELL_HISTORY##
+### Instructions
+You are an expert command-line assistant. Your mission is to analyze a failed shell command and its error output, 
+diagnose the root cause, and provide a structured, actionable solution in a single JSON object.
+
+### Output Schema
+Your response MUST be a single, valid JSON object with no surrounding text or markdown. It must conform to the following structure:
+- `summary`: A very brief, 2-5 word summary of the error category. Examples: "Command Not Found", "Permission Denied", "Invalid Argument", "Git Typo".
+- `diagnosis`: A detailed, human-readable explanation of the root cause of the error. This section should explain *what* went wrong and *why*, based on the provided command and error message. It should not contain the solution.
+- `proposal`: A human-readable description of the recommended next steps. This can be a description of a fix, diagnostic commands to run, or a suggested workaround.
+- `fixed_command`: The corrected, valid, ready-to-execute command string. This field should *only* be populated if a direct command correction is the primary solution (e.g., fixing a typo). For complex issues requiring explanation or privilege changes, this should be an empty string.
+
+### Core Rules
+1.  **JSON Only**: Your entire output must be a single, raw JSON object. Do not wrap it in code blocks or add any explanatory text.
+2.  **Holistic Analysis**: Analyze the command's context, syntax, and common user errors. Don't just parse the error message. Consider the user's likely intent.
+3.  **Strict Wrapping**: Hard-wrap all string values within the JSON to a maximum of 80 characters.
+4.  **`fixed_command` Logic**: Always populate `fixed_command` with the most likely command to resolve the error. Only leave this field as an empty string if the user's intent is unclear from the context.
+"""
+# Prompt used to parse command templates when importing
+import = """
+### Instructions
+You are an expert tool that extracts and generalizes shell command patterns from arbitrary text content. Your goal is to analyze the provided text, identify all unique command patterns, and present them as a list of suggestions.
+
+Your entire response MUST be a single, valid JSON object conforming to the provided schema. Output nothing but the JSON object itself.
+
+Refer to the syntax definitions, process, and example below to construct your response.
+
+### Command Template Syntax
+When creating the `command` template string, you must use the following placeholder syntax:
+
+- **Standard Placeholder**: `{{variable-name}}`
+  - Use for regular arguments that the user needs to provide.
+  - _Example_: `echo "Hello, {{user-name}}!"`
+
+- **Choice Placeholder**: `{{option1|option2}}`
+  - Use when the user must choose from a specific set of options.
+  - _Example_: `git reset {{--soft|--hard}} HEAD~1`
+
+- **Function Placeholder**: `{{variable:function}}`
+  - Use to apply a transformation function to the user's input. Multiple functions can be chained (e.g., `{{variable:snake:upper}}`).
+  - Allowed functions: `kebab`, `snake`, `upper`, `lower`, `url`.
+  - _Example_: For a user input of "My New Feature", `git checkout -b {{branch-name:kebab}}` would produce `git checkout -b my-new-feature`.
+
+- **Secret/Ephemeral Placeholder**: `{{{...}}}`
+  - Use triple curly braces for sensitive values (like API keys, passwords) or for ephemeral content (like a commit message or a description). 
+    This syntax can wrap any of the placeholder types above.
+  - _Example_: `export GITHUB_TOKEN={{{api-key}}}` or `git commit -m "{{{message}}}"`
+
+### Core Process
+1.  **Extract & Generalize**: Scan the text to find all shell commands. Generalize each one into a template by replacing specific values with the appropriate placeholder type defined in the **Command Template Syntax** section.
+2.  **Deduplicate**: Consolidate multiple commands that follow the same pattern into a single, representative template. For example, `git checkout bugfix/some-bug` and `git checkout feature/login` must be merged into a single `git checkout {{feature|bugfix}}/{{{description:kebab}}}` suggestion.
+
+### Output Generation
+For each unique and deduplicated command pattern you identify:
+-   Create a suggestion object containing a `description` and a `command`.
+-   The `description` must be a clear, single-sentence explanation of the command's purpose.
+-   The `command` must be the final, generalized template string from the core process.
+"""

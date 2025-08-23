@@ -11,13 +11,13 @@ use intelli_shell::{
     app::App,
     cli::{Cli, CliProcess, Shell},
     config::Config,
-    errors, logging,
+    errors::{self, AppError},
+    logging,
     process::{OutputInfo, ProcessOutput},
     service::IntelliShellService,
     storage::SqliteStorage,
-    utils::{ShellType, get_shell},
+    utils::execute_shell_command_inherit,
 };
-use tokio::process::Command;
 
 const EXECUTE_PREFIX: &str = "____execute____";
 const EXECUTED_OUTPUT: &str = "####EXECUTED####";
@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
     // Initialize logging
     let logs_path = logging::init(&config)?;
 
-    tracing::info!("intelli-shell v{}", env!("CARGO_PKG_VERSION"),);
+    tracing::info!("intelli-shell v{}", env!("CARGO_PKG_VERSION"));
 
     // Initialize error handling
     errors::init(
@@ -65,8 +65,16 @@ async fn main() -> Result<()> {
             }
 
             // Initialize the storage and the service
-            let storage = SqliteStorage::new(&config.data_dir).await?;
-            let service = IntelliShellService::new(storage, config.tuning, &config.data_dir, config.check_updates);
+            let storage = SqliteStorage::new(&config.data_dir)
+                .await
+                .map_err(AppError::into_report)?;
+            let service = IntelliShellService::new(
+                storage,
+                config.tuning,
+                config.ai.clone(),
+                &config.data_dir,
+                config.check_updates,
+            );
 
             // Run the app
             let output = App::new()?.run(config, service, args.process, args.extra_line).await?;
@@ -103,15 +111,7 @@ async fn execute_command(command: String, file_output_path: Option<String>, skip
         return Ok(());
     }
 
-    // Let the OS shell parse the command, supporting complex commands, arguments, and pipelines
-    let shell = get_shell();
-    let shell_arg = match shell {
-        ShellType::Cmd => "/c",
-        ShellType::WindowsPowerShell => "-Command",
-        _ => "-c",
-    };
-
-    tracing::info!("Executing command: {shell} {shell_arg} -- {command}");
+    // Write the file output, if any
     let is_file_out = file_output_path.is_some();
     if let Some(file_output) = file_output_path {
         let fileout = EXECUTED_OUTPUT;
@@ -124,36 +124,10 @@ async fn execute_command(command: String, file_output_path: Option<String>, skip
         fs::write(path_output, fileout).wrap_err_with(|| format!("Failed to write to fileout path: {file_output}"))?;
     }
 
-    // Print the command on stderr
-    let write_result = if !is_file_out {
-        writeln!(
-            io::stderr(),
-            "{}{command}",
-            env::var("INTELLI_EXEC_PROMPT").as_deref().unwrap_or("> "),
-        )
-    } else {
-        writeln!(io::stderr(), "{command}")
-    };
-    // Handle broken pipe
-    if let Err(err) = write_result {
-        if err.kind() != io::ErrorKind::BrokenPipe {
-            return Err(err).wrap_err("Failed writing to stderr");
-        }
-        tracing::error!("Failed writing to stderr: Broken pipe");
-    };
+    // Execute the command
+    let status = execute_shell_command_inherit(&command, !is_file_out).await?;
 
-    // Build the command to execute
-    let mut cmd = Command::new(shell.to_string());
-    cmd.arg(shell_arg);
-    cmd.arg(&command);
-
-    // By default, the child process inherits the parent's stdin, stdout, and stderr
-    let status = cmd
-        .status()
-        .await
-        .with_context(|| format!("Failed to execute command: `{command}`"))?;
-
-    // Check if the command was not successful
+    // Check if the command was successful or not
     if !status.success() {
         if let Some(code) = status.code() {
             process::exit(code);
@@ -239,17 +213,18 @@ fn should_use_color(stream_is_tty: bool) -> bool {
     }
 
     // 2. CLICOLOR_FORCE environment variable
-    if let Ok(force_val) = env::var("CLICOLOR_FORCE") {
-        if !force_val.is_empty() && force_val != "0" {
-            return true;
-        }
+    if let Ok(force_val) = env::var("CLICOLOR_FORCE")
+        && !force_val.is_empty()
+        && force_val != "0"
+    {
+        return true;
     }
 
     // 3. CLICOLOR environment variable
-    if let Ok(clicolor_val) = env::var("CLICOLOR") {
-        if clicolor_val == "0" {
-            return false;
-        }
+    if let Ok(clicolor_val) = env::var("CLICOLOR")
+        && clicolor_val == "0"
+    {
+        return false;
     }
 
     // 4. TTY status (default if no strong opinions from env vars)

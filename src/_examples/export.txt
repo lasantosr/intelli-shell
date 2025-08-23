@@ -2,17 +2,11 @@ Examples:
   # Export user commands to stdout
   intelli-shell export
 
-  # Export filtered user commands to a file
-  intelli-shell export --filter kubectl kube.commands
+  # Interactively export filtered user commands to a file
+  intelli-shell export -i --filter kubectl kube.commands
 
   # Export user commands to the default gist on the config
   intelli-shell export gist
-
-  # Export user commands to a gist (GIST_TOKEN env variable with permissions must be set)
-  intelli-shell export https://gist.github.com/username/1234567890abcdef1234567890abcdef
-
-  # Export user commands passing a regex filter to a specific file of the default gist
-  intelli-shell export --filter docker --gist docker_commands.sh
 
   # Export user commands to a specific file of a gist
   intelli-shell export --gist 1234567890abcdef1234567890abcdef/my_commands.sh

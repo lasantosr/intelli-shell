@@ -4,8 +4,8 @@ use crate::config::Theme;
 
 /// The number of ticks an error message will be displayed.
 ///
-/// Calculated as 3 seconds * 4 ticks per second.
-const ERROR_MESSAGE_DISPLAY_TICKS: u16 = 3 * 4;
+/// Calculated as 3 seconds * 10 ticks per second.
+const ERROR_MESSAGE_DISPLAY_TICKS: u16 = 3 * 10;
 
 /// Represents a popup for displaying error messages temporarily.
 ///

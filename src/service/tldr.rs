@@ -1,7 +1,5 @@
-use std::time::Duration;
-
 use color_eyre::{
-    Report, Result,
+    Report,
     eyre::{Context, OptionExt, eyre},
 };
 use futures_util::{StreamExt, TryStreamExt, stream};
@@ -9,13 +7,46 @@ use git2::{
     FetchOptions, Repository,
     build::{CheckoutBuilder, RepoBuilder},
 };
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use tokio::fs::File;
+use tokio::{fs::File, sync::mpsc};
 use tracing::instrument;
 use walkdir::WalkDir;
 
 use super::{IntelliShellService, import_export::parse_commands};
-use crate::model::SOURCE_TLDR;
+use crate::{errors::Result, model::SOURCE_TLDR};
+
+/// Progress events for the `tldr fetch` operation
+#[derive(Debug)]
+pub enum TldrFetchProgress {
+    /// Indicates the status of the tldr git repository
+    Repository(RepoStatus),
+    /// Indicates that the tldr command files are being located
+    LocatingFiles,
+    /// Indicates that the tldr command files have been located
+    FilesLocated(u64),
+    /// Indicates the start of the file processing stage
+    ProcessingStart(u64),
+    /// Indicates that a single file is being processed
+    ProcessingFile(String),
+    /// Indicates that a single file has been processed
+    FileProcessed(String),
+}
+
+/// The status of the tldr git repository
+#[derive(Debug)]
+pub enum RepoStatus {
+    /// Cloning the repository for the first time
+    Cloning,
+    /// The repository has been successfully cloned
+    DoneCloning,
+    /// Fetching latest changes
+    Fetching,
+    /// The repository is already up-to-date
+    UpToDate,
+    /// Updating the local repository
+    Updating,
+    /// The repository has been successfully updated
+    DoneUpdating,
+}
 
 impl IntelliShellService {
     /// Removes tldr commands matching the given criteria.
@@ -30,17 +61,14 @@ impl IntelliShellService {
     ///
     /// Returns the number of new commands inserted and potentially updated (because they already existed)
     #[instrument(skip_all)]
-    pub async fn fetch_tldr_commands(&self, category: Option<String>, commands: Vec<String>) -> Result<(u64, u64)> {
-        let m = MultiProgress::new();
-
+    pub async fn fetch_tldr_commands(
+        &self,
+        category: Option<String>,
+        commands: Vec<String>,
+        progress: mpsc::Sender<TldrFetchProgress>,
+    ) -> Result<(u64, u64)> {
         // Setup repository
-        let pb1 = m.add(ProgressBar::new_spinner());
-        pb1.set_style(style_active());
-        pb1.set_prefix("[1/3]");
-        pb1.enable_steady_tick(Duration::from_millis(100));
-        self.setup_tldr_repo(&pb1).await?;
-        pb1.set_style(style_done());
-        pb1.finish();
+        self.setup_tldr_repo(progress.clone()).await?;
 
         // Determine which categories to import
         let categories = if let Some(cat) = category {
@@ -75,11 +103,7 @@ impl IntelliShellService {
         let pages_path = self.tldr_repo_path.join("pages");
 
         tracing::info!("Locating files for categories: {}", categories.join(", "));
-        let pb2 = m.add(ProgressBar::new_spinner());
-        pb2.set_style(style_active());
-        pb2.set_prefix("[2/3]");
-        pb2.enable_steady_tick(Duration::from_millis(100));
-        pb2.set_message("Locating files ...");
+        progress.send(TldrFetchProgress::LocatingFiles).await.ok();
 
         // Iterate over directory entries
         let mut command_files = Vec::new();
@@ -133,32 +157,27 @@ impl IntelliShellService {
             command_files.push((path.to_path_buf(), category, file_name_no_ext.to_owned()));
         }
 
-        tracing::info!("Found {} files to be processed", command_files.len());
-        pb2.set_style(style_done());
-        pb2.finish_with_message(format!("Found {} files", command_files.len()));
+        progress
+            .send(TldrFetchProgress::FilesLocated(command_files.len() as u64))
+            .await
+            .ok();
 
-        let pb3 = m.add(ProgressBar::new(command_files.len() as u64));
-        pb3.set_style(
-            ProgressStyle::with_template("{prefix:.blue.bold} [{bar:40.cyan/blue}] {pos}/{len} {wide_msg}")
-                .unwrap()
-                .progress_chars("##-"),
-        );
-        pb3.set_prefix("[3/3]");
-        pb3.set_message("Processing files ...");
-        let spinner_style = ProgressStyle::with_template("      {spinner:.dim.white} {msg}").unwrap();
+        tracing::info!("Found {} files to be processed", command_files.len());
+
+        progress
+            .send(TldrFetchProgress::ProcessingStart(command_files.len() as u64))
+            .await
+            .ok();
 
         // Create a stream that reads and parses each command file concurrently
-        let pb3_clone = pb3.clone();
         let commands_stream = stream::iter(command_files)
             .map(move |(path, category, command)| {
-                let m_clone = m.clone();
-                let spinner_style_clone = spinner_style.clone();
-                let pb3_clone = pb3_clone.clone();
+                let progress = progress.clone();
                 async move {
-                    // Add a temporary spinner for this specific file operation
-                    let spinner = m_clone.add(ProgressBar::new_spinner());
-                    spinner.set_style(spinner_style_clone);
-                    spinner.set_message(format!("Processing {command} ..."));
+                    progress
+                        .send(TldrFetchProgress::ProcessingFile(command.clone()))
+                        .await
+                        .ok();
 
                     // Open and parse the file
                     let file = File::open(&path)
@@ -166,9 +185,7 @@ impl IntelliShellService {
                         .wrap_err_with(|| format!("Failed to open tldr file: {}", path.display()))?;
                     let stream = parse_commands(file, vec![], category, SOURCE_TLDR);
 
-                    // When done, remove the spinner for this file
-                    spinner.finish_and_clear();
-                    pb3_clone.inc(1);
+                    progress.send(TldrFetchProgress::FileProcessed(command)).await.ok();
                     Ok::<_, Report>(stream)
                 }
             })
@@ -176,104 +193,99 @@ impl IntelliShellService {
             .try_flatten();
 
         // Import the commands
-        let (new, updated) = self.storage.import_commands(commands_stream, None, true, false).await?;
-
-        pb3.set_style(style_done());
-        pb3.finish_with_message(format!("{} comands processed", new + updated));
-
-        Ok((new, updated))
+        self.storage.import_commands(commands_stream, true, false).await
     }
 
     #[instrument(skip_all)]
-    async fn setup_tldr_repo(&self, pb: &ProgressBar) -> Result<bool> {
+    async fn setup_tldr_repo(&self, progress: mpsc::Sender<TldrFetchProgress>) -> Result<bool> {
         const BRANCH: &str = "main";
         const REPO_URL: &str = "https://github.com/tldr-pages/tldr.git";
 
-        if self.tldr_repo_path.exists() {
-            tracing::info!("Fetching latest tldr changes ...");
-            pb.set_message("Fetching latest tldr changes ...");
+        let tldr_repo_path = self.tldr_repo_path.clone();
 
-            // Open the existing repository.
-            let repo = Repository::open(&self.tldr_repo_path).wrap_err("Failed to open existing tldr repository")?;
+        tokio::task::spawn_blocking(move || {
+            let send_progress = |status| {
+                // Use blocking_send as we are in a sync context
+                progress.blocking_send(TldrFetchProgress::Repository(status)).ok();
+            };
+            if tldr_repo_path.exists() {
+                tracing::info!("Fetching latest tldr changes ...");
+                send_progress(RepoStatus::Fetching);
 
-            // Get the 'origin' remote
-            let mut remote = repo.find_remote("origin")?;
+                // Open the existing repository.
+                let repo = Repository::open(&tldr_repo_path).wrap_err("Failed to open existing tldr repository")?;
 
-            // Configure fetch options for a shallow fetch
-            let mut fetch_options = FetchOptions::new();
-            fetch_options.depth(1);
+                // Get the 'origin' remote
+                let mut remote = repo.find_remote("origin")?;
 
-            // Fetch the latest changes from the remote 'main' branch
-            let refspec = format!("refs/heads/{BRANCH}:refs/remotes/origin/{BRANCH}");
-            remote
-                .fetch(&[refspec], Some(&mut fetch_options), None)
-                .wrap_err("Failed to fetch from tldr remote")?;
+                // Configure fetch options for a shallow fetch
+                let mut fetch_options = FetchOptions::new();
+                fetch_options.depth(1);
 
-            // Get the commit OID from the fetched data (FETCH_HEAD)
-            let fetch_head = repo.find_reference("FETCH_HEAD")?;
-            let fetch_commit_oid = fetch_head
-                .target()
-                .ok_or_else(|| eyre!("FETCH_HEAD is not a direct reference"))?;
+                // Fetch the latest changes from the remote 'main' branch
+                let refspec = format!("refs/heads/{BRANCH}:refs/remotes/origin/{BRANCH}");
+                remote
+                    .fetch(&[refspec], Some(&mut fetch_options), None)
+                    .wrap_err("Failed to fetch from tldr remote")?;
 
-            // Get the OID of the current commit on the local branch
-            let local_ref_name = format!("refs/heads/{BRANCH}");
-            let local_commit_oid = repo.find_reference(&local_ref_name)?.target();
+                // Get the commit OID from the fetched data (FETCH_HEAD)
+                let fetch_head = repo.find_reference("FETCH_HEAD")?;
+                let fetch_commit_oid = fetch_head
+                    .target()
+                    .ok_or_else(|| eyre!("FETCH_HEAD is not a direct reference"))?;
 
-            // If the commit OIDs are the same, the repo is already up-to-date
-            if Some(fetch_commit_oid) == local_commit_oid {
-                tracing::info!("Repository is already up-to-date");
-                pb.set_message("Up-to-date tldr repository");
-                return Ok(false);
+                // Get the OID of the current commit on the local branch
+                let local_ref_name = format!("refs/heads/{BRANCH}");
+                let local_commit_oid = repo.find_reference(&local_ref_name)?.target();
+
+                // If the commit OIDs are the same, the repo is already up-to-date
+                if Some(fetch_commit_oid) == local_commit_oid {
+                    tracing::info!("Repository is already up-to-date");
+                    send_progress(RepoStatus::UpToDate);
+                    return Ok(false);
+                }
+
+                tracing::info!("Updating to the latest version ...");
+                send_progress(RepoStatus::Updating);
+
+                // Find the local branch reference
+                let mut local_ref = repo.find_reference(&local_ref_name)?;
+                // Update the local branch to point directly to the newly fetched commit
+                let msg = format!("Resetting to latest commit {fetch_commit_oid}");
+                local_ref.set_target(fetch_commit_oid, &msg)?;
+
+                // Point HEAD to the updated local branch
+                repo.set_head(&local_ref_name)?;
+
+                // Checkout the new HEAD to update the files in the working directory
+                let mut checkout_builder = CheckoutBuilder::new();
+                checkout_builder.force();
+                repo.checkout_head(Some(&mut checkout_builder))?;
+
+                tracing::info!("Repository successfully updated");
+                send_progress(RepoStatus::DoneUpdating);
+                Ok(true)
+            } else {
+                tracing::info!("Performing a shallow clone of '{REPO_URL}' ...");
+                send_progress(RepoStatus::Cloning);
+
+                // Configure fetch options for a shallow fetch
+                let mut fetch_options = FetchOptions::new();
+                fetch_options.depth(1);
+
+                // Clone the repository
+                RepoBuilder::new()
+                    .branch(BRANCH)
+                    .fetch_options(fetch_options)
+                    .clone(REPO_URL, &tldr_repo_path)
+                    .wrap_err("Failed to clone tldr repository")?;
+
+                tracing::info!("Repository successfully cloned");
+                send_progress(RepoStatus::DoneCloning);
+                Ok(true)
             }
-
-            tracing::info!("Updating to the latest version ...");
-            pb.set_message("Updating tldr repository ...");
-
-            // Find the local branch reference
-            let mut local_ref = repo.find_reference(&local_ref_name)?;
-            // Update the local branch to point directly to the newly fetched commit
-            let msg = format!("Resetting to latest commit {fetch_commit_oid}");
-            local_ref.set_target(fetch_commit_oid, &msg)?;
-
-            // Point HEAD to the updated local branch
-            repo.set_head(&local_ref_name)?;
-
-            // Checkout the new HEAD to update the files in the working directory
-            let mut checkout_builder = CheckoutBuilder::new();
-            checkout_builder.force();
-            repo.checkout_head(Some(&mut checkout_builder))?;
-
-            tracing::info!("Repository successfully updated");
-            pb.set_message("Updated tldr repository");
-            Ok(true)
-        } else {
-            tracing::info!("Performing a shallow clone of '{REPO_URL}' ...");
-            pb.set_message("Cloning tldr repository ...");
-
-            // Configure fetch options for a shallow fetch
-            let mut fetch_options = FetchOptions::new();
-            fetch_options.depth(1);
-
-            // Clone the repository
-            RepoBuilder::new()
-                .branch(BRANCH)
-                .fetch_options(fetch_options)
-                .clone(REPO_URL, &self.tldr_repo_path)
-                .wrap_err("Failed to clone tldr repository")?;
-
-            tracing::info!("Repository successfully cloned");
-            pb.set_message("Cloned tldr repository");
-            Ok(true)
-        }
+        })
+        .await
+        .wrap_err("tldr repository task failed")?
     }
-}
-
-fn style_active() -> ProgressStyle {
-    ProgressStyle::with_template("{prefix:.blue.bold} {spinner} {wide_msg}")
-        .unwrap()
-        .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-}
-
-fn style_done() -> ProgressStyle {
-    ProgressStyle::with_template("{prefix:.green.bold} {wide_msg}").unwrap()
 }

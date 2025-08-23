@@ -18,6 +18,9 @@ When you use this command, IntelliShell's variable replacement UI will open, pro
 variable. The value you provide will be stored as a suggestion for the next time you use a `{{user}}` variable in an
 `echo` command.
 
+> **Note**: While `{{...}}` is the primary syntax for variables, `<...>` is also accepted for compatibility when
+> replacing labels or importing commands from other systems.
+
 ## Secret Variables
 
 Some variables, like comments, API tokens or passwords, shouldn't be saved in your suggestion history. You can mark a
@@ -92,6 +95,8 @@ This means:
 
 This system gives you fine-grained control over which commands share suggestion histories, helping you keep different
 contexts neatly organized.
+
+---
 
 Now that you can create powerful, reusable command templates, let's look at how to manage commands that are specific to
 your current workspace in [**Workspace-Specific Commands**](./workspace_commands.md).

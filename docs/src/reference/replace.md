@@ -1,11 +1,15 @@
 # `replace`
 
 The `replace` command populates variables within a command string. Its primary function is to take a command
-template containing placeholders (e.g., `{{variable}}`) and fill them in, either through command-line arguments or an
-interactive prompt.
+template containing placeholders and fill them in, either through command-line arguments or an interactive prompt.
 
 This is the underlying command that powers variable substitution when you select a command from the search UI or use the
-`ctrl+l` hotkey.
+<kbd>Ctrl</kbd>+<kbd>L</kbd> hotkey.
+
+## Variable Syntax
+
+IntelliShell primarily uses the `{{variable-name}}` format for placeholders, but it also support the `<variable_name>`
+format for compatibility with other tools or examples.
 
 ## Usage
 
@@ -16,8 +20,9 @@ intelli-shell replace [OPTIONS] [COMMAND_STRING]
 ## Arguments
 
 - **`COMMAND_STRING`**
-    The command template containing variables to be replaced. If this argument is omitted or set to `-`, the
-    command will be read from standard input, allowing for piping.
+  
+  The command template containing variables to be replaced. If this argument is omitted or set to `-`, the
+  command will be read from standard input, allowing for piping.
 
 ## Options
 
@@ -30,12 +35,9 @@ intelli-shell replace [OPTIONS] [COMMAND_STRING]
 
 - `-E, --use-env`
   
-    Automatically populate any remaining variables from their corresponding environment variables. This is a
-    broader version of `--env <KEY>`, giving access to all environment variables without listing them explicitly.
-    Variable names are converted to `SCREAMING_SNAKE_CASE` to find a matching environment variable (e.g., `{{http-header}}`
-    maps to `HTTP_HEADER`).
-
-    This is always enabled on interactive mode, where variables will be presented as options.
+  Automatically populates any remaining variables from their corresponding environment variables (e.g., `{{api-key}}`
+  maps to `API_KEY`). This gives access to all environment variables without listing them explicitly. This is always
+  enabled in interactive mode.
 
 - `-i, --interactive`
   
@@ -51,7 +53,7 @@ intelli-shell replace [OPTIONS] [COMMAND_STRING]
 
 ## Examples
 
-### 1. Basic Non-Interactive Replacement
+### Basic Non-Interactive Replacement
 
 Provide values for variables directly on the command line.
 
@@ -60,7 +62,7 @@ intelli-shell replace 'echo "Hello, {{name}}!"' --env name=World
 # Output: echo "Hello, World!"
 ```
 
-### 2. Using Standard Input (Piping)
+### Using Standard Input (Piping)
 
 Pipe a command template into `replace` to have its variables filled.
 
@@ -69,7 +71,7 @@ echo 'curl -H "Auth: {{token}}"' | intelli-shell replace --env token=xyz123
 # Output: curl -H "Auth: xyz123"
 ```
 
-### 3. Populating from Environment Variables
+### Populating from Environment Variables
 
 Use existing environment variables to populate command templates.
 
@@ -82,7 +84,7 @@ intelli-shell replace 'tar -czvf archive.tar.gz {{filename}}' --use-env
 # Output: tar -czvf archive.tar.gz report.pdf
 ```
 
-### 4. Launching the Interactive UI
+### Launching the Interactive UI
 
 If you prefer to fill in variables using the TUI, use the `--interactive` flag.
 

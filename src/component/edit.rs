@@ -1,20 +1,20 @@
-use std::mem;
+use std::{mem, sync::Arc};
 
 use async_trait::async_trait;
 use color_eyre::Result;
 use enum_cycling::EnumCycle;
+use parking_lot::RwLock;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
 };
-use semver::Version;
 use tracing::instrument;
 
 use super::Component;
 use crate::{
     app::Action,
     config::Theme,
-    errors::{InsertError, UpdateError},
+    errors::AppError,
     format_msg,
     model::Command,
     process::ProcessOutput,
@@ -26,36 +26,46 @@ use crate::{
 #[derive(strum::EnumIs)]
 pub enum EditCommandComponentMode {
     /// The component is used to create a new command
-    New,
-    /// The component is to edit an existing command
+    New { ai: bool },
+    /// The component is used to edit an existing command
     /// It holds the parent component to switch back to after editing is complete.
     Edit { parent: Box<dyn Component> },
+    /// The component is used to edit a command in memory.
+    /// It holds the parent component to switch back to after editing is complete and a callback to run.
+    EditMemory {
+        parent: Box<dyn Component>,
+        callback: Arc<dyn Fn(Command) -> Result<()> + Send + Sync>,
+    },
+    /// A special case to be used in mem::replace to extract the owned variables
+    Empty,
 }
 
 /// A component for creating or editing a [`Command`]
 pub struct EditCommandComponent {
     /// The visual theme for styling the component
     theme: Theme,
-    /// The operational mode
-    mode: EditCommandComponentMode,
     /// Service for interacting with command storage
     service: IntelliShellService,
-    /// The command being edited or created
-    command: Command,
     /// The layout for arranging the input fields
     layout: Layout,
+    /// The operational mode
+    mode: EditCommandComponentMode,
+    /// The state of the component
+    state: Arc<RwLock<EditCommandComponentState<'static>>>,
+}
+struct EditCommandComponentState<'a> {
+    /// The command being edited or created
+    command: Command,
     /// The currently focused input field
     active_field: ActiveField,
     /// Text area for the command's alias
-    alias: CustomTextArea<'static>,
+    alias: CustomTextArea<'a>,
     /// Text area for the command itself
-    cmd: CustomTextArea<'static>,
+    cmd: CustomTextArea<'a>,
     /// Text area for the command's description
-    description: CustomTextArea<'static>,
-    /// The new version banner
-    new_version: NewVersionBanner,
+    description: CustomTextArea<'a>,
     /// Popup for displaying error messages
-    error: ErrorPopup<'static>,
+    error: ErrorPopup<'a>,
 }
 
 /// Represents the currently active (focused) input field
@@ -72,7 +82,6 @@ impl EditCommandComponent {
         service: IntelliShellService,
         theme: Theme,
         inline: bool,
-        new_version: Option<Version>,
         command: Command,
         mode: EditCommandComponentMode,
     ) -> Self {
@@ -107,7 +116,6 @@ impl EditCommandComponent {
             ActiveField::Command
         };
 
-        let new_version = NewVersionBanner::new(&theme, new_version);
         let error = ErrorPopup::empty(&theme);
 
         let layout = if inline {
@@ -119,20 +127,22 @@ impl EditCommandComponent {
         Self {
             theme,
             service,
-            command,
-            mode,
             layout,
-            active_field,
-            alias,
-            cmd,
-            description,
-            new_version,
-            error,
+            mode,
+            state: Arc::new(RwLock::new(EditCommandComponentState {
+                command,
+                active_field,
+                alias,
+                cmd,
+                description,
+                error,
+            })),
         }
     }
-
+}
+impl<'a> EditCommandComponentState<'a> {
     /// Returns a mutable reference to the currently active input
-    fn active_input(&mut self) -> &mut CustomTextArea<'static> {
+    fn active_input(&mut self) -> &mut CustomTextArea<'a> {
         match self.active_field {
             ActiveField::Alias => &mut self.alias,
             ActiveField::Command => &mut self.cmd,
@@ -162,52 +172,112 @@ impl Component for EditCommandComponent {
     }
 
     #[instrument(skip_all)]
+    async fn init_and_peek(&mut self) -> Result<Action> {
+        // If AI mode is enabled, prompt for command suggestions
+        if let EditCommandComponentMode::New { ai } = &self.mode
+            && *ai
+        {
+            self.prompt_ai().await?;
+        }
+        Ok(Action::NoOp)
+    }
+
+    #[instrument(skip_all)]
     fn render(&mut self, frame: &mut Frame, area: Rect) {
+        let mut state = self.state.write();
+
         // Split the area according to the layout
         let [alias_area, cmd_area, description_area] = self.layout.areas(area);
 
         // Render widgets
-        frame.render_widget(&self.alias, alias_area);
-        frame.render_widget(&self.cmd, cmd_area);
-        frame.render_widget(&self.description, description_area);
+        frame.render_widget(&state.alias, alias_area);
+        frame.render_widget(&state.cmd, cmd_area);
+        frame.render_widget(&state.description, description_area);
 
         // Render the new version banner and error message as an overlay
-        self.new_version.render_in(frame, area);
-        self.error.render_in(frame, area);
+        if let Some(new_version) = self.service.check_new_version() {
+            NewVersionBanner::new(&self.theme, new_version).render_in(frame, area);
+        }
+        state.error.render_in(frame, area);
     }
 
     fn tick(&mut self) -> Result<Action> {
-        self.error.tick();
+        let mut state = self.state.write();
+        state.error.tick();
+        state.alias.tick();
+        state.cmd.tick();
+        state.description.tick();
 
         Ok(Action::NoOp)
     }
 
-    fn exit(&mut self) -> Result<Option<ProcessOutput>> {
-        Ok(Some(ProcessOutput::success().fileout(self.cmd.lines_as_string())))
+    fn exit(&mut self) -> Result<Action> {
+        // Based on the component mode
+        match &self.mode {
+            // Quit the component without saving
+            EditCommandComponentMode::New { .. } => {
+                let state = self.state.read();
+                Ok(Action::Quit(
+                    ProcessOutput::success().fileout(state.cmd.lines_as_string()),
+                ))
+            }
+            // Switch back to the parent, without storing the command
+            EditCommandComponentMode::Edit { .. } => Ok(Action::SwitchComponent(
+                match mem::replace(&mut self.mode, EditCommandComponentMode::Empty) {
+                    EditCommandComponentMode::Edit { parent } => parent,
+                    EditCommandComponentMode::Empty
+                    | EditCommandComponentMode::New { .. }
+                    | EditCommandComponentMode::EditMemory { .. } => {
+                        unreachable!()
+                    }
+                },
+            )),
+            // Switch back to the parent, without calling the callback
+            EditCommandComponentMode::EditMemory { .. } => Ok(Action::SwitchComponent(
+                match mem::replace(&mut self.mode, EditCommandComponentMode::Empty) {
+                    EditCommandComponentMode::EditMemory { parent, .. } => parent,
+                    EditCommandComponentMode::Empty
+                    | EditCommandComponentMode::New { .. }
+                    | EditCommandComponentMode::Edit { .. } => {
+                        unreachable!()
+                    }
+                },
+            )),
+            // This should never happen, but just in case
+            EditCommandComponentMode::Empty => Ok(Action::NoOp),
+        }
     }
 
     fn move_up(&mut self) -> Result<Action> {
-        self.active_field = self.active_field.up();
-        self.update_focus();
+        let mut state = self.state.write();
+        if !state.active_input().is_ai_loading() {
+            state.active_field = state.active_field.up();
+            state.update_focus();
+        }
 
         Ok(Action::NoOp)
     }
 
     fn move_down(&mut self) -> Result<Action> {
-        self.active_field = self.active_field.down();
-        self.update_focus();
+        let mut state = self.state.write();
+        if !state.active_input().is_ai_loading() {
+            state.active_field = state.active_field.down();
+            state.update_focus();
+        }
 
         Ok(Action::NoOp)
     }
 
     fn move_left(&mut self, word: bool) -> Result<Action> {
-        self.active_input().move_cursor_left(word);
+        let mut state = self.state.write();
+        state.active_input().move_cursor_left(word);
 
         Ok(Action::NoOp)
     }
 
     fn move_right(&mut self, word: bool) -> Result<Action> {
-        self.active_input().move_cursor_right(word);
+        let mut state = self.state.write();
+        state.active_input().move_cursor_right(word);
 
         Ok(Action::NoOp)
     }
@@ -221,67 +291,82 @@ impl Component for EditCommandComponent {
     }
 
     fn move_home(&mut self, absolute: bool) -> Result<Action> {
-        self.active_input().move_home(absolute);
+        let mut state = self.state.write();
+        state.active_input().move_home(absolute);
 
         Ok(Action::NoOp)
     }
 
     fn move_end(&mut self, absolute: bool) -> Result<Action> {
-        self.active_input().move_end(absolute);
+        let mut state = self.state.write();
+        state.active_input().move_end(absolute);
 
         Ok(Action::NoOp)
     }
 
     fn undo(&mut self) -> Result<Action> {
-        self.active_input().undo();
+        let mut state = self.state.write();
+        state.active_input().undo();
 
         Ok(Action::NoOp)
     }
 
     fn redo(&mut self) -> Result<Action> {
-        self.active_input().redo();
+        let mut state = self.state.write();
+        state.active_input().redo();
 
         Ok(Action::NoOp)
     }
 
     fn insert_text(&mut self, text: String) -> Result<Action> {
-        self.active_input().insert_str(text);
+        let mut state = self.state.write();
+        state.active_input().insert_str(text);
 
         Ok(Action::NoOp)
     }
 
     fn insert_char(&mut self, c: char) -> Result<Action> {
-        self.active_input().insert_char(c);
+        let mut state = self.state.write();
+        state.active_input().insert_char(c);
 
         Ok(Action::NoOp)
     }
 
     fn insert_newline(&mut self) -> Result<Action> {
-        self.active_input().insert_newline();
+        let mut state = self.state.write();
+        state.active_input().insert_newline();
 
         Ok(Action::NoOp)
     }
 
     fn delete(&mut self, backspace: bool, word: bool) -> Result<Action> {
-        self.active_input().delete(backspace, word);
+        let mut state = self.state.write();
+        state.active_input().delete(backspace, word);
 
         Ok(Action::NoOp)
     }
 
     #[instrument(skip_all)]
     async fn selection_confirm(&mut self) -> Result<Action> {
-        // Update the command with the input data
-        let command = self
-            .command
-            .clone()
-            .with_alias(Some(self.alias.lines_as_string()))
-            .with_cmd(self.cmd.lines_as_string())
-            .with_description(Some(self.description.lines_as_string()));
+        let command = {
+            let mut state = self.state.write();
+            if state.active_input().is_ai_loading() {
+                return Ok(Action::NoOp);
+            }
+
+            // Update the command with the input data
+            state
+                .command
+                .clone()
+                .with_alias(Some(state.alias.lines_as_string()))
+                .with_cmd(state.cmd.lines_as_string())
+                .with_description(Some(state.description.lines_as_string()))
+        };
 
         // Based on the component mode
         match &self.mode {
             // Insert the new command
-            EditCommandComponentMode::New => match self.service.insert_command(command).await {
+            EditCommandComponentMode::New { .. } => match self.service.insert_command(command).await {
                 Ok(command) => Ok(Action::Quit(
                     ProcessOutput::success()
                         .stderr(format_msg!(
@@ -291,17 +376,13 @@ impl Component for EditCommandComponent {
                         ))
                         .fileout(command.cmd),
                 )),
-                Err(InsertError::Invalid(err)) => {
+                Err(AppError::UserFacing(err)) => {
                     tracing::warn!("{err}");
-                    self.error.set_temp_message(err);
+                    let mut state = self.state.write();
+                    state.error.set_temp_message(err.to_string());
                     Ok(Action::NoOp)
                 }
-                Err(InsertError::AlreadyExists) => {
-                    tracing::warn!("The command is already bookmarked");
-                    self.error.set_temp_message("The command is already bookmarked");
-                    Ok(Action::NoOp)
-                }
-                Err(InsertError::Unexpected(report)) => Err(report),
+                Err(AppError::Unexpected(report)) => Err(report),
             },
             // Edit the existing command
             EditCommandComponentMode::Edit { .. } => {
@@ -309,29 +390,108 @@ impl Component for EditCommandComponent {
                     Ok(_) => {
                         // Extract the owned parent component, leaving a placeholder on its place
                         Ok(Action::SwitchComponent(
-                            match mem::replace(&mut self.mode, EditCommandComponentMode::New) {
+                            match mem::replace(&mut self.mode, EditCommandComponentMode::Empty) {
                                 EditCommandComponentMode::Edit { parent } => parent,
-                                EditCommandComponentMode::New => unreachable!(),
+                                EditCommandComponentMode::Empty
+                                | EditCommandComponentMode::New { .. }
+                                | EditCommandComponentMode::EditMemory { .. } => {
+                                    unreachable!()
+                                }
                             },
                         ))
                     }
-                    Err(UpdateError::Invalid(err)) => {
+                    Err(AppError::UserFacing(err)) => {
                         tracing::warn!("{err}");
-                        self.error.set_temp_message(err);
+                        let mut state = self.state.write();
+                        state.error.set_temp_message(err.to_string());
                         Ok(Action::NoOp)
                     }
-                    Err(UpdateError::AlreadyExists) => {
-                        tracing::warn!("The updated command already exists");
-                        self.error.set_temp_message("The updated command already exists");
-                        Ok(Action::NoOp)
-                    }
-                    Err(UpdateError::Unexpected(report)) => Err(report),
+                    Err(AppError::Unexpected(report)) => Err(report),
                 }
             }
+            // Edit the command in memory and run the callback
+            EditCommandComponentMode::EditMemory { callback, .. } => {
+                // Run the callback
+                callback(command)?;
+
+                // Extract the owned parent component, leaving a placeholder on its place
+                Ok(Action::SwitchComponent(
+                    match mem::replace(&mut self.mode, EditCommandComponentMode::Empty) {
+                        EditCommandComponentMode::EditMemory { parent, .. } => parent,
+                        EditCommandComponentMode::Empty
+                        | EditCommandComponentMode::New { .. }
+                        | EditCommandComponentMode::Edit { .. } => {
+                            unreachable!()
+                        }
+                    },
+                ))
+            }
+            // This should never happen, but just in case
+            EditCommandComponentMode::Empty => Ok(Action::NoOp),
         }
     }
 
     async fn selection_execute(&mut self) -> Result<Action> {
         self.selection_confirm().await
+    }
+
+    async fn prompt_ai(&mut self) -> Result<Action> {
+        let mut state = self.state.write();
+        if state.active_input().is_ai_loading() || state.active_field == ActiveField::Alias {
+            return Ok(Action::NoOp);
+        }
+
+        let cmd = Some(state.cmd.lines_as_string()).filter(|c| !c.trim().is_empty());
+        let description = Some(state.description.lines_as_string()).filter(|d| !d.trim().is_empty());
+        let prompt = match (&cmd, &description) {
+            (Some(cmd), Some(desc)) => format!("Write a command for: {desc} (cmd: {cmd})"),
+            (Some(cmd), None) => format!("Write a command for: {cmd}"),
+            (None, Some(desc)) => format!("Write a command for: {desc}"),
+            (None, None) => return Ok(Action::NoOp),
+        };
+
+        state.active_input().set_ai_loading(true);
+        let cloned_service = self.service.clone();
+        let cloned_state = self.state.clone();
+        tokio::spawn(async move {
+            let res = cloned_service.suggest_commands(&prompt).await;
+            let mut state = cloned_state.write();
+            match res {
+                Ok(suggestions) => {
+                    if let Some(suggestion) = suggestions.first() {
+                        state.cmd.set_focus(true);
+                        state.cmd.set_ai_loading(false);
+                        if cmd.is_some() {
+                            state.cmd.select_all();
+                            state.cmd.cut();
+                        }
+                        state.cmd.insert_str(&suggestion.cmd);
+                        if let Some(suggested_description) = suggestion.description.as_deref() {
+                            state.description.set_focus(true);
+                            state.description.set_ai_loading(false);
+                            if description.is_some() {
+                                state.description.select_all();
+                                state.description.cut();
+                            }
+                            state.description.insert_str(suggested_description);
+                        }
+                    } else {
+                        state
+                            .error
+                            .set_temp_message("AI did not return any suggestion".to_string());
+                    }
+                }
+                Err(AppError::UserFacing(err)) => {
+                    tracing::warn!("{err}");
+                    state.error.set_temp_message(err.to_string());
+                }
+                Err(AppError::Unexpected(err)) => panic!("Error prompting for command suggestions: {err:?}"),
+            }
+            // Restore ai mode and focus
+            state.active_input().set_ai_loading(false);
+            state.update_focus();
+        });
+
+        Ok(Action::NoOp)
     }
 }

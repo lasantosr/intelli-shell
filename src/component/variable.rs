@@ -7,14 +7,13 @@ use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
 };
-use semver::Version;
 use tracing::instrument;
 
 use super::Component;
 use crate::{
     app::Action,
     config::Theme,
-    errors::{InsertError, UpdateError},
+    errors::AppError,
     format_msg,
     model::{DynamicCommand, VariableSuggestion, VariableValue},
     process::ProcessOutput,
@@ -44,8 +43,6 @@ pub struct VariableReplacementComponent {
     variable_ctx: Option<CurrentVariableContext>,
     /// Widget list of filtered suggestions for the variable value
     suggestions: CustomList<'static, VariableSuggestionRow<'static>>,
-    /// The new version banner
-    new_version: NewVersionBanner,
     /// Popup for displaying error messages
     error: ErrorPopup<'static>,
 }
@@ -64,7 +61,6 @@ impl VariableReplacementComponent {
         inline: bool,
         execute_mode: bool,
         replace_process: bool,
-        new_version: Option<Version>,
         command: DynamicCommand,
     ) -> Self {
         let command = DynamicCommandWidget::new(&theme, inline, command);
@@ -73,7 +69,6 @@ impl VariableReplacementComponent {
             .highlight_symbol(theme.highlight_symbol.clone())
             .highlight_symbol_style(theme.highlight_primary_full().into());
 
-        let new_version = NewVersionBanner::new(&theme, new_version);
         let error = ErrorPopup::empty(&theme);
 
         let layout = if inline {
@@ -91,7 +86,6 @@ impl VariableReplacementComponent {
             command,
             variable_ctx: None,
             suggestions,
-            new_version,
             error,
         }
     }
@@ -108,13 +102,9 @@ impl Component for VariableReplacementComponent {
         1 + 3
     }
 
-    async fn init(&mut self) -> Result<()> {
-        self.update_variable_context(false).await?;
-        Ok(())
-    }
-
     #[instrument(skip_all)]
-    async fn peek(&mut self) -> Result<Action> {
+    async fn init_and_peek(&mut self) -> Result<Action> {
+        self.update_variable_context(false).await?;
         if self.variable_ctx.is_none() {
             tracing::info!("The command has no variables to replace");
             self.quit_action(true)
@@ -135,7 +125,9 @@ impl Component for VariableReplacementComponent {
         frame.render_widget(&mut self.suggestions, suggestions_area);
 
         // Render the new version banner and error message as an overlay
-        self.new_version.render_in(frame, area);
+        if let Some(new_version) = self.service.check_new_version() {
+            NewVersionBanner::new(&self.theme, new_version).render_in(frame, area);
+        }
         self.error.render_in(frame, area);
     }
 
@@ -145,16 +137,16 @@ impl Component for VariableReplacementComponent {
         Ok(Action::NoOp)
     }
 
-    fn exit(&mut self) -> Result<Option<ProcessOutput>> {
-        if let Some(VariableSuggestionRow::Existing(e)) = self.suggestions.selected_mut() {
-            if e.editing.is_some() {
-                tracing::debug!("Closing variable value edit mode: user request");
-                e.editing = None;
-                return Ok(None);
-            }
+    fn exit(&mut self) -> Result<Action> {
+        if let Some(VariableSuggestionRow::Existing(e)) = self.suggestions.selected_mut()
+            && e.editing.is_some()
+        {
+            tracing::debug!("Closing variable value edit mode: user request");
+            e.editing = None;
+            return Ok(Action::NoOp);
         }
         tracing::info!("User requested to exit");
-        Ok(Some(ProcessOutput::success().fileout(self.command.to_string())))
+        Ok(Action::Quit(ProcessOutput::success().fileout(self.command.to_string())))
     }
 
     fn process_mouse_event(&mut self, mouse: MouseEvent) -> Result<Action> {
@@ -378,7 +370,10 @@ impl Component for VariableReplacementComponent {
             return Err(eyre!("Unexpected selected suggestion after removal"));
         };
 
-        self.service.delete_variable_value(e.value.id.unwrap()).await?;
+        self.service
+            .delete_variable_value(e.value.id.unwrap())
+            .await
+            .map_err(AppError::into_report)?;
 
         Ok(Action::NoOp)
     }
@@ -429,6 +424,10 @@ impl Component for VariableReplacementComponent {
             }
         }
     }
+
+    async fn selection_execute(&mut self) -> Result<Action> {
+        self.selection_confirm().await
+    }
 }
 
 impl VariableReplacementComponent {
@@ -478,7 +477,8 @@ impl VariableReplacementComponent {
                 current_variable,
                 self.command.current_variable_context(),
             )
-            .await?;
+            .await
+            .map_err(AppError::into_report)?;
 
         // Map the suggestions to the widget rows
         let suggestion_widgets = suggestions
@@ -548,17 +548,12 @@ impl VariableReplacementComponent {
                     tracing::debug!("New variable value stored");
                     self.confirm_existing_value(v, true).await
                 }
-                Err(InsertError::Invalid(err)) => {
+                Err(AppError::UserFacing(err)) => {
                     tracing::warn!("{err}");
-                    self.error.set_temp_message(err);
+                    self.error.set_temp_message(err.to_string());
                     Ok(Action::NoOp)
                 }
-                Err(InsertError::AlreadyExists) => {
-                    tracing::warn!("The value already exists");
-                    self.error.set_temp_message("The value already exists");
-                    Ok(Action::NoOp)
-                }
-                Err(InsertError::Unexpected(report)) => Err(report),
+                Err(AppError::Unexpected(report)) => Err(report),
             }
         } else {
             tracing::debug!("New empty variable value selected");
@@ -577,17 +572,12 @@ impl VariableReplacementComponent {
                 };
                 Ok(Action::NoOp)
             }
-            Err(UpdateError::Invalid(err)) => {
+            Err(AppError::UserFacing(err)) => {
                 tracing::warn!("{err}");
-                self.error.set_temp_message(err);
+                self.error.set_temp_message(err.to_string());
                 Ok(Action::NoOp)
             }
-            Err(UpdateError::AlreadyExists) => {
-                tracing::warn!("The value already exists");
-                self.error.set_temp_message("The value already exists");
-                Ok(Action::NoOp)
-            }
-            Err(UpdateError::Unexpected(report)) => Err(report),
+            Err(AppError::Unexpected(report)) => Err(report),
         }
     }
 
@@ -598,7 +588,7 @@ impl VariableReplacementComponent {
             .service
             .increment_variable_value_usage(value_id, self.command.current_variable_context())
             .await
-            .map_err(UpdateError::into_report)
+            .map_err(AppError::into_report)
         {
             Ok(_) => {
                 if !new {
@@ -624,12 +614,12 @@ impl VariableReplacementComponent {
                     tracing::debug!("Literal variable value selected and stored");
                     self.confirm_existing_value(v, true).await
                 }
-                Err(InsertError::Invalid(_) | InsertError::AlreadyExists) => {
-                    tracing::debug!("Literal variable value selected but couldn't be stored");
+                Err(AppError::UserFacing(err)) => {
+                    tracing::debug!("Literal variable value selected but couldn't be stored: {err}");
                     self.command.set_next_variable(value);
                     self.update_variable_context(true).await
                 }
-                Err(InsertError::Unexpected(report)) => Err(report),
+                Err(AppError::Unexpected(report)) => Err(report),
             }
         } else {
             tracing::debug!("Literal variable value selected");

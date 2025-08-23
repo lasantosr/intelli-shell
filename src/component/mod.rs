@@ -10,6 +10,7 @@ use crate::{
 };
 
 pub mod edit;
+pub mod pick;
 pub mod search;
 pub mod variable;
 
@@ -25,16 +26,12 @@ pub trait Component: Send {
     /// Calculates the minimum height required by this component to be rendered correctly when inline (in rows)
     fn min_inline_height(&self) -> u16;
 
-    /// Allows the component to initialize any internal state or resources it needs before being used.
+    /// Allows the component to initialize any internal state or resources it needs before being used as well as peeks
+    /// into the component before rendering, for examplle to give a straight result, switch component or continue
+    /// with the TUI.
     ///
     /// It can be called multiple times, for example if a component is re-used after being switched out.
-    async fn init(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    /// Peeks into the component before rendering, for examplle to give a straight result, switch component or continue
-    /// with the TUI
-    async fn peek(&mut self) -> Result<Action> {
+    async fn init_and_peek(&mut self) -> Result<Action> {
         Ok(Action::NoOp)
     }
 
@@ -53,8 +50,8 @@ pub trait Component: Send {
     /// Finalizes the component's current operation and returns its output with the current state.
     ///
     /// This method is typically called when the user signals that they want to exit the command.
-    fn exit(&mut self) -> Result<Option<ProcessOutput>> {
-        Ok(Some(ProcessOutput::success()))
+    fn exit(&mut self) -> Result<Action> {
+        Ok(Action::Quit(ProcessOutput::success()))
     }
 
     /// Processes a paste event, typically from clipboard paste into the terminal.
@@ -97,11 +94,12 @@ pub trait Component: Send {
         // Check customizable key bindings first
         if let Some(action) = keybindings.get_action_matching(&key) {
             return Ok(Some(match action {
-                KeyBindingAction::Quit => self.exit()?.map(Action::Quit).unwrap_or_default(),
+                KeyBindingAction::Quit => self.exit()?,
                 KeyBindingAction::Update => self.selection_update().await?,
                 KeyBindingAction::Delete => self.selection_delete().await?,
                 KeyBindingAction::Confirm => self.selection_confirm().await?,
                 KeyBindingAction::Execute => self.selection_execute().await?,
+                KeyBindingAction::AI => self.prompt_ai().await?,
                 KeyBindingAction::SearchMode => self.toggle_search_mode()?,
                 KeyBindingAction::SearchUserOnly => self.toggle_search_user_only()?,
             }));
@@ -359,6 +357,11 @@ pub trait Component: Send {
     ///
     /// The specific behavior is determined by the component and the nature of its items.
     async fn selection_execute(&mut self) -> Result<Action> {
+        Ok(Action::NoOp)
+    }
+
+    /// Prompts an AI model about the component or highlighted element
+    async fn prompt_ai(&mut self) -> Result<Action> {
         Ok(Action::NoOp)
     }
 

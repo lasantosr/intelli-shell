@@ -19,11 +19,13 @@
   - [Key Bindings](./configuration/keybindings.md)
   - [Theming](./configuration/theming.md)
   - [Search Tuning](./configuration/search_tuning.md)
+  - [AI Integration](./configuration/ai.md)
 
 - [Command Line Tool](./reference/index.md)
   - [new](./reference/new.md)
   - [search](./reference/search.md)
   - [replace](./reference/replace.md)
+  - [fix](./reference/fix.md)
   - [export](./reference/export.md)
   - [import](./reference/import.md)
   - [tldr](./reference/tldr.md)

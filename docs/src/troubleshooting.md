@@ -19,8 +19,9 @@ If hotkeys like <kbd>Ctrl</kbd>+<kbd>Space</kbd> or <kbd>Ctrl</kbd>+<kbd>B</kbd>
    - **Terminal Limitations**: Some terminal emulators do not forward all key combinations to the shell. For instance,
      <kbd>Ctrl</kbd>+<kbd>Enter</kbd> (the default "execute" hotkey) is not supported by many terminals.
    - **Solution**: You can change any conflicting or unsupported hotkey. Set the appropriate environment variable in
-     your shell profile _before_ the IntelliShell line. See the [Installation Guide](./guide/installation.md) for a full
-     list of integration variables or the [Keybindings Configuration](./configuration/keybindings.md) for in-app bindings.
+     your shell profile _before_ the IntelliShell line. See the [Installation Guide](./guide/installation.md#customizing-shell-integration)
+     for a full list of integration variables or the [Keybindings Configuration](./configuration/keybindings.md)
+     for in-app bindings.
 
 ## Installation and Command Issues
 

@@ -49,18 +49,28 @@ Here is a breakdown of each available key in the `[theme]` section.
 ### Default Configuration
 
 ```toml
-{{#include ../../../default_config.toml:113:148}}
+{{#include ../../../default_config.toml:117:152}}
 ```
 
 ## Sample Themes
 
 The IntelliShell repository includes several pre-made themes to get you started.
 
+### Arcade
+
+A playful variation on the default theme, bringing a vibrant and retro feel to your terminal.
+
+![Arcade Theme Preview](../images/theme_2_arcade.gif)
+
+```toml
+{{#include ../../../vhs/themes/arcade.toml}}
+```
+
 ### Gruvbox
 
 A theme inspired by the popular [Gruvbox](https://github.com/morhetz/gruvbox) color scheme, featuring a warm, retro feel.
 
-![Gruvbox Theme Preview](../images/theme_2_gruvbox.gif)
+![Gruvbox Theme Preview](../images/theme_3_gruvbox.gif)
 
 ```toml
 {{#include ../../../vhs/themes/gruvbox.toml}}
@@ -70,20 +80,10 @@ A theme inspired by the popular [Gruvbox](https://github.com/morhetz/gruvbox) co
 
 A theme based on the arctic, north-bluish color palette of [Nord](https://www.nordtheme.com/).
 
-![Nord Theme Preview](../images/theme_3_nord.gif)
+![Nord Theme Preview](../images/theme_4_nord.gif)
 
 ```toml
 {{#include ../../../vhs/themes/nord.toml}}
-```
-
-### Solarized
-
-A theme that implements the balanced and functional [Solarized](https://ethanschoonover.com/solarized/) color palette.
-
-![Solarized Theme Preview](../images/theme_4_solarized.gif)
-
-```toml
-{{#include ../../../vhs/themes/solarized.toml}}
 ```
 
 ### Dracula
@@ -95,6 +95,8 @@ A theme based on the dark and modern [Dracula](https://draculatheme.com/) color 
 ```toml
 {{#include ../../../vhs/themes/dracula.toml}}
 ```
+
+---
 
 Now that your interface looks just right, you can fine-tune how it behaves. Let's move on to
 [**Search Tuning**](./search_tuning.md).

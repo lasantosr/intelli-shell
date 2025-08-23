@@ -140,6 +140,11 @@ impl<'a, T: AsWidget> CustomList<'a, T> {
         &self.items
     }
 
+    /// Returns a mutable reference to the inner items of the list
+    pub fn items_mut(&mut self) -> &mut Vec<T> {
+        &mut self.items
+    }
+
     /// Updates the items displayed in this list
     pub fn update_items(&mut self, items: Vec<T>) {
         self.items = items;
@@ -180,23 +185,23 @@ impl<'a, T: AsWidget> CustomList<'a, T> {
 
     /// Selects the next item in the list, wrapping around to the beginning if at the end.
     pub fn select_next(&mut self) {
-        if self.focus {
-            if let Some(selected) = self.state.selected {
-                if let Some(selected) = self.items.get_mut(selected) {
-                    selected.set_highlighted(false);
-                }
-                if self.items.is_empty() {
-                    self.state.select(None);
+        if self.focus
+            && let Some(selected) = self.state.selected
+        {
+            if let Some(selected) = self.items.get_mut(selected) {
+                selected.set_highlighted(false);
+            }
+            if self.items.is_empty() {
+                self.state.select(None);
+            } else {
+                let i = if selected >= self.items.len() - 1 {
+                    0
                 } else {
-                    let i = if selected >= self.items.len() - 1 {
-                        0
-                    } else {
-                        selected + 1
-                    };
-                    self.state.select(Some(i));
-                    if let Some(selected) = self.items.get_mut(i) {
-                        selected.set_highlighted(true);
-                    }
+                    selected + 1
+                };
+                self.state.select(Some(i));
+                if let Some(selected) = self.items.get_mut(i) {
+                    selected.set_highlighted(true);
                 }
             }
         }
@@ -204,23 +209,23 @@ impl<'a, T: AsWidget> CustomList<'a, T> {
 
     /// Selects the previous item in the list, wrapping around to the end if at the beginning.
     pub fn select_prev(&mut self) {
-        if self.focus {
-            if let Some(selected) = self.state.selected {
-                if let Some(selected) = self.items.get_mut(selected) {
-                    selected.set_highlighted(false);
-                }
-                if self.items.is_empty() {
-                    self.state.select(None);
+        if self.focus
+            && let Some(selected) = self.state.selected
+        {
+            if let Some(selected) = self.items.get_mut(selected) {
+                selected.set_highlighted(false);
+            }
+            if self.items.is_empty() {
+                self.state.select(None);
+            } else {
+                let i = if selected == 0 {
+                    self.items.len() - 1
                 } else {
-                    let i = if selected == 0 {
-                        self.items.len() - 1
-                    } else {
-                        selected - 1
-                    };
-                    self.state.select(Some(i));
-                    if let Some(selected) = self.items.get_mut(i) {
-                        selected.set_highlighted(true);
-                    }
+                    selected - 1
+                };
+                self.state.select(Some(i));
+                if let Some(selected) = self.items.get_mut(i) {
+                    selected.set_highlighted(true);
                 }
             }
         }
@@ -272,6 +277,11 @@ impl<'a, T: AsWidget> CustomList<'a, T> {
         }
     }
 
+    /// Returns the index of the currently selected item
+    pub fn selected_index(&self) -> Option<usize> {
+        self.state.selected
+    }
+
     /// Returns a mutable reference to the currently selected item
     pub fn selected_mut(&mut self) -> Option<&mut T> {
         if self.focus {
@@ -290,6 +300,19 @@ impl<'a, T: AsWidget> CustomList<'a, T> {
         if self.focus {
             if let Some(selected) = self.state.selected {
                 self.items.get(selected)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to the currently selected item and its index
+    pub fn selected_with_index(&self) -> Option<(usize, &T)> {
+        if self.focus {
+            if let Some(selected) = self.state.selected {
+                self.items.get(selected).map(|i| (selected, i))
             } else {
                 None
             }

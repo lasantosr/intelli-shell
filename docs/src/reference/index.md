@@ -7,26 +7,28 @@ detailed reference for every command and its available options.
 The basic structure for any command is:
 
 ```sh
-intelli-shell <COMMAND> [ARGS]
+intelli-shell [SUBCOMMAND] [OPTIONS] [ARGS]
 ```
 
 ## Commands
 
-Here is a summary of all available commands. Each command is detailed on its own page.
+The commands can be thought of in three main categories: **core workflow**, **data management**, and **library expansion**.
+Here is a summary of all available commands, with each one detailed on its own page.
 
 | Command                                   | Description                                                                  |
 | ----------------------------------------- | ---------------------------------------------------------------------------- |
-| [`new`](./new.md)                         | Bookmarks a new command                                                      |
-| [`search`](./search.md)                   | Searches stored commands                                                     |
-| [`replace`](./replace.md)                 | Replaces the variables of a command                                          |
-| [`import`](./import.md)                   | Imports user commands from a file, URL, Gist, or stdin                       |
-| [`export`](./export.md)                   | Exports stored user commands to a file, URL, or Gist                         |
+| [`new`](./new.md)                         | Bookmarks a new command, optionally using AI to generate it                  |
+| [`search`](./search.md)                   | Searches stored commands or uses AI to generate new ones                     |
+| [`replace`](./replace.md)                 | Replaces the variables in a command template                                 |
+| [`fix`](./fix.md)                         | Executes a command and uses AI to diagnose and fix it upon failure           |
+| [`import`](./import.md)                   | Imports commands from various sources, using AI for unstructured text        |
+| [`export`](./export.md)                   | Exports stored user commands to a file, URL, Gist, or stdout                 |
 | [`tldr`](./tldr.md)                       | Manages integration with tldr pages, allowing you to fetch or clear examples |
 
-## Interactive Mode Flags
+## Global Flags for Interactive Mode
 
-Several commands (`new`, `search`, `replace`) can be run either non-interactively with arguments or through the TUI by
-using the `-i` or `--interactive` flag. When in interactive mode, you can force a specific rendering style:
+Several commands can be run either non-interactively or through an interactive TUI by using the `-i` or `--interactive`
+flag. When in interactive mode, you can also force a specific rendering style:
 
 - `-l`, `--inline`: Forces the TUI to render inline, below the prompt
 - `-f`, `--full-screen`: Forces the TUI to render in full-screen mode

@@ -83,11 +83,13 @@ The `[search]` section lets you fine-tune the default behavior of the interactiv
 - **`delay`**: The time in milliseconds that IntelliShell waits after you stop typing before it starts searching
 - **`mode`**: The default search algorithm, can be `auto`, `fuzzy`, `regex`, `exact`, or `relaxed`
 - **`user_only`**: If set to `true`, searches will exclude commands from `tldr` and `.intellishell` file
+- **`exec_on_alias_match`**: If set to `true`, an exact alias match will execute the command immediately, rather than
+  populating the input line for you to run manually
 
 These settings can be toggled on-the-fly within the search UI using the default keybindings `ctrl+s` and `ctrl+o`.
 
 ```toml
-{{#include ../../../default_config.toml:47:60}}
+{{#include ../../../default_config.toml:47:62}}
 ```
 
 ## Logging
@@ -99,8 +101,10 @@ Note that if the `INTELLI_LOG` environment variable is set, it will override the
 - **`filter`**: Controls the verbosity of the logs using `tracing-subscriber` syntax
 
 ```toml
-{{#include ../../../default_config.toml:66:78}}
+{{#include ../../../default_config.toml:68:80}}
 ```
+
+---
 
 Now that you've configured the application's basic behavior, you can tailor how you interact with it. Let's move on to
 customizing the [**Key Bindings**](./keybindings.md).

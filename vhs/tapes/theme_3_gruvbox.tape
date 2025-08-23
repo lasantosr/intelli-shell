@@ -1,4 +1,4 @@
-Output docs/src/images/theme_2_gruvbox.gif
+Output docs/src/images/theme_3_gruvbox.gif
 
 Set Theme "GruvboxDark"
 

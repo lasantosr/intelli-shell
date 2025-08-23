@@ -7,14 +7,14 @@
 //!
 //! # Features
 //!
-//! - **Standalone & Dependency-Free**: Distributed as a single binary with no external runtimes or dependencies
-//! - **Seamless Shell Integration**: Search commands with `ctrl+space` or bookmark them with `ctrl+b`
-//! - **Flexible Interface**: Choose between a non-intrusive (inline) or an immersive (full-screen) TUI
+//! - **Seamless Shell Integration**: Search with `ctrl+space`, bookmark with `ctrl+b` or fix with `ctrl+x`
 //! - **Dynamic Variables**: Create command templates with `{{variables}}` and replace them on the fly
+//! - **AI-Powered Commands**: Generate, fix, and import commands effortlessly using local or remote LLMs
 //! - **Highly Configurable**: Tailor search modes, keybindings, themes, and even search-ranking algorithms
-//! - **Workspace-Aware Commands**: Automatically discovers and loads commands from your workspace's directory
-//! - **Import/Export**: Share your command library by importing or exporting to files, HTTP endpoints, or even Gists
+//! - **Workspace-Aware**: Automatically discovers and loads commands from your workspace's directory
+//! - **Import / Export**: Share your command library using files, HTTP endpoints, or even Gists
 //! - **TLDR Integration**: Fetch and import command examples from [tldr](https://github.com/tldr-pages/tldr) pages
+//! - **Flexible Interface**: Choose between a non-intrusive (inline) or an immersive (full-screen) TUI
 //!
 //! To get started, check out the [repository](https://github.com/lasantosr/intelli-shell) or read the
 //! [IntelliShell Book](https://lasantosr.github.io/intelli-shell/) for comprehensive guides and examples.
@@ -121,3 +121,9 @@ pub mod storage;
 /// This module contains general-purpose helpers that don't fit neatly into other domain-specific modules. This includes
 /// functions for string manipulation, as well as potentially other reusable components or patterns.
 pub mod utils;
+
+/// Encapsulates all interactions with Large Language Models (LLMs).
+///
+/// This module provides the client for the application's AI-powered features, such as generating, fixing, and
+/// explaining shell commands. It defines a common interface for interacting with different AI providers.
+pub mod ai;

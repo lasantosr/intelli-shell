@@ -10,7 +10,9 @@ use heck::ToShoutySnakeCase;
 use itertools::Itertools;
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, utf8_percent_encode};
 
-use crate::utils::{COMMAND_VARIABLE_REGEX, SplitCaptures, SplitItem, flatten_str, flatten_variable};
+use crate::utils::{
+    COMMAND_VARIABLE_REGEX, COMMAND_VARIABLE_REGEX_ALT, SplitCaptures, SplitItem, flatten_str, flatten_variable,
+};
 
 /// Suggestion for a variable value
 pub enum VariableSuggestion {
@@ -66,13 +68,20 @@ pub struct DynamicCommand {
 }
 impl DynamicCommand {
     /// Parses the given command as a [DynamicCommand]
-    pub fn parse(cmd: impl AsRef<str>) -> Self {
+    pub fn parse(cmd: impl AsRef<str>, alt: bool) -> Self {
         let cmd = cmd.as_ref();
-        let splitter = SplitCaptures::new(&COMMAND_VARIABLE_REGEX, cmd);
+        let regex = if alt {
+            &COMMAND_VARIABLE_REGEX_ALT
+        } else {
+            &COMMAND_VARIABLE_REGEX
+        };
+        let splitter = SplitCaptures::new(regex, cmd);
         let parts = splitter
             .map(|e| match e {
                 SplitItem::Unmatched(t) => CommandPart::Text(t.to_owned()),
-                SplitItem::Captured(v) => CommandPart::Variable(Variable::parse(v.get(1).unwrap().as_str())),
+                SplitItem::Captured(c) => {
+                    CommandPart::Variable(Variable::parse(c.get(1).or(c.get(2)).unwrap().as_str()))
+                }
             })
             .collect::<Vec<_>>();
 
@@ -130,13 +139,6 @@ impl DynamicCommand {
     /// Creates a [VariableValue] for this command with the given variable name and value
     pub fn new_variable_value_for(&self, variable_name: impl Into<String>, value: impl Into<String>) -> VariableValue {
         VariableValue::new(&self.root, variable_name, value)
-    }
-}
-impl FromStr for DynamicCommand {
-    type Err = Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self::parse(s))
     }
 }
 impl Display for DynamicCommand {
@@ -428,7 +430,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_parse_command_with_variables() {
-        let cmd = DynamicCommand::parse("git commit -m {{{message}}} --author {{author:kebab}}");
+        let cmd = DynamicCommand::parse("git commit -m {{{message}}} --author {{author:kebab}}", false);
         assert_eq!(cmd.root, "git");
         assert_eq!(cmd.parts.len(), 4);
         assert_eq!(cmd.parts[0], CommandPart::Text("git commit -m ".into()));
@@ -439,7 +441,7 @@ mod tests {
 
     #[test]
     fn test_parse_command_no_variables() {
-        let cmd = DynamicCommand::parse("echo 'hello world'");
+        let cmd = DynamicCommand::parse("echo 'hello world'", false);
         assert_eq!(cmd.root, "echo");
         assert_eq!(cmd.parts.len(), 1);
         assert_eq!(cmd.parts[0], CommandPart::Text("echo 'hello world'".into()));
@@ -447,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_set_next_variable() {
-        let mut cmd = DynamicCommand::parse("cmd {{var1}} {{var2}}");
+        let mut cmd = DynamicCommand::parse("cmd {{var1}} {{var2}}", false);
         cmd.set_next_variable("value1");
         let var1 = Variable::parse("var1");
         assert_eq!(cmd.parts[1], CommandPart::VariableValue(var1, "value1".into()));
@@ -458,7 +460,7 @@ mod tests {
 
     #[test]
     fn test_has_pending_variable() {
-        let mut cmd = DynamicCommand::parse("cmd {{var1}} {{var2}}");
+        let mut cmd = DynamicCommand::parse("cmd {{var1}} {{var2}}", false);
         assert!(cmd.has_pending_variable());
         cmd.set_next_variable("value1");
         assert!(cmd.has_pending_variable());
@@ -468,7 +470,7 @@ mod tests {
 
     #[test]
     fn test_current_variable() {
-        let mut cmd = DynamicCommand::parse("cmd {{var1}} {{var2}}");
+        let mut cmd = DynamicCommand::parse("cmd {{var1}} {{var2}}", false);
         assert_eq!(cmd.current_variable().map(|l| l.name.as_str()), Some("var1"));
         cmd.set_next_variable("value1");
         assert_eq!(cmd.current_variable().map(|l| l.name.as_str()), Some("var2"));
@@ -478,7 +480,7 @@ mod tests {
 
     #[test]
     fn test_current_variable_context() {
-        let mut cmd = DynamicCommand::parse("cmd {{var1}} {{{secret_var}}} {{var2}}");
+        let mut cmd = DynamicCommand::parse("cmd {{var1}} {{{secret_var}}} {{var2}}", false);
 
         // Set value for the first variable
         cmd.set_next_variable("value1");
@@ -494,7 +496,7 @@ mod tests {
 
     #[test]
     fn test_current_variable_context_is_empty() {
-        let cmd = DynamicCommand::parse("cmd {{var1}}");
+        let cmd = DynamicCommand::parse("cmd {{var1}}", false);
         let context: Vec<_> = cmd.current_variable_context().into_iter().collect();
         assert!(context.is_empty());
     }

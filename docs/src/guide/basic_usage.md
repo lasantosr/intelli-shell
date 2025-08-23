@@ -8,7 +8,7 @@ terminal prompt.
 
 ## Core Hotkeys
 
-By default, IntelliShell sets up three main hotkeys. These are the primary ways you will interact with the tool.
+By default, IntelliShell sets up several hotkeys. These are the primary ways you will interact with the tool.
 
 - **Search** <kbd>Ctrl</kbd>+<kbd>Space</kbd>: This is your main entry point. It opens an interactive search UI to find
   your bookmarked commands. If you have text on the command line, it will be used as the initial search query.
@@ -16,18 +16,24 @@ By default, IntelliShell sets up three main hotkeys. These are the primary ways 
 - **Bookmark** <kbd>Ctrl</kbd>+<kbd>B</kbd>: When you've typed a command you want to save, this key opens a UI to
   bookmark it. The current text on your command line will be pre-filled as the command to be saved.
 
+- **Fix Command** <kbd>Ctrl</kbd>+<kbd>X</kbd>: When a command fails, press the up arrow to recall it, then use this
+  key to let AI analyze the command and the error message to suggest a working version.
+
 - **Variable Replace** <kbd>Ctrl</kbd>+<kbd>L</kbd>: If the command on your line contains `{{variables}}`, this key
   opens the variable replacement UI to fill them in without needing to save the command first.
 
 - **Clear Line** <kbd>Esc</kbd>: As a convenience, this key is bound to clear the entire command line. This can be
   disabled if it conflicts with your existing terminal habits.
 
-> 📝 **Note**: These hotkeys are fully customizable. See the [Installation](./installation.md) chapter for details on
-> how to change them.
+> 📝 **Note**: These shell hotkeys are fully customizable, see the [**Installation**](./installation.md#customizing-shell-integration)
+> chapter for details on how to change them.
+>
+> Additionally, all keybindings used within the interactive UIs mentioned on the book are customizable in your
+> configuration file, you can update them on the [**Key Bindings**](../configuration/keybindings.md) chapter.
 
 ## Your First Bookmark
 
-Let's walk through a common use case: saving a command, searching for it, and running it again with new values.
+Let's walk through the fundamental workflow: saving a command, searching for it, and running it again with new values.
 
 1. **Write a command**
 
@@ -54,7 +60,7 @@ Let's walk through a common use case: saving a command, searching for it, and ru
    variable replacement screen.
    - Type `ubuntu:latest` and press <kbd>Enter</kbd>.
 
-   IntelliShell replaces the variable and places the final, ready-to-run command onto your shell prompt:
+   IntelliShell places the final, ready-to-run command onto your shell prompt:
 
    ```sh
    docker run -it --rm ubuntu:latest
@@ -91,31 +97,101 @@ In the previous example, we added the `#docker` tag. Let's bookmark another comm
 > `docker #compose` and then type `#` again, the suggestions will only include tags that appear on commands matching
 > "docker" and already tagged with `#compose`. This lets you progressively narrow your search.
 
-## Populating Your Library with `tldr`
+## AI-Powered Workflows
+
+Beyond managing bookmarks, IntelliShell's can act as your command-line co-pilot, helping you fix errors and generate
+new commands when you're stuck.
+
+### Fix a Failing Command
+
+We've all been there: you type a long command, only for it to fail due to a small typo. Instead of manually debugging,
+let the AI handle it.
+
+1. **Run a command that fails**
+
+   Let's try to list files with a mistyped flag:
+
+   ```sh
+   ls --long
+   ```
+
+   Your shell will return an error: `ls: unrecognized option '--long'`.
+
+2. **Recall and Fix**
+
+   - Press the <kbd>Up Arrow</kbd> key in your shell to bring back the failing command
+   - With `ls --long` on the line, press <kbd>Ctrl</kbd>+<kbd>X</kbd>
+
+   The AI will analyze both the command and the error it produced. It will suggest the corrected command (`ls -l` or
+   `ls --format=long`), placing it directly on your prompt.
+
+### Generate a Command from a Description
+
+Can't remember the exact syntax for `find` or `ffmpeg`? Just describe what you want to do.
+
+1. **Open the search UI**
+
+   Press <kbd>Ctrl</kbd>+<kbd>Space</kbd> to open the IntelliShell search prompt.
+
+2. **Describe the task**
+
+   Instead of searching for a bookmark, type a description of the command you need. For example:
+   `find all files larger than 10MB in the current folder`
+
+3. **Generate with AI**
+
+   With your description in the search box, press <kbd>Ctrl</kbd>+<kbd>I</kbd>. The AI will generate the corresponding
+   shell command (e.g., `find . -type f -size +10M`) and show it in the results.
+
+> 💡 **Tip**: Commands generated from the search prompt are for one-time use and are not saved automatically. If you
+> want to save a command after generating it this way, you can place it on your terminal and then use the bookmark
+> hotkey (<kbd>Ctrl</kbd>+<kbd>B</kbd>).
+>
+> For a more direct workflow, use the AI directly in the bookmarking UI. Press <kbd>Ctrl</kbd>+<kbd>B</kbd>, type your
+> description in the 'Command' field, and press <kbd>Ctrl</kbd>+<kbd>I</kbd> to suggest it.
+
+## Populating Your Library
+
+A great command library is a complete one. Here are two ways to quickly add commands without bookmarking them one by one.
+
+### From `tldr` Pages
 
 If you're getting started or need a quick example for a new tool, you can populate IntelliShell with commands from the
 community-driven [tldr pages](https://github.com/tldr-pages/tldr) project.
 
-1. **Fetch `tldr` pages**
+```sh
+intelli-shell tldr fetch -c tar -c git
+```
 
-   Run the `fetch` command to download command examples for any tool.
-
-   ```sh
-   intelli-shell tldr fetch -c tar
-   ```
-
-   This will import useful command templates into a separate `tldr` space, which you can choose to include or exclude
-   from your searches.
-
-2. **Find and use a `tldr` command**
-
-   Forgot how to list the contents of a `tar` archive?
-   - Type `tar` into the command line and press <kbd>Ctrl</kbd>+<kbd>Space</kbd>
-   - You'll see a list of `tldr` examples for `tar`
-   - Find the one for listing contents, select it, fill in the `{{path/to/file.tar}}` variable, and run it
+This will import useful command templates into a separate `tldr` space, which you can choose to include or exclude
+from your searches.
 
 > 💡 **Tip**: The `fetch` command is highly configurable, allowing you to import pages for specific commands or
 > categories. For a full list of options, see the [**`fetch` command reference**](../reference/tldr_fetch.md).
+
+Now you can type `tar` into the command line and press <kbd>Ctrl</kbd>+<kbd>Space</kbd>
+
+- You'll see a list of `tldr` examples for `tar`
+- Find the one for listing contents, select it, fill in the `{{path/to/file.tar}}` variable, and run it
+
+### From Any Text
+
+You can use the AI to extract and convert commands from any piece of text—a blog post, a tutorial, or even your own
+shell history file.
+
+```sh
+# Import command templates from your own history
+intelli-shell import -i --ai --history bash
+
+# Or from a URL
+intelli-shell import -i --ai "https://my-favorite-cheatsheet.com"
+```
+
+The AI will parse the content, identify potential commands, and convert them into reusable templates with
+`{{variables}}`, ready for you to use.
+For a full list of options, see the [**`import` command reference**](../reference/import.md).
+
+---
 
 Now that you've mastered the basics, let's dive deeper into how to use variables effectively in the next chapter:
 [**Using Variables**](./variables.md).

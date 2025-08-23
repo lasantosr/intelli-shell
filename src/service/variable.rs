@@ -3,13 +3,12 @@ use std::{
     env,
 };
 
-use color_eyre::Result;
 use heck::ToShoutySnakeCase;
 use tracing::instrument;
 
 use super::IntelliShellService;
 use crate::{
-    errors::{InsertError, UpdateError},
+    errors::Result,
     model::{CommandPart, DynamicCommand, Variable, VariableSuggestion, VariableValue},
     utils::{format_env_var, get_working_dir},
 };
@@ -33,7 +32,7 @@ impl IntelliShellService {
         let mut missing = Vec::new();
 
         // Parse the command into a dynamic one
-        let dynamic = DynamicCommand::parse(command);
+        let dynamic = DynamicCommand::parse(command, true);
         // For each one of the parts
         for part in dynamic.parts {
             match part {
@@ -175,7 +174,7 @@ impl IntelliShellService {
 
     /// Inserts a new variable value
     #[instrument(skip_all)]
-    pub async fn insert_variable_value(&self, value: VariableValue) -> Result<VariableValue, InsertError> {
+    pub async fn insert_variable_value(&self, value: VariableValue) -> Result<VariableValue> {
         tracing::info!(
             "Inserting a variable value for '{}' '{}': {}",
             value.flat_root_cmd,
@@ -187,7 +186,7 @@ impl IntelliShellService {
 
     /// Updates an existing variable value
     #[instrument(skip_all)]
-    pub async fn update_variable_value(&self, value: VariableValue) -> Result<VariableValue, UpdateError> {
+    pub async fn update_variable_value(&self, value: VariableValue) -> Result<VariableValue> {
         tracing::info!(
             "Updating variable value '{}': {}",
             value.id.unwrap_or_default(),
@@ -202,7 +201,7 @@ impl IntelliShellService {
         &self,
         value_id: i32,
         context: impl IntoIterator<Item = (String, String)>,
-    ) -> Result<i32, UpdateError> {
+    ) -> Result<i32> {
         tracing::info!("Increasing usage for variable value '{value_id}'");
         let context = BTreeMap::from_iter(context);
         self.storage

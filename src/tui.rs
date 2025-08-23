@@ -88,7 +88,7 @@ impl Tui {
             event_rx,
             event_tx,
             frame_rate: 60.0,
-            tick_rate: 4.0,
+            tick_rate: 10.0,
             mouse: false,
             paste: false,
             state: None,
@@ -210,7 +210,7 @@ impl Tui {
     ///
     /// The callback receives a mutable reference to the `Frame` and the area to render in, which might not be the same
     /// as the frame area for inline TUIs.
-    pub fn render<F>(&mut self, render_callback: F) -> io::Result<CompletedFrame>
+    pub fn render<F>(&mut self, render_callback: F) -> io::Result<CompletedFrame<'_>>
     where
         F: FnOnce(&mut Frame, Rect),
     {

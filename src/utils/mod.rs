@@ -49,4 +49,5 @@ using! {
     pub fuzzy,
     pub variable,
     pub widget,
+    pub history,
 }

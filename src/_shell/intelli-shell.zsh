@@ -6,6 +6,7 @@
 intelli_search_key="${INTELLI_SEARCH_HOTKEY:-^@}"
 intelli_bookmark_key="${INTELLI_BOOKMARK_HOTKEY:-^b}"
 intelli_variable_key="${INTELLI_VARIABLE_HOTKEY:-^l}"
+intelli_fix_key="${INTELLI_FIX_HOTKEY:-^x}"
 
 # Helper function to execute intelli-shell and update the ZLE buffer
 function _intelli_exec {
@@ -14,7 +15,12 @@ function _intelli_exec {
   local temp_result_file=$(mktemp)
   local execute_prefix="____execute____"
 
-  intelli-shell --extra-line --skip-execution --file-output "$temp_result_file" "$@"
+  # Clear the buffer
+  BUFFER=""
+  zle -I
+
+  # Run intelli-shell
+  intelli-shell --skip-execution --file-output "$temp_result_file" "$@"
   exit_status=$?
 
   # Read output from temp file if it exists and remove it
@@ -59,6 +65,13 @@ function _intelli_variable {
   _intelli_exec replace -i "$BUFFER"
 }
 
+# ZLE widget function for fixing commands
+function _intelli_fix {
+  local hist
+  hist=$(fc -l -n -5)
+  _intelli_exec fix --history "$hist" "$BUFFER"
+}
+
 # Bind ESC to kill the whole line if not skipped
 if [[ "${INTELLI_SKIP_ESC_BIND:-0}" == "0" ]]; then
   bindkey '\e' kill-whole-line
@@ -68,11 +81,13 @@ fi
 zle -N _intelli_search
 zle -N _intelli_save
 zle -N _intelli_variable
+zle -N _intelli_fix
 
 # Bind the keys to the widgets
 bindkey "$intelli_search_key" _intelli_search
 bindkey "$intelli_bookmark_key" _intelli_save
 bindkey "$intelli_variable_key" _intelli_variable
+bindkey "$intelli_fix_key" _intelli_fix
 
 # Export the execution prompt variable
 export INTELLI_EXEC_PROMPT=$(print -r -- "$PS2" | sed 's/%{//g; s/%}//g')

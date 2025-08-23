@@ -41,11 +41,15 @@ This section is broken down into the following chapters:
 - **[Search Tuning](./search_tuning.md)**: An advanced guide to modifying the ranking algorithms that determine how
   commands and variable suggestions are sorted
 
+- **[AI Integration](./ai.md)**: Learn how to connect IntelliShell to AI providers like OpenAI or local Ollama models.
+  This chapter covers setting up API keys, choosing models, and customizing prompts to power features like command
+  generation and error fixing.
+
 ## Shell Hotkey Configuration
 
 The primary hotkeys that trigger IntelliShell from your command line (e.g., <kbd>Ctrl</kbd>+<kbd>Space</kbd>) are
 configured separately via environment variables in your shell's profile (e.g., `~/.bashrc`, `~/.zshrc`). This is
-covered in detail in the [**Installation**](../guide/installation.md) chapter.
+covered in detail in the [**Installation**](../guide/installation.md#customizing-shell-integration) chapter.
 
 ---
 

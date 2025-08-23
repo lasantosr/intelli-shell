@@ -1,11 +1,11 @@
-# import
+# `import`
 
 The `import` command is the counterpart to `export`. It allows you to add commands to your library from an external
 source, such as a file, an HTTP endpoint, or a GitHub Gist. This is the primary way to restore backups or onboard
 commands shared by others.
 
-When importing, IntelliShell merges the incoming commands with your existing library. If a command with the string
-already exists, it is skipped to prevent duplicates.
+When importing, IntelliShell merges the incoming commands with your existing library. If a command with the exact same
+command string already exists, it is skipped to prevent duplicates.
 
 ## Usage
 
@@ -15,77 +15,96 @@ intelli-shell import [OPTIONS] [LOCATION]
 
 ## Arguments
 
-- `[LOCATION]`
-
+- **`LOCATION`**
+  
   Specifies the source of the commands to import. This can be a file path, an HTTP(S) URL, or a GitHub Gist ID/URL.
-  If omitted or set to `-`, IntelliShell reads from standard input (stdin), allowing you to pipe data into it.
 
-  - **File**: `intelli-shell import ./shared_commands.json`
-  - **HTTP**: `intelli-shell import https://example.com/commands.json`
-  - **Gist**: `intelli-shell import https://gist.github.com/user/1a2b3c4d5e6f7g8h9i0j`
-  - **Stdin**: `cat commands.json | intelli-shell import`
+  If omitted or set to `-`, IntelliShell reads from standard input (`stdin`), allowing you to pipe data into it.
+
+---
 
 ## Options
 
 - `--file`, `--http`, `--gist`
-
-  Forces IntelliShell to treat the `LOCATION` as a specific type. This is useful if the location string is ambiguous.
+  
+  Forces IntelliShell to treat the `LOCATION` as a specific type, which is useful if the location string is ambiguous
+  (e.g., a numeric Gist ID).
 
 - `--filter <REGEX>`
-
-  Imports only the commands from the source whose command string or description matches the provided regular expression.
-
-  ```sh
-  # Import only commands related to 'git' from a shared file
-  intelli-shell import --filter "git" team_commands.json
-  ```
+  
+  Imports only the commands from the source whose content or description matches the provided regular expression.
 
 - `-t, --add-tag <TAG>`
-
-  Appends one or more hashtags to the description of every command being imported. This is a convenient way to
-  categorize a new set of commands. This option can be specified multiple times.
-
-  ```sh
-  # Import commands from a file and tag them all with #networking and #vpn
-  intelli-shell import --add-tag networking --add-tag vpn company_tools.json
-  ```
+  
+  Appends one or more hashtags to the description of every imported command. This is a convenient way to categorize a
+  new set of commands and can be specified multiple times.
 
 - `--dry-run`
+  
+  Performs a "trial run" of the import. Commands are parsed and displayed but are **not** saved to your library, which is
+  useful for inspecting a source before committing.
 
-  Performs a "trial run" of the import process. The commands from the source are parsed and displayed in the terminal
-  but are **not** saved to your library. This is useful for inspecting the commands before committing to the import.
+- `--ai`
+  
+  Uses AI to parse and extract command templates from unstructured text sources like web pages or shell history.
+
+- `--history <SHELL>`
+  
+  Imports shell history (`bash`, `zsh`, `fish`, `powershell` or `atuin`). This option **requires** the `--ai` flag.
+
+- `-i, --interactive`
+  
+  Opens an interactive TUI to review, edit, and select commands before importing. You can use <kbd>Space</kbd> /
+  <kbd>Ctrl</kbd>+<kbd>Space</kbd> to discard or include highlighted / all commands.
 
 - `-X, --request <METHOD>`
-
-  Specifies the HTTP method to use when the `LOCATION` is an HTTP(S) URL.
-  - **Default**: `GET`
-  - **Allowed values**: `GET`, `POST`, `PUT`, `PATCH`
+  
+  Specifies the HTTP method to use for an HTTP(S) `LOCATION` (default: `GET`).
 
 - `-H, --header <KEY: VALUE>`
-
-  Adds a custom HTTP header to the request when importing from an HTTP(S) URL. This can be specified multiple times.
-
-  ```sh
-  # Import from a private URL that requires authentication
-  intelli-shell import --http https://my-api/commands -H "Authorization: Bearer my-token"
-  ```
+  
+  Adds a custom HTTP header to the request for an HTTP(S) `LOCATION`. This can be specified multiple times.
 
 ## Examples
 
-- **Import commands from a local file**:
+### Import from a Local File
 
-  ```sh
-  intelli-shell import my_commands_backup.json
-  ```
+Restore your library from a local backup file.
 
-- **Import commands from a public GitHub Gist URL**:
+```sh
+intelli-shell import my_commands.bak
+```
 
-  ```sh
-  intelli-shell import https://gist.github.com/user/1a2b3c4d5e6f7g8h9i0j
-  ```
+### Import from a Public Gist
 
-- **Preview commands from a URL before importing**:
+Onboard a set of shared commands from a teammate or the community.
 
-  ```sh
-  intelli-shell import --dry-run https://config.my-company.com/shared-commands
-  ```
+```sh
+intelli-shell import https://gist.github.com/lasantosr/137846d029efcc59468ff2c9d2098b4f
+```
+
+### Preview Commands Before Importing
+
+Use `--dry-run` to safely inspect the contents of a remote file without modifying your library.
+
+```sh
+intelli-shell import --dry-run https://config.my-company.com/shared-commands
+```
+
+### Convert Shell History into Bookmarks with AI
+
+This is a powerful way to convert your most-used historical commands into a permanent, searchable library. The `-i` flag
+is highly recommended to curate the results.
+
+```sh
+intelli-shell import -i --ai --history bash
+```
+
+### Extract Commands from a Web Page with AI
+
+Turn any online cheatsheet or tutorial into a source of ready-to-use command templates. The AI will parse the page and
+extract commands for you to review and import.
+
+```sh
+intelli-shell import -i --ai https://www.example.com/cheatsheet
+```

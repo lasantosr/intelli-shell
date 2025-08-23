@@ -1,58 +1,48 @@
-use color_eyre::eyre::Result;
+use color_eyre::Result;
 
 use super::{Process, ProcessOutput};
 use crate::{
-    cli::ExportCommandsProcess, config::Config, errors::ImportExportError, format_error, format_msg,
+    cli::ExportCommandsProcess,
+    component::{
+        Component,
+        pick::{CommandsPickerComponent, CommandsPickerComponentMode},
+    },
+    config::Config,
+    errors::AppError,
+    format_error, format_msg,
+    process::InteractiveProcess,
     service::IntelliShellService,
 };
 
 impl Process for ExportCommandsProcess {
-    async fn execute(self, config: Config, service: IntelliShellService) -> Result<ProcessOutput> {
-        match service.export_commands(self, config.gist).await {
-            Ok(0) => Ok(ProcessOutput::fail().stderr(format_error!(config.theme, "No commands to export"))),
-            Ok(exported) => {
+    async fn execute(self, config: Config, service: IntelliShellService) -> color_eyre::Result<ProcessOutput> {
+        let commands = match service.prepare_commands_export(self.filter.clone()).await {
+            Ok(s) => s,
+            Err(AppError::UserFacing(err)) => {
+                return Ok(ProcessOutput::fail().stderr(format_error!(config.theme, "{err}")));
+            }
+            Err(AppError::Unexpected(report)) => return Err(report),
+        };
+        match service.export_commands(commands, self, config.gist).await {
+            Ok((0, _)) => Ok(ProcessOutput::fail().stderr(format_error!(config.theme, "No commands to export"))),
+            Ok((exported, None)) => {
                 Ok(ProcessOutput::success().stderr(format_msg!(config.theme, "Exported {exported} commands")))
             }
-            Err(ImportExportError::NotAFile) => Ok(ProcessOutput::fail().stderr(format_error!(
-                config.theme,
-                "The path already exists and it's not a file"
-            ))),
-            Err(ImportExportError::FileNotFound) => Ok(
-                ProcessOutput::fail().stderr(format_error!(config.theme, "The path of the file must already exist"))
-            ),
-            Err(ImportExportError::FileNotAccessible) => Ok(ProcessOutput::fail().stderr(format_error!(
-                config.theme,
-                "Cannot access the file, check write permissions"
-            ))),
-            Err(ImportExportError::FileBrokenPipe) => Ok(ProcessOutput::success()),
-            Err(ImportExportError::HttpInvalidUrl) => Ok(ProcessOutput::fail().stderr(format_error!(
-                config.theme,
-                "The provided URL is invalid, please provide a valid HTTP/S URL"
-            ))),
-            Err(ImportExportError::HttpRequestFailed(msg)) => {
-                Ok(ProcessOutput::fail().stderr(format_error!(config.theme, "HTTP request failed: {msg}")))
-            }
-            Err(ImportExportError::GistMissingId) => Ok(ProcessOutput::fail().stderr(format_error!(
-                config.theme,
-                "A gist id must be provided either on the arguments or the config file"
-            ))),
-            Err(ImportExportError::GistInvalidLocation) => Ok(ProcessOutput::fail().stderr(format_error!(
-                config.theme,
-                "The provided gist is not valid, please provide a valid id or URL"
-            ))),
-            Err(ImportExportError::GistLocationHasSha) => Ok(ProcessOutput::fail().stderr(format_error!(
-                config.theme,
-                "Cannot export to a gist revision, provide a gist without a revision"
-            ))),
-            Err(ImportExportError::GistFileNotFound) => unreachable!(),
-            Err(ImportExportError::GistMissingToken) => Ok(ProcessOutput::fail().stderr(format_error!(
-                config.theme,
-                "A GitHub token is required to export to a gist, set it in the config or GIST_TOKEN env variable"
-            ))),
-            Err(ImportExportError::GistRequestFailed(msg)) => {
-                Ok(ProcessOutput::fail().stderr(format_error!(config.theme, "Gist request failed: {msg}")))
-            }
-            Err(ImportExportError::Unexpected(report)) => Err(report),
+            Ok((exported, Some(stdout))) => Ok(ProcessOutput::success()
+                .stdout(stdout)
+                .stderr(format_msg!(config.theme, "Exported {exported} commands"))),
+            Err(AppError::UserFacing(err)) => Ok(ProcessOutput::fail().stderr(format_error!(config.theme, "{err}"))),
+            Err(AppError::Unexpected(report)) => Err(report),
         }
+    }
+}
+impl InteractiveProcess for ExportCommandsProcess {
+    fn into_component(self, config: Config, service: IntelliShellService, inline: bool) -> Result<Box<dyn Component>> {
+        Ok(Box::new(CommandsPickerComponent::new(
+            service,
+            config,
+            inline,
+            CommandsPickerComponentMode::Export { input: self },
+        )))
     }
 }

@@ -2,10 +2,11 @@ use std::{
     collections::HashMap,
     env,
     io::{Cursor, ErrorKind},
+    pin::Pin,
     sync::LazyLock,
 };
 
-use color_eyre::{Result, eyre::Context};
+use color_eyre::{Report, eyre::Context};
 use futures_util::{StreamExt, TryStreamExt, stream};
 use itertools::Itertools;
 use regex::Regex;
@@ -16,133 +17,166 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use tokio::{
     fs::{self, File},
-    io::{self, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Lines},
+    io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader, Lines},
 };
 use tokio_stream::Stream;
-use tokio_util::io::StreamReader;
 use tracing::instrument;
 use uuid::Uuid;
 
 use super::IntelliShellService;
 use crate::{
-    cli::{ExportCommandsProcess, HttpMethod, ImportCommandsProcess},
+    cli::{ExportCommandsProcess, HistorySource, HttpMethod, ImportCommandsProcess},
     config::GistConfig,
-    errors::ImportExportError,
+    errors::{AppError, Result, UserFacingError},
     model::{CATEGORY_USER, Command, SOURCE_IMPORT},
-    utils::{ShellType, get_shell},
+    utils::{ShellType, convert_alt_to_regular, get_shell_type, read_history},
 };
 
 const README_FILENAME: &str = "readme.md";
 const README_FILENAME_UPPER: &str = "README.md";
 
+type CommandStream = Pin<Box<dyn Stream<Item = Result<Command>> + Send>>;
+
 impl IntelliShellService {
     /// Import commands, returning the number of new commands inserted and skipped (because they already existed)
-    pub async fn import_commands(
+    pub async fn import_commands(&self, commands: CommandStream, overwrite_commands: bool) -> Result<(u64, u64)> {
+        self.storage.import_commands(commands, overwrite_commands, false).await
+    }
+
+    /// Returns a list of commands from a location
+    pub async fn get_commands_from_location(
         &self,
         args: ImportCommandsProcess,
         gist_config: GistConfig,
-    ) -> Result<(u64, u64), ImportExportError> {
+    ) -> Result<CommandStream> {
         let ImportCommandsProcess {
             location,
             file,
             http,
             gist,
+            history,
+            ai,
             filter,
-            dry_run,
+            dry_run: _,
             tags,
             headers,
             method,
         } = args;
-        if file {
-            self.import_file_commands(location, filter, dry_run, tags).await
+
+        // Make sure the tags starts with a hastah (#)
+        let tags = tags
+            .into_iter()
+            .filter_map(|mut tag| {
+                tag.chars().next().map(|first_char| {
+                    if first_char == '#' {
+                        tag
+                    } else {
+                        tag.insert(0, '#');
+                        tag
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+
+        // Retrieve the commands from the location
+        let commands = if let Some(history) = history {
+            self.get_history_commands(history, filter, tags, ai).await?
+        } else if file {
+            if location == "-" {
+                self.get_stdin_commands(filter, tags, ai).await?
+            } else {
+                self.get_file_commands(location, filter, tags, ai).await?
+            }
         } else if http {
-            self.import_http_commands(location, filter, dry_run, tags, headers, method)
-                .await
+            self.get_http_commands(location, headers, method, filter, tags, ai)
+                .await?
         } else if gist {
-            self.import_gist_commands(location, gist_config, filter, dry_run, tags)
-                .await
+            self.get_gist_commands(location, gist_config, filter, tags, ai).await?
         } else {
             // Determine which mode based on the location
             if location == "gist"
                 || location.starts_with("https://gist.github.com")
                 || location.starts_with("https://api.github.com/gists")
             {
-                self.import_gist_commands(location, gist_config, filter, dry_run, tags)
-                    .await
+                self.get_gist_commands(location, gist_config, filter, tags, ai).await?
             } else if location.starts_with("http://") || location.starts_with("https://") {
-                self.import_http_commands(location, filter, dry_run, tags, headers, method)
-                    .await
+                self.get_http_commands(location, headers, method, filter, tags, ai)
+                    .await?
+            } else if location == "-" {
+                self.get_stdin_commands(filter, tags, ai).await?
             } else {
-                self.import_file_commands(location, filter, dry_run, tags).await
+                self.get_file_commands(location, filter, tags, ai).await?
             }
-        }
+        };
+
+        Ok(commands)
     }
 
     #[instrument(skip_all)]
-    async fn import_file_commands(
+    async fn get_history_commands(
+        &self,
+        history: HistorySource,
+        filter: Option<Regex>,
+        tags: Vec<String>,
+        ai: bool,
+    ) -> Result<CommandStream> {
+        if let Some(ref filter) = filter {
+            tracing::info!(ai, "Importing commands matching `{filter}` from {history:?} history");
+        } else {
+            tracing::info!(ai, "Importing commands from {history:?} history");
+        }
+        let content = Cursor::new(read_history(history)?);
+        self.extract_and_filter_commands(content, filter, tags, ai).await
+    }
+
+    #[instrument(skip_all)]
+    async fn get_stdin_commands(&self, filter: Option<Regex>, tags: Vec<String>, ai: bool) -> Result<CommandStream> {
+        if let Some(ref filter) = filter {
+            tracing::info!(ai, "Importing commands matching `{filter}` from stdin");
+        } else {
+            tracing::info!(ai, "Importing commands from stdin");
+        }
+        let content = tokio::io::stdin();
+        self.extract_and_filter_commands(content, filter, tags, ai).await
+    }
+
+    #[instrument(skip_all)]
+    async fn get_file_commands(
         &self,
         path: String,
         filter: Option<Regex>,
-        dry_run: bool,
         tags: Vec<String>,
-    ) -> Result<(u64, u64), ImportExportError> {
-        // If the path is the hypen placeholder
-        if path == "-" {
-            if let Some(ref filter) = filter {
-                tracing::info!("Importing commands matching `{filter}` from stdin");
-            } else {
-                tracing::info!("Importing commands from stdin");
+        ai: bool,
+    ) -> Result<CommandStream> {
+        // Otherwise, check the path to import the file
+        match fs::metadata(&path).await {
+            Ok(m) if m.is_file() => (),
+            Ok(_) => return Err(UserFacingError::ImportLocationNotAFile.into()),
+            Err(err) if err.kind() == ErrorKind::NotFound => return Err(UserFacingError::ImportFileNotFound.into()),
+            Err(err) if err.kind() == ErrorKind::PermissionDenied => {
+                return Err(UserFacingError::FileNotAccessible("read").into());
             }
-            // We read the content from stdin
-            let content = tokio::io::stdin();
-            let commands_stream = parse_commands(content, tags, CATEGORY_USER, SOURCE_IMPORT);
-            if dry_run {
-                import_dry_run(commands_stream, filter).await
-            } else {
-                Ok(self
-                    .storage
-                    .import_commands(commands_stream, filter, false, false)
-                    .await?)
-            }
-        } else {
-            // Otherwise, check the path to import the file
-            match fs::metadata(&path).await {
-                Ok(m) if m.is_file() => (),
-                Ok(_) => return Err(ImportExportError::NotAFile),
-                Err(err) if err.kind() == ErrorKind::NotFound => return Err(ImportExportError::FileNotFound),
-                Err(err) if err.kind() == ErrorKind::PermissionDenied => {
-                    return Err(ImportExportError::FileNotAccessible);
-                }
-                Err(err) => return Err(ImportExportError::Unexpected(err.into())),
-            }
-            if let Some(ref filter) = filter {
-                tracing::info!("Importing commands matching `{filter}` from file: {path}");
-            } else {
-                tracing::info!("Importing commands from file: {path}");
-            }
-            let file = File::open(path).await.wrap_err("Couldn't open the file")?;
-            let commands_stream = parse_commands(file, tags, CATEGORY_USER, SOURCE_IMPORT);
-            if dry_run {
-                import_dry_run(commands_stream, filter).await
-            } else {
-                Ok(self
-                    .storage
-                    .import_commands(commands_stream, filter, false, false)
-                    .await?)
-            }
+            Err(err) => return Err(Report::from(err).into()),
         }
+        if let Some(ref filter) = filter {
+            tracing::info!(ai, "Importing commands matching `{filter}` from file: {path}");
+        } else {
+            tracing::info!(ai, "Importing commands from file: {path}");
+        }
+        let content = File::open(path).await.wrap_err("Couldn't open the file")?;
+        self.extract_and_filter_commands(content, filter, tags, ai).await
     }
 
     #[instrument(skip_all)]
-    async fn import_http_commands(
+    async fn get_http_commands(
         &self,
         mut url: String,
-        filter: Option<Regex>,
-        dry_run: bool,
-        tags: Vec<String>,
         headers: Vec<(HeaderName, HeaderValue)>,
         method: HttpMethod,
-    ) -> Result<(u64, u64), ImportExportError> {
+        filter: Option<Regex>,
+        tags: Vec<String>,
+        ai: bool,
+    ) -> Result<CommandStream> {
         // If the URL is the stdin placeholder, read a line from it
         if url == "-" {
             let mut buffer = String::new();
@@ -154,14 +188,14 @@ impl IntelliShellService {
         // Parse the URL
         let url = Url::parse(&url).map_err(|err| {
             tracing::error!("Couldn't parse url: {err}");
-            ImportExportError::HttpInvalidUrl
+            UserFacingError::HttpInvalidUrl
         })?;
 
         let method = method.into();
         if let Some(ref filter) = filter {
-            tracing::info!("Importing commands matching `{filter}` from http: {method} {url}");
+            tracing::info!(ai, "Importing commands matching `{filter}` from http: {method} {url}");
         } else {
-            tracing::info!("Importing commands from http: {method} {url}");
+            tracing::info!(ai, "Importing commands from http: {method} {url}");
         }
 
         // Build the request
@@ -177,7 +211,7 @@ impl IntelliShellService {
         // Send the request
         let res = req.send().await.map_err(|err| {
             tracing::error!("{err:?}");
-            ImportExportError::HttpRequestFailed(err.to_string())
+            UserFacingError::HttpRequestFailed(err.to_string())
         })?;
 
         // Check the response status
@@ -187,14 +221,12 @@ impl IntelliShellService {
             let body = res.text().await.unwrap_or_default();
             if let Some(reason) = status.canonical_reason() {
                 tracing::error!("Got response [{status_str}] {reason}:\n{body}");
-                return Err(ImportExportError::HttpRequestFailed(format!(
-                    "received {status_str} {reason} response"
-                )));
+                return Err(
+                    UserFacingError::HttpRequestFailed(format!("received {status_str} {reason} response")).into(),
+                );
             } else {
                 tracing::error!("Got response [{status_str}]:\n{body}");
-                return Err(ImportExportError::HttpRequestFailed(format!(
-                    "received {status_str} response"
-                )));
+                return Err(UserFacingError::HttpRequestFailed(format!("received {status_str} response")).into());
             }
         }
 
@@ -202,16 +234,16 @@ impl IntelliShellService {
         let mut json = false;
         if let Some(content_type) = res.headers().get(header::CONTENT_TYPE) {
             let Ok(content_type) = content_type.to_str() else {
-                return Err(ImportExportError::HttpRequestFailed(String::from(
-                    "couldn't read content-type header",
-                )));
+                return Err(
+                    UserFacingError::HttpRequestFailed(String::from("couldn't read content-type header")).into(),
+                );
             };
             if content_type.starts_with("application/json") {
                 json = true;
             } else if !content_type.starts_with("text") {
-                return Err(ImportExportError::HttpRequestFailed(format!(
-                    "unsupported content-type: {content_type}",
-                )));
+                return Err(
+                    UserFacingError::HttpRequestFailed(format!("unsupported content-type: {content_type}")).into(),
+                );
             }
         }
 
@@ -221,52 +253,42 @@ impl IntelliShellService {
                 Ok(b) => b,
                 Err(err) if err.is_decode() => {
                     tracing::error!("Couldn't parse api response: {err}");
-                    return Err(ImportExportError::GistRequestFailed(String::from(
-                        "couldn't parse api response",
-                    )));
+                    return Err(UserFacingError::GistRequestFailed(String::from("couldn't parse api response")).into());
                 }
                 Err(err) => {
                     tracing::error!("{err:?}");
-                    return Err(ImportExportError::GistRequestFailed(err.to_string()));
+                    return Err(UserFacingError::GistRequestFailed(err.to_string()).into());
                 }
             };
 
-            // Import them
-            let commands_stream = stream::iter(commands.into_iter().map(|c| Ok(Command::from(c))));
-            if dry_run {
-                import_dry_run(commands_stream, filter).await
-            } else {
-                Ok(self
-                    .storage
-                    .import_commands(commands_stream, filter, false, false)
-                    .await?)
-            }
+            Ok(Box::pin(stream::iter(
+                commands
+                    .into_iter()
+                    .map(|c| {
+                        Command::new(CATEGORY_USER, SOURCE_IMPORT, c.cmd)
+                            .with_alias(c.alias)
+                            .with_description(c.description)
+                    })
+                    .map(Ok),
+            )))
         } else {
-            // Get the response body as a stream
-            let stream_reader = StreamReader::new(res.bytes_stream().map_err(std::io::Error::other));
-
-            // Import commands from the response body
-            let commands_stream = parse_commands(stream_reader, tags, CATEGORY_USER, SOURCE_IMPORT);
-            if dry_run {
-                import_dry_run(commands_stream, filter).await
-            } else {
-                Ok(self
-                    .storage
-                    .import_commands(commands_stream, filter, false, false)
-                    .await?)
-            }
+            let content = Cursor::new(res.text().await.map_err(|err| {
+                tracing::error!("Couldn't read api response: {err}");
+                UserFacingError::HttpRequestFailed(String::from("couldn't read api response"))
+            })?);
+            self.extract_and_filter_commands(content, filter, tags, ai).await
         }
     }
 
     #[instrument(skip_all)]
-    async fn import_gist_commands(
+    async fn get_gist_commands(
         &self,
         mut gist: String,
         gist_config: GistConfig,
         filter: Option<Regex>,
-        dry_run: bool,
         tags: Vec<String>,
-    ) -> Result<(u64, u64), ImportExportError> {
+        ai: bool,
+    ) -> Result<CommandStream> {
         // If the gist is the stdin placeholder, read a line from it
         if gist == "-" {
             let mut buffer = String::new();
@@ -278,7 +300,7 @@ impl IntelliShellService {
         // For raw gists, import as regular http requests
         if gist.starts_with("https://gist.githubusercontent.com") {
             return self
-                .import_http_commands(gist, filter, dry_run, tags, Vec::new(), HttpMethod::GET)
+                .get_http_commands(gist, Vec::new(), HttpMethod::GET, filter, tags, ai)
                 .await;
         }
 
@@ -293,9 +315,9 @@ impl IntelliShellService {
         };
 
         if let Some(ref filter) = filter {
-            tracing::info!("Importing commands matching `{filter}` from gist: {url}");
+            tracing::info!(ai, "Importing commands matching `{filter}` from gist: {url}");
         } else {
-            tracing::info!("Importing commands from gist: {url}");
+            tracing::info!(ai, "Importing commands from gist: {url}");
         }
 
         // Call the API
@@ -309,7 +331,7 @@ impl IntelliShellService {
             .await
             .map_err(|err| {
                 tracing::error!("{err:?}");
-                ImportExportError::GistRequestFailed(err.to_string())
+                UserFacingError::GistRequestFailed(err.to_string())
             })?;
 
         // Check the response status
@@ -319,14 +341,12 @@ impl IntelliShellService {
             let body = res.text().await.unwrap_or_default();
             if let Some(reason) = status.canonical_reason() {
                 tracing::error!("Got response [{status_str}] {reason}:\n{body}");
-                return Err(ImportExportError::GistRequestFailed(format!(
-                    "received {status_str} {reason} response"
-                )));
+                return Err(
+                    UserFacingError::GistRequestFailed(format!("received {status_str} {reason} response")).into(),
+                );
             } else {
                 tracing::error!("Got response [{status_str}]:\n{body}");
-                return Err(ImportExportError::GistRequestFailed(format!(
-                    "received {status_str} response"
-                )));
+                return Err(UserFacingError::GistRequestFailed(format!("received {status_str} response")).into());
             }
         }
 
@@ -335,13 +355,11 @@ impl IntelliShellService {
             Ok(b) => b,
             Err(err) if err.is_decode() => {
                 tracing::error!("Couldn't parse api response: {err}");
-                return Err(ImportExportError::GistRequestFailed(String::from(
-                    "couldn't parse api response",
-                )));
+                return Err(UserFacingError::GistRequestFailed(String::from("couldn't parse api response")).into());
             }
             Err(err) => {
                 tracing::error!("{err:?}");
-                return Err(ImportExportError::GistRequestFailed(err.to_string()));
+                return Err(UserFacingError::GistRequestFailed(err.to_string()).into());
             }
         };
 
@@ -349,7 +367,7 @@ impl IntelliShellService {
             // If there's a file specified, import just it
             body.files
                 .remove(gist_file)
-                .ok_or(ImportExportError::GistFileNotFound)?
+                .ok_or(UserFacingError::GistFileNotFound)?
                 .content
         } else {
             // Otherwise import all of the files (except the readme)
@@ -360,40 +378,81 @@ impl IntelliShellService {
                 .join("\n")
         };
 
-        // Import the commands
-        let commands_stream = parse_commands(Cursor::new(full_content), tags, CATEGORY_USER, SOURCE_IMPORT);
-        if dry_run {
-            import_dry_run(commands_stream, filter).await
-        } else {
-            Ok(self
-                .storage
-                .import_commands(commands_stream, filter, false, false)
-                .await?)
-        }
+        let content = Cursor::new(full_content);
+        self.extract_and_filter_commands(content, filter, tags, ai).await
     }
 
-    /// Exports commands, returning the number of commands exported
+    /// Extract the commands from the given content, prompting ai or parsing it, and then filters them
+    async fn extract_and_filter_commands(
+        &self,
+        content: impl AsyncRead + Unpin + Send + 'static,
+        filter: Option<Regex>,
+        tags: Vec<String>,
+        ai: bool,
+    ) -> Result<CommandStream> {
+        Ok(match (ai, filter) {
+            (true, Some(filter)) => Box::pin(
+                self.prompt_commands_import(content, tags, CATEGORY_USER, SOURCE_IMPORT)
+                    .await?
+                    .try_filter(move |c| {
+                        let pass = c.matches(&filter);
+                        async move { pass }
+                    }),
+            ),
+            (true, None) => Box::pin(
+                self.prompt_commands_import(content, tags, CATEGORY_USER, SOURCE_IMPORT)
+                    .await?,
+            ),
+            (false, Some(filter)) => Box::pin(parse_commands(content, tags, CATEGORY_USER, SOURCE_IMPORT).try_filter(
+                move |c| {
+                    let pass = c.matches(&filter);
+                    async move { pass }
+                },
+            )),
+            (false, None) => Box::pin(parse_commands(content, tags, CATEGORY_USER, SOURCE_IMPORT)),
+        })
+    }
+
+    /// Prepare a stream of commands to export, optionally filtering them
+    pub async fn prepare_commands_export(&self, filter: Option<Regex>) -> Result<CommandStream> {
+        if let Some(ref filter) = filter {
+            tracing::info!("Exporting commands matching `{filter}`");
+        } else {
+            tracing::info!("Exporting commands");
+        }
+        Ok(self.storage.export_user_commands(filter).await.boxed())
+    }
+
+    /// Exports commands, returning the number of commands exported and an optional output to write to stdout
     pub async fn export_commands(
         &self,
+        commands: CommandStream,
         args: ExportCommandsProcess,
         gist_config: GistConfig,
-    ) -> Result<u64, ImportExportError> {
+    ) -> Result<(u64, Option<String>)> {
         let ExportCommandsProcess {
             location,
             file,
             http,
             gist,
-            filter,
+            filter: _,
             headers,
             method,
         } = args;
 
         if file {
-            self.export_file_commands(location, filter).await
+            if location == "-" {
+                self.export_stdout_commands(commands).await
+            } else {
+                Ok((self.export_file_commands(commands, location).await?, None))
+            }
         } else if http {
-            self.export_http_commands(location, filter, headers, method).await
+            Ok((
+                self.export_http_commands(commands, location, headers, method).await?,
+                None,
+            ))
         } else if gist {
-            self.export_gist_commands(location, gist_config, filter).await
+            Ok((self.export_gist_commands(commands, location, gist_config).await?, None))
         } else {
             // Determine which mode based on the location
             if location == "gist"
@@ -401,97 +460,88 @@ impl IntelliShellService {
                 || location.starts_with("https://gist.githubusercontent.com")
                 || location.starts_with("https://api.github.com/gists")
             {
-                self.export_gist_commands(location, gist_config, filter).await
+                Ok((self.export_gist_commands(commands, location, gist_config).await?, None))
             } else if location.starts_with("http://") || location.starts_with("https://") {
-                self.export_http_commands(location, filter, headers, method).await
+                Ok((
+                    self.export_http_commands(commands, location, headers, method).await?,
+                    None,
+                ))
+            } else if location == "-" {
+                self.export_stdout_commands(commands).await
             } else {
-                self.export_file_commands(location, filter).await
+                Ok((self.export_file_commands(commands, location).await?, None))
             }
         }
     }
 
     #[instrument(skip_all)]
-    async fn export_file_commands(&self, path: String, filter: Option<Regex>) -> Result<u64, ImportExportError> {
-        if path == "-" {
-            if let Some(ref filter) = filter {
-                tracing::info!("Exporting commands matching `{filter}` to stdout");
-            } else {
-                tracing::info!("Exporting commands to stdout");
-            }
-            self.export_file_commands_inner(filter, tokio::io::stdout(), false)
-                .await
-        } else {
-            match File::create(&path).await {
-                Ok(file) => {
-                    if let Some(ref filter) = filter {
-                        tracing::info!("Exporting commands matching `{filter}` to file: {path}");
-                    } else {
-                        tracing::info!("Exporting commands to file: {path}");
-                    }
-                    self.export_file_commands_inner(filter, file, path.ends_with(".cmd") || path.ends_with(".bat"))
-                        .await
-                }
-                Err(err) if err.kind() == ErrorKind::PermissionDenied => {
-                    return Err(ImportExportError::FileNotAccessible);
-                }
-                Err(err) if err.kind() == ErrorKind::NotFound => return Err(ImportExportError::FileNotFound),
-                Err(err) if err.kind() == ErrorKind::IsADirectory => return Err(ImportExportError::NotAFile),
-                Err(err) => return Err(ImportExportError::Unexpected(err.into())),
-            }
+    async fn export_stdout_commands(&self, mut commands: CommandStream) -> Result<(u64, Option<String>)> {
+        tracing::info!("Writing commands to stdout");
+        let mut count = 0;
+        let mut stdout = String::new();
+        while let Some(command) = commands.next().await {
+            stdout += &command?.to_string();
+            stdout += "\n";
+            count += 1;
         }
+        Ok((count, Some(stdout).filter(|o| !o.is_empty())))
     }
 
-    async fn export_file_commands_inner(
-        &self,
-        filter: Option<Regex>,
-        mut location: impl AsyncWrite + Unpin,
-        is_batch: bool,
-    ) -> Result<u64, ImportExportError> {
-        let mut commands = self.storage.export_user_commands(filter).await;
+    #[instrument(skip_all)]
+    async fn export_file_commands(&self, mut commands: CommandStream, path: String) -> Result<u64> {
+        let mut file = match File::create(&path).await {
+            Ok(f) => f,
+            Err(err) if err.kind() == ErrorKind::PermissionDenied => {
+                return Err(UserFacingError::FileNotAccessible("write").into());
+            }
+            Err(err) if err.kind() == ErrorKind::NotFound => {
+                return Err(UserFacingError::ExportFileParentNotFound.into());
+            }
+            Err(err) if err.kind() == ErrorKind::IsADirectory => {
+                return Err(UserFacingError::ExportLocationNotAFile.into());
+            }
+            Err(err) => return Err(Report::from(err).into()),
+        };
+        tracing::info!("Writing commands to file: {path}");
+
         let mut count = 0;
         while let Some(command) = commands.next().await {
-            location
-                .write_all(write_command(command?, is_batch).as_bytes())
+            file.write_all(format!("{}\n", command?).as_bytes())
                 .await
                 .map_err(|err| {
                     if err.kind() == ErrorKind::BrokenPipe {
-                        ImportExportError::FileBrokenPipe
+                        AppError::from(UserFacingError::FileBrokenPipe)
                     } else {
-                        err.into()
+                        AppError::from(err)
                     }
                 })?;
             count += 1;
         }
-        location.flush().await?;
+        file.flush().await?;
         Ok(count)
     }
 
     #[instrument(skip_all)]
     async fn export_http_commands(
         &self,
+        mut commands: CommandStream,
         url: String,
-        filter: Option<Regex>,
         headers: Vec<(HeaderName, HeaderValue)>,
         method: HttpMethod,
-    ) -> Result<u64, ImportExportError> {
+    ) -> Result<u64> {
         // Parse the URL
         let url = Url::parse(&url).map_err(|err| {
             tracing::error!("Couldn't parse url: {err}");
-            ImportExportError::HttpInvalidUrl
+            UserFacingError::HttpInvalidUrl
         })?;
 
         let method = method.into();
-        if let Some(ref filter) = filter {
-            tracing::info!("Exporting commands matching `{filter}` to http: {method} {url}");
-        } else {
-            tracing::info!("Exporting commands to http: {method} {url}");
-        }
+        tracing::info!("Writing commands to http: {method} {url}");
 
         // Collect commands to export
-        let mut commands_stream = self.storage.export_user_commands(filter).await;
-        let mut commands = Vec::new();
-        while let Some(command) = commands_stream.next().await {
-            commands.push(CommandDto::from(command?));
+        let mut commands_to_export = Vec::new();
+        while let Some(command) = commands.next().await {
+            commands_to_export.push(CommandDto::from(command?));
         }
 
         // Build the request
@@ -505,12 +555,12 @@ impl IntelliShellService {
         }
 
         // Set JSON body
-        req = req.json(&commands);
+        req = req.json(&commands_to_export);
 
         // Send the request
         let res = req.send().await.map_err(|err| {
             tracing::error!("{err:?}");
-            ImportExportError::HttpRequestFailed(err.to_string())
+            UserFacingError::HttpRequestFailed(err.to_string())
         })?;
 
         // Check the response status
@@ -520,44 +570,38 @@ impl IntelliShellService {
             let body = res.text().await.unwrap_or_default();
             if let Some(reason) = status.canonical_reason() {
                 tracing::error!("Got response [{status_str}] {reason}:\n{body}");
-                return Err(ImportExportError::HttpRequestFailed(format!(
-                    "received {status_str} {reason} response"
-                )));
+                return Err(
+                    UserFacingError::HttpRequestFailed(format!("received {status_str} {reason} response")).into(),
+                );
             } else {
                 tracing::error!("Got response [{status_str}]:\n{body}");
-                return Err(ImportExportError::HttpRequestFailed(format!(
-                    "received {status_str} response"
-                )));
+                return Err(UserFacingError::HttpRequestFailed(format!("received {status_str} response")).into());
             }
         }
 
-        Ok(commands.len() as u64)
+        Ok(commands_to_export.len() as u64)
     }
 
     #[instrument(skip_all)]
     async fn export_gist_commands(
         &self,
+        mut commands: CommandStream,
         gist: String,
         gist_config: GistConfig,
-        filter: Option<Regex>,
-    ) -> Result<u64, ImportExportError> {
+    ) -> Result<u64> {
         // Retrieve the gist id and optional sha and file
         let (gist_id, gist_sha, gist_file) = extract_gist_data(&gist, &gist_config)?;
 
         // If a sha is found, return an error as we can't modify it
         if gist_sha.is_some() {
-            return Err(ImportExportError::GistLocationHasSha);
+            return Err(UserFacingError::ExportGistLocationHasSha.into());
         }
 
         // Retrieve the gist token to be used
-        let gist_token = get_gist_token(&gist_config)?;
+        let gist_token = get_export_gist_token(&gist_config)?;
 
         let url = format!("https://api.github.com/gists/{gist_id}");
-        if let Some(ref filter) = filter {
-            tracing::info!("Exporting commands matching `{filter}` to gist: {url}");
-        } else {
-            tracing::info!("Exporting commands to gist: {url}");
-        }
+        tracing::info!("Writing commands to gist: {url}");
 
         // Retrieve the gist to verify its existence
         let client = reqwest::Client::new();
@@ -570,7 +614,7 @@ impl IntelliShellService {
             .await
             .map_err(|err| {
                 tracing::error!("{err:?}");
-                ImportExportError::GistRequestFailed(err.to_string())
+                UserFacingError::GistRequestFailed(err.to_string())
             })?;
 
         // Check the response status
@@ -580,14 +624,12 @@ impl IntelliShellService {
             let body = res.text().await.unwrap_or_default();
             if let Some(reason) = status.canonical_reason() {
                 tracing::error!("Got response [{status_str}] {reason}:\n{body}");
-                return Err(ImportExportError::GistRequestFailed(format!(
-                    "received {status_str} {reason} response"
-                )));
+                return Err(
+                    UserFacingError::GistRequestFailed(format!("received {status_str} {reason} response")).into(),
+                );
             } else {
                 tracing::error!("Got response [{status_str}]:\n{body}");
-                return Err(ImportExportError::GistRequestFailed(format!(
-                    "received {status_str} response"
-                )));
+                return Err(UserFacingError::GistRequestFailed(format!("received {status_str} response")).into());
             }
         }
 
@@ -596,13 +638,11 @@ impl IntelliShellService {
             Ok(b) => b,
             Err(err) if err.is_decode() => {
                 tracing::error!("Couldn't parse api response: {err}");
-                return Err(ImportExportError::GistRequestFailed(String::from(
-                    "couldn't parse api response",
-                )));
+                return Err(UserFacingError::GistRequestFailed(String::from("couldn't parse api response")).into());
             }
             Err(err) => {
                 tracing::error!("{err:?}");
-                return Err(ImportExportError::GistRequestFailed(err.to_string()));
+                return Err(UserFacingError::GistRequestFailed(err.to_string()).into());
             }
         };
 
@@ -612,7 +652,7 @@ impl IntelliShellService {
         {
             ext.to_owned()
         } else {
-            match get_shell() {
+            match get_shell_type() {
                 ShellType::Cmd => ".cmd",
                 ShellType::WindowsPowerShell | ShellType::PowerShellCore => ".ps1",
                 _ => ".sh",
@@ -621,11 +661,11 @@ impl IntelliShellService {
         };
 
         // Collect commands to export
-        let mut commands_stream = self.storage.export_user_commands(filter).await;
         let mut content = String::new();
         let mut count = 0;
-        while let Some(command) = commands_stream.next().await {
-            content.push_str(&write_command(command?, &extension == ".cmd"));
+        while let Some(command) = commands.next().await {
+            content.push_str(&command?.to_string());
+            content.push('\n');
             count += 1;
         }
 
@@ -687,7 +727,7 @@ intelli-shell import --gist {gist_id}
             .await
             .map_err(|err| {
                 tracing::error!("{err:?}");
-                ImportExportError::GistRequestFailed(err.to_string())
+                UserFacingError::GistRequestFailed(err.to_string())
             })?;
 
         // Check the response status
@@ -697,19 +737,17 @@ intelli-shell import --gist {gist_id}
             let body = res.text().await.unwrap_or_default();
             if status == StatusCode::NOT_FOUND {
                 tracing::error!("Update got not found after a succesful get request");
-                return Err(ImportExportError::GistRequestFailed(
-                    "token missing permissions to update the gist".into(),
-                ));
+                return Err(
+                    UserFacingError::GistRequestFailed("token missing permissions to update the gist".into()).into(),
+                );
             } else if let Some(reason) = status.canonical_reason() {
                 tracing::error!("Got response [{status_str}] {reason}:\n{body}");
-                return Err(ImportExportError::GistRequestFailed(format!(
-                    "received {status_str} {reason} response"
-                )));
+                return Err(
+                    UserFacingError::GistRequestFailed(format!("received {status_str} {reason} response")).into(),
+                );
             } else {
                 tracing::error!("Got response [{status_str}]:\n{body}");
-                return Err(ImportExportError::GistRequestFailed(format!(
-                    "received {status_str} response"
-                )));
+                return Err(UserFacingError::GistRequestFailed(format!("received {status_str} response")).into());
             }
         }
 
@@ -726,7 +764,7 @@ intelli-shell import --gist {gist_id}
 /// 2. The `token` field of the provided `gist_config` object
 ///
 /// If a token is not found in any of these locations, the function will return an error.
-fn get_gist_token(gist_config: &GistConfig) -> Result<String, ImportExportError> {
+fn get_export_gist_token(gist_config: &GistConfig) -> Result<String> {
     if let Ok(token) = env::var("GIST_TOKEN")
         && !token.is_empty()
     {
@@ -734,7 +772,7 @@ fn get_gist_token(gist_config: &GistConfig) -> Result<String, ImportExportError>
     } else if !gist_config.token.is_empty() {
         Ok(gist_config.token.clone())
     } else {
-        Err(ImportExportError::GistMissingToken)
+        Err(UserFacingError::ExportGistMissingToken.into())
     }
 }
 
@@ -767,16 +805,13 @@ fn get_gist_token(gist_config: &GistConfig) -> Result<String, ImportExportError>
 /// - `{id}/{file}`
 /// - `{id}/{sha}`
 /// - `{id}/{sha}/{file}`
-fn extract_gist_data(
-    location: &str,
-    gist_config: &GistConfig,
-) -> Result<(String, Option<String>, Option<String>), ImportExportError> {
+fn extract_gist_data(location: &str, gist_config: &GistConfig) -> Result<(String, Option<String>, Option<String>)> {
     let location = location.trim();
     if location.is_empty() || location == "gist" {
         if !gist_config.id.is_empty() {
             Ok((gist_config.id.clone(), None, None))
         } else {
-            Err(ImportExportError::GistMissingId)
+            Err(UserFacingError::GistMissingId.into())
         }
     } else {
         /// Helper function to check if a string is a commit sha
@@ -795,7 +830,7 @@ fn extract_gist_data(
                 "gist.github.com" => {
                     // Handles: https://gist.github.com/{user}/{id}/{sha?}
                     if segments.len() < 2 {
-                        return Err(ImportExportError::GistInvalidLocation);
+                        return Err(UserFacingError::GistInvalidLocation.into());
                     }
                     let id = segments[1].to_string();
                     let mut sha = None;
@@ -803,7 +838,7 @@ fn extract_gist_data(
                         if is_sha(segments[2]) {
                             sha = Some(segments[2].to_string());
                         } else {
-                            return Err(ImportExportError::GistInvalidLocation);
+                            return Err(UserFacingError::GistInvalidLocation.into());
                         }
                     }
                     (id, sha, None)
@@ -811,7 +846,7 @@ fn extract_gist_data(
                 "gist.githubusercontent.com" => {
                     // Handles: https://gist.githubusercontent.com/{user}/{id}/raw/{sha?}/{file?}
                     if segments.len() < 3 || segments[2] != "raw" {
-                        return Err(ImportExportError::GistInvalidLocation);
+                        return Err(UserFacingError::GistInvalidLocation.into());
                     }
                     let id = segments[1].to_string();
                     let mut sha = None;
@@ -831,7 +866,7 @@ fn extract_gist_data(
                 "api.github.com" => {
                     // Handles: https://api.github.com/gists/{id}/{sha?}
                     if segments.len() < 2 || segments[0] != "gists" {
-                        return Err(ImportExportError::GistInvalidLocation);
+                        return Err(UserFacingError::GistInvalidLocation.into());
                     }
                     let id = segments[1].to_string();
                     let mut sha = None;
@@ -839,13 +874,13 @@ fn extract_gist_data(
                         if is_sha(segments[2]) {
                             sha = Some(segments[2].to_string());
                         } else {
-                            return Err(ImportExportError::GistInvalidLocation);
+                            return Err(UserFacingError::GistInvalidLocation.into());
                         }
                     }
                     (id, sha, None)
                 }
                 // Any other host is considered an invalid location
-                _ => return Err(ImportExportError::GistInvalidLocation),
+                _ => return Err(UserFacingError::GistInvalidLocation.into()),
             };
             return Ok(gist_data);
         }
@@ -869,7 +904,7 @@ fn extract_gist_data(
                     id = gist_config.id.clone();
                     file = Some(parts[0].to_string());
                 } else {
-                    return Err(ImportExportError::GistMissingId);
+                    return Err(UserFacingError::GistMissingId.into());
                 }
             }
             // Handles:
@@ -879,7 +914,7 @@ fn extract_gist_data(
                 if is_id(parts[0]) {
                     id = parts[0].to_string();
                 } else {
-                    return Err(ImportExportError::GistInvalidLocation);
+                    return Err(UserFacingError::GistInvalidLocation.into());
                 }
                 if is_sha(parts[1]) {
                     sha = Some(parts[1].to_string());
@@ -893,18 +928,18 @@ fn extract_gist_data(
                 if is_id(parts[0]) {
                     id = parts[0].to_string();
                 } else {
-                    return Err(ImportExportError::GistInvalidLocation);
+                    return Err(UserFacingError::GistInvalidLocation.into());
                 }
                 if is_sha(parts[1]) {
                     sha = Some(parts[1].to_string());
                 } else {
-                    return Err(ImportExportError::GistInvalidLocation);
+                    return Err(UserFacingError::GistInvalidLocation.into());
                 }
                 file = Some(parts[2].to_string());
             }
             // Too many segments
             _ => {
-                return Err(ImportExportError::GistInvalidLocation);
+                return Err(UserFacingError::GistInvalidLocation.into());
             }
         }
 
@@ -953,27 +988,13 @@ fn extract_gist_data(
 /// # Errors
 ///
 /// The stream will yield an `Err` if an underlying I/O error occurs while reading from the `content` stream.
+#[instrument(skip_all)]
 pub(super) fn parse_commands(
     content: impl AsyncRead + Unpin + Send,
     tags: Vec<String>,
     category: impl Into<String>,
     source: impl Into<String>,
 ) -> impl Stream<Item = Result<Command>> + Send {
-    // Make sure the tags starts with a hastah (#)
-    let tags = tags
-        .into_iter()
-        .filter_map(|mut tag| {
-            tag.chars().next().map(|first_char| {
-                if first_char == '#' {
-                    tag
-                } else {
-                    tag.insert(0, '#');
-                    tag
-                }
-            })
-        })
-        .collect::<Vec<_>>();
-
     /// The state of the parser
     struct ParserState<R: AsyncRead> {
         category: String,
@@ -1022,7 +1043,7 @@ pub(super) fn parse_commands(
                 // End of the input stream, so we end our command stream
                 Ok(None) => return None,
                 // An I/O error occurred, yield it
-                Err(err) => return Some((Err(err).wrap_err("Error reading commands"), state)),
+                Err(err) => return Some((Err(AppError::from(err)), state)),
             };
 
             // If the line is the shebang header, skip it
@@ -1068,7 +1089,7 @@ pub(super) fn parse_commands(
                     if let Some(next_line_res) = state.lines.next_line().await.transpose() {
                         current_line = match next_line_res {
                             Ok(next_line) => next_line,
-                            Err(err) => return Some((Err(err).wrap_err("Error reading commands"), state)),
+                            Err(err) => return Some((Err(AppError::from(err)), state)),
                         };
                         continue;
                     } else {
@@ -1093,7 +1114,7 @@ pub(super) fn parse_commands(
                     if let Some(next_line_res) = state.lines.next_line().await.transpose() {
                         current_line = match next_line_res {
                             Ok(next_line) => next_line,
-                            Err(err) => return Some((Err(err).wrap_err("Error reading commands"), state)),
+                            Err(err) => return Some((Err(AppError::from(err)), state)),
                         };
                     } else {
                         // End of stream mid-command
@@ -1111,6 +1132,7 @@ pub(super) fn parse_commands(
             if full_cmd.starts_with('`') && full_cmd.ends_with('`') {
                 full_cmd = full_cmd[1..full_cmd.len() - 1].to_string();
             }
+            full_cmd = convert_alt_to_regular(&full_cmd);
             // Setup the description
             let pre_description = if let Some(inline) = inline_description {
                 inline
@@ -1125,20 +1147,7 @@ pub(super) fn parse_commands(
             }
             // Include tags if any
             if !state.tags.is_empty() {
-                let tags = state
-                    .tags
-                    .iter()
-                    .filter(|tag| !full_description.contains(*tag))
-                    .join(" ");
-                if !tags.is_empty() {
-                    let multiline = full_description.contains('\n');
-                    if multiline {
-                        full_description += "\n";
-                    } else if !full_description.is_empty() {
-                        full_description += " ";
-                    }
-                    full_description += &tags;
-                }
+                full_description = add_tags_to_description(&state.tags, full_description);
             }
 
             // Create the command
@@ -1154,6 +1163,21 @@ pub(super) fn parse_commands(
             return Some((Ok(command), state));
         }
     })
+}
+
+/// Adds tags to a description, only those not already present will be added
+pub(super) fn add_tags_to_description(tags: &[String], mut description: String) -> String {
+    let tags = tags.iter().filter(|tag| !description.contains(*tag)).join(" ");
+    if !tags.is_empty() {
+        let multiline = description.contains('\n');
+        if multiline {
+            description += "\n";
+        } else if !description.is_empty() {
+            description += " ";
+        }
+        description += &tags;
+    }
+    description
 }
 
 /// Extracts an alias `[alias:...]` from the start or end of a description string.
@@ -1175,73 +1199,6 @@ fn extract_alias(description: String) -> (Option<String>, String) {
     });
 
     (alias, new_description.trim().to_string())
-}
-
-/// Performs a dry-run import by writing commands to the stdout
-async fn import_dry_run(
-    commands: impl Stream<Item = Result<Command>> + Send + 'static,
-    filter: Option<Regex>,
-) -> Result<(u64, u64), ImportExportError> {
-    let mut processed = 0;
-    let mut stdout = io::stdout();
-
-    futures_util::pin_mut!(commands);
-    while let Some(command_result) = commands.next().await {
-        let command = command_result?;
-        if let Some(ref filter) = filter {
-            let matches_filter =
-                filter.is_match(&command.cmd) || command.description.as_ref().is_some_and(|d| filter.is_match(d));
-            if !matches_filter {
-                continue;
-            }
-        }
-        stdout.write_all(write_command(command, false).as_bytes()).await?;
-        processed += 1;
-    }
-    stdout.flush().await?;
-
-    Ok((processed, 0))
-}
-
-/// Writes the command as a String, to be exported.
-///
-/// This function formats a `Command` struct into a string representation suitable for saving to a file.
-/// It handles the command's description and alias according to the parsing rules:
-/// - An alias is formatted as `[alias:your-alias]`
-/// - If the description is multi-line, the alias is placed on its own line at the beginning
-/// - If the description is single-line or absent, the alias is placed on the same line as the description
-fn write_command(command: Command, is_batch: bool) -> String {
-    let comment = if is_batch { "::" } else { "#" };
-    let cmd = command.cmd;
-    let alias_tag = command.alias.as_ref().map(|a| format!("[alias:{a}]"));
-
-    // Determine the full description string, including the alias if it exists.
-    let description_content = match (command.description.as_deref(), alias_tag) {
-        // If there's no description and no alias, output a single comment character to represent an empty description
-        (None | Some(""), None) => return format!("{comment}\n{cmd}\n\n"),
-        // If there's a description but no alias, use it as is
-        (Some(desc), None) => desc.to_string(),
-        // If there's an alias but no description, use the alias tag as the description
-        (None | Some(""), Some(alias)) => alias,
-        // If both description and alias exist, combine them
-        (Some(desc), Some(alias)) => {
-            if desc.contains('\n') {
-                // For multi-line descriptions, place the alias on a new line at the start
-                format!("{alias}\n{desc}")
-            } else {
-                // For single-line descriptions, place the alias on the same line
-                format!("{alias} {desc}")
-            }
-        }
-    };
-
-    // Format the combined description content, prefixing each line with a comment marker
-    let formatted_description = description_content
-        .lines()
-        .map(|line| format!("{comment} {line}"))
-        .join("\n");
-
-    format!("{formatted_description}\n{cmd}\n\n")
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1637,7 +1594,7 @@ mod tests {
     #[tokio::test]
     async fn test_parse_commands_with_tags_no_description() {
         let input = CMD_1;
-        let tags = vec!["#test".to_string(), "tag2".to_string()];
+        let tags = vec!["#test".to_string(), "#tag2".to_string()];
         let commands = parse_commands(input.as_bytes(), tags, CATEGORY_USER, SOURCE_IMPORT)
             .try_collect::<Vec<_>>()
             .await

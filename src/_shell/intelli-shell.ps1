@@ -17,6 +17,7 @@ Import-Module PSReadLine -ErrorAction SilentlyContinue
 $IntelliSearchChord = if ([string]::IsNullOrEmpty($env:INTELLI_SEARCH_HOTKEY)) { 'Ctrl+Spacebar' } else { $env:INTELLI_SEARCH_HOTKEY }
 $IntelliBookmarkChord = if ([string]::IsNullOrEmpty($env:INTELLI_BOOKMARK_HOTKEY)) { 'Ctrl+b' } else { $env:INTELLI_BOOKMARK_HOTKEY }
 $IntelliVariableChord = if ([string]::IsNullOrEmpty($env:INTELLI_VARIABLE_HOTKEY)) { 'Ctrl+l' } else { $env:INTELLI_VARIABLE_HOTKEY }
+$IntelliFixChord = if ([string]::IsNullOrEmpty($env:INTELLI_FIX_HOTKEY)) { 'Ctrl+x' } else { $env:INTELLI_FIX_HOTKEY }
 
 # Encapsulates the logic for running intelli-shell and updating the buffer
 function Invoke-IntelliShellAction {
@@ -50,6 +51,11 @@ function Invoke-IntelliShellAction {
 
     Write-Verbose "Starting process: $exeName $fullArgumentList"
     Write-Verbose "Redirecting stderr to: $stderrTempFilePath"
+
+    # Clear the current line in the buffer first
+    [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
+    [Microsoft.PowerShell.PSConsoleReadLine]::BeginningOfLine()
+    [Microsoft.PowerShell.PSConsoleReadLine]::KillLine()
 
     # Execute intelli-shell.exe directly, redirecting stdout and stderr
     $process = Start-Process -FilePath $exeName `
@@ -89,11 +95,6 @@ function Invoke-IntelliShellAction {
     if (-not [string]::IsNullOrWhiteSpace($stdErrContent)) {
       Display-ErrorMessage -Message $stdErrContent
     }
-
-    # Clear the current line in the buffer first
-    [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
-    [Microsoft.PowerShell.PSConsoleReadLine]::BeginningOfLine()
-    [Microsoft.PowerShell.PSConsoleReadLine]::KillLine()
 
     # Check if the output starts with the special execution prefix
     if ($intelliOutput -and $intelliOutput.StartsWith($executePrefix, [System.StringComparison]::Ordinal)) {
@@ -146,7 +147,7 @@ function Escape-ArgumentForCommandLine {
     return $Argument
   }
 
-  # This regex-based replacement correctly handles backslashes and quotes:
+  # This regex-based replacement handles backslashes and quotes:
   # 1. It doubles any backslashes that are at the very end of the string
   # 2. It doubles any backslashes that are followed by a double quote, and then escapes that quote
   $escaped = [regex]::Replace($Argument, '(\\+)$', '$1$1')
@@ -158,13 +159,13 @@ function Escape-ArgumentForCommandLine {
 
 # Displays a warning message on a popup
 function Display-ErrorMessage {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$Message
-    )
-    
-    $wshell = New-Object -ComObject WScript.Shell
-    $wshell.Popup($Message, 0, "IntelliShell Warning", 48) | Out-Null
+  param(
+    [Parameter(Mandatory=$true)]
+    [string]$Message
+  )
+  
+  $wshell = New-Object -ComObject WScript.Shell
+  $wshell.Popup($Message, 0, "IntelliShell Warning", 48) | Out-Null
 }
 
 # --- Key Handler Definitions ---
@@ -211,6 +212,32 @@ Set-PSReadLineKeyHandler -Chord $IntelliVariableChord -BriefDescription "Intelli
     $args += $line
   }
   Invoke-IntelliShellAction -Subcommand 'replace' -Args $args
+}
+
+# Fix Command Handler
+Set-PSReadLineKeyHandler -Chord $IntelliFixChord -BriefDescription "IntelliShell Fix" -Description "Fixes the current command line" -ScriptBlock {
+  $line = $null
+  $cursor = $null
+  [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
+
+  # Safely get the last commands, defaulting to an empty array if none exist
+  $historyLines = @()
+  $historyObjects = Get-History -Count 5 -ErrorAction SilentlyContinue
+  if ($null -ne $historyObjects) {
+    $historyLines = $historyObjects.CommandLine
+  }
+
+  # Join the history into a single multi-line string
+  $historyString = $historyLines -join "`n"
+
+  # Set command arguments, including the history and current line
+  $args = @('--history', $historyString)
+  if (-not [string]::IsNullOrWhiteSpace($line)) {
+    $args += $line
+  }
+  
+  # Call the main action function
+  Invoke-IntelliShellAction -Subcommand 'fix' -Args $args
 }
 
 # Export the execution prompt variable

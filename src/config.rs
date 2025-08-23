@@ -19,7 +19,10 @@ use serde::{
     de::{Deserializer, Error},
 };
 
-use crate::model::SearchMode;
+use crate::{
+    ai::{AiClient, AiProviderBase},
+    model::SearchMode,
+};
 
 /// Main configuration struct for the application
 #[derive(Clone, Deserialize)]
@@ -44,6 +47,8 @@ pub struct Config {
     pub gist: GistConfig,
     /// Configuration to tune the search algorithm
     pub tuning: SearchTuning,
+    /// Configuration for the AI integration
+    pub ai: AiConfig,
 }
 
 /// Configuration for the search command
@@ -57,6 +62,8 @@ pub struct SearchConfig {
     pub mode: SearchMode,
     /// Whether to search for user commands only by default (excluding tldr)
     pub user_only: bool,
+    /// Whether to directly execute the command if it matches an alias exactly, instead of just selecting
+    pub exec_on_alias_match: bool,
 }
 
 /// Configuration settings for application logging
@@ -98,6 +105,9 @@ pub enum KeyBindingAction {
     Confirm,
     /// Execute the action associated with the highlighted record or item
     Execute,
+    /// Execute the action associated with the highlighted record or item
+    #[serde(rename = "ai")]
+    AI,
     /// Toggle the search mode
     SearchMode,
     /// Toggle whether to search for user commands only or include tldr's
@@ -263,6 +273,153 @@ pub struct SearchVariableContextTuning {
     pub points: u32,
 }
 
+/// Main configuration for all AI-related features
+#[derive(Clone, Deserialize)]
+#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(not(test), serde(default))]
+pub struct AiConfig {
+    /// A global switch to enable or disable all AI-powered functionality
+    pub enabled: bool,
+    /// Prompts used by the different ai-enabled features
+    pub prompts: AiPromptsConfig,
+    /// Which models from the catalog are used by which feature
+    pub models: AiModelsConfig,
+    /// A collection of named AI model configurations.
+    ///
+    /// Each entry maps a custom alias (e.g., `fast-model`, `smart-model`) to its specific provider settings. These
+    /// aliases are then referenced by the `suggest`, `fix`, `import`, and `fallback` fields.
+    pub catalog: BTreeMap<String, AiModelConfig>,
+}
+
+/// Configuration for the prompts
+#[derive(Clone, Deserialize)]
+#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(not(test), serde(default))]
+pub struct AiPromptsConfig {
+    /// The prompt to use when generating command suggestions from natural language.
+    pub suggest: String,
+    /// The prompt to use when explaining the fix for a failed command.
+    pub fix: String,
+    /// The prompt to use when importing commands (e.g., from a natural language page).
+    pub import: String,
+}
+
+/// Configuration for the models to be used
+#[derive(Clone, Deserialize)]
+#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(not(test), serde(default))]
+pub struct AiModelsConfig {
+    /// The alias of the AI model to use for generating command suggestions from natural language.
+    /// This alias must correspond to a key in the `catalog` map.
+    pub suggest: String,
+    /// The alias of the AI model used to explain the fix for a failed command.
+    /// This alias must correspond to a key in the `catalog` map.
+    pub fix: String,
+    /// The alias of the AI model to use when importing commands (e.g., from a natural language page).
+    /// This alias must correspond to a key in the `catalog` map.
+    pub import: String,
+    /// The alias of a model to use as a fallback when the primary model for a task fails due to rate limiting.
+    /// This alias must correspond to a key in the `catalog` map.
+    pub fallback: String,
+}
+
+/// Represents the configuration for a specific AI model, distinguished by the provider
+#[derive(Clone, Deserialize)]
+#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[serde(tag = "provider", rename_all = "snake_case")]
+pub enum AiModelConfig {
+    /// Configuration for OpenAI or compatible APIs
+    Openai(OpenAiModelConfig),
+    /// Configuration for Google Gemini API
+    Gemini(GeminiModelConfig),
+    /// Configuration for Anthropic API
+    Anthropic(AnthropicModelConfig),
+    /// Configuration for models served via Ollama
+    Ollama(OllamaModelConfig),
+}
+
+/// Configuration for connecting to an OpenAI or a compatible API
+#[derive(Clone, Deserialize)]
+#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+pub struct OpenAiModelConfig {
+    /// The exact model identifier to use (e.g., "gpt-4o", "gpt-3.5-turbo")
+    pub model: String,
+    /// The base URL of the API endpoint. Defaults to the official OpenAI API.
+    ///
+    /// Can be overridden to use other compatible services (e.g., Azure OpenAI, LiteLLM).
+    #[serde(default = "default_openai_url")]
+    pub url: String,
+    /// The name of the environment variable containing the API key for this model. Defaults to `OPENAI_API_KEY`.
+    #[serde(default = "default_openai_api_key_env")]
+    pub api_key_env: String,
+}
+fn default_openai_url() -> String {
+    "https://api.openai.com/v1".to_string()
+}
+fn default_openai_api_key_env() -> String {
+    "OPENAI_API_KEY".to_string()
+}
+
+/// Configuration for connecting to the Google Gemini API
+#[derive(Clone, Deserialize)]
+#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+pub struct GeminiModelConfig {
+    /// The exact model identifier to use (e.g., "gemini-2.5-flash-lite")
+    pub model: String,
+    /// The base URL of the API endpoint. Defaults to the official Google Gemini API.
+    #[serde(default = "default_gemini_url")]
+    pub url: String,
+    /// The name of the environment variable containing the API key for this model. Defaults to `GEMINI_API_KEY`.
+    #[serde(default = "default_gemini_api_key_env")]
+    pub api_key_env: String,
+}
+fn default_gemini_url() -> String {
+    "https://generativelanguage.googleapis.com/v1beta".to_string()
+}
+fn default_gemini_api_key_env() -> String {
+    "GEMINI_API_KEY".to_string()
+}
+
+/// Configuration for connecting to the Anthropic API
+#[derive(Clone, Deserialize)]
+#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+pub struct AnthropicModelConfig {
+    /// The exact model identifier to use (e.g., "claude-sonnet-4-0")
+    pub model: String,
+    /// The base URL of the API endpoint. Defaults to the official Anthropic API
+    #[serde(default = "default_anthropic_url")]
+    pub url: String,
+    /// The name of the environment variable containing the API key for this model. Defaults to `ANTHROPIC_API_KEY`.
+    #[serde(default = "default_anthropic_api_key_env")]
+    pub api_key_env: String,
+}
+fn default_anthropic_url() -> String {
+    "https://api.anthropic.com/v1".to_string()
+}
+fn default_anthropic_api_key_env() -> String {
+    "ANTHROPIC_API_KEY".to_string()
+}
+
+/// Configuration for connecting to a local or remote Ollama instance
+#[derive(Clone, Deserialize)]
+#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+pub struct OllamaModelConfig {
+    /// The model name as configured in Ollama (e.g., "llama3", "mistral")
+    pub model: String,
+    /// The base URL of the Ollama server. Defaults to the standard local address.
+    #[serde(default = "default_ollama_url")]
+    pub url: String,
+    /// The name of the environment variable containing the API key for this model. Defaults to `OLLAMA_API_KEY`.
+    #[serde(default = "default_ollama_api_key_env")]
+    pub api_key_env: String,
+}
+fn default_ollama_url() -> String {
+    "http://localhost:11434".to_string()
+}
+fn default_ollama_api_key_env() -> String {
+    "OLLAMA_API_KEY".to_string()
+}
+
 impl Config {
     /// Initializes the application configuration.
     ///
@@ -295,12 +452,54 @@ impl Config {
         let conflicts = config.keybindings.find_conflicts();
         if !conflicts.is_empty() {
             return Err(eyre!(
-                "Invalid config, there are some key binding conflicts:\n{}",
+                "Couldn't parse config file {}\n\nThere are some key binding conflicts:\n{}",
+                config_path.display(),
                 conflicts
                     .into_iter()
                     .map(|(_, a)| format!("- {}", a.into_iter().map(|a| format!("{a:?}")).join(", ")))
                     .join("\n")
             ));
+        }
+
+        // Validate AI models are properly setup
+        if config.ai.enabled {
+            let AiModelsConfig {
+                suggest,
+                fix,
+                import,
+                fallback,
+            } = &config.ai.models;
+            let catalog = &config.ai.catalog;
+
+            let mut missing = Vec::new();
+            if !catalog.contains_key(suggest) {
+                missing.push((suggest, "suggest"));
+            }
+            if !catalog.contains_key(fix) {
+                missing.push((fix, "fix"));
+            }
+            if !catalog.contains_key(import) {
+                missing.push((import, "import"));
+            }
+            if !catalog.contains_key(fallback) {
+                missing.push((fallback, "fallback"));
+            }
+
+            if !missing.is_empty() {
+                return Err(eyre!(
+                    "Couldn't parse config file {}\n\nMissing model definitions on the catalog:\n{}",
+                    config_path.display(),
+                    missing
+                        .into_iter()
+                        .into_group_map()
+                        .into_iter()
+                        .map(|(k, v)| format!(
+                            "- {k} used in {}",
+                            v.into_iter().map(|v| format!("ai.models.{v}")).join(", ")
+                        ))
+                        .join("\n")
+                ));
+            }
         }
 
         // Create the data directory if not found
@@ -410,6 +609,48 @@ impl Theme {
     }
 }
 
+impl AiConfig {
+    /// Retrieves a client configured for the `suggest` action
+    pub fn suggest_client(&self) -> crate::errors::Result<AiClient<'_>> {
+        AiClient::new(
+            &self.models.suggest,
+            self.catalog.get(&self.models.suggest).unwrap(),
+            &self.models.fallback,
+            self.catalog.get(&self.models.fallback),
+        )
+    }
+
+    /// Retrieves a client configured for the `fix` action
+    pub fn fix_client(&self) -> crate::errors::Result<AiClient<'_>> {
+        AiClient::new(
+            &self.models.fix,
+            self.catalog.get(&self.models.fix).unwrap(),
+            &self.models.fallback,
+            self.catalog.get(&self.models.fallback),
+        )
+    }
+
+    /// Retrieves a client configured for the `import` action
+    pub fn import_client(&self) -> crate::errors::Result<AiClient<'_>> {
+        AiClient::new(
+            &self.models.import,
+            self.catalog.get(&self.models.import).unwrap(),
+            &self.models.fallback,
+            self.catalog.get(&self.models.fallback),
+        )
+    }
+}
+impl AiModelConfig {
+    pub fn provider(&self) -> &dyn AiProviderBase {
+        match self {
+            AiModelConfig::Openai(conf) => conf,
+            AiModelConfig::Gemini(conf) => conf,
+            AiModelConfig::Anthropic(conf) => conf,
+            AiModelConfig::Ollama(conf) => conf,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -422,6 +663,7 @@ impl Default for Config {
             theme: Theme::default(),
             gist: GistConfig::default(),
             tuning: SearchTuning::default(),
+            ai: AiConfig::default(),
         }
     }
 }
@@ -431,6 +673,7 @@ impl Default for SearchConfig {
             delay: 250,
             mode: SearchMode::Auto,
             user_only: false,
+            exec_on_alias_match: false,
         }
     }
 }
@@ -470,6 +713,13 @@ impl Default for KeyBindingsConfig {
                 ]),
             ),
             (
+                KeyBindingAction::AI,
+                KeyBinding(vec![
+                    KeyEvent::new(KeyCode::Char('i'), KeyModifiers::CONTROL),
+                    KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL),
+                ]),
+            ),
+            (
                 KeyBindingAction::SearchMode,
                 KeyBinding(vec![KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL)]),
             ),
@@ -487,7 +737,7 @@ impl Default for Theme {
 
         let mut secondary = ContentStyle::new();
         secondary.attributes.set(Attribute::Dim);
-        let highlight_secondary = secondary;
+        let highlight_secondary = ContentStyle::new();
 
         let mut accent = ContentStyle::new();
         accent.foreground_color = Some(Color::Yellow);
@@ -507,7 +757,7 @@ impl Default for Theme {
             accent,
             comment,
             error,
-            highlight: Some(Color::DarkGrey),
+            highlight: Some(Color::AnsiValue(249)),
             highlight_symbol: String::from("» "),
             highlight_primary,
             highlight_secondary,
@@ -555,6 +805,146 @@ impl Default for SearchPathTuning {
 impl Default for SearchVariableContextTuning {
     fn default() -> Self {
         Self { points: 700 }
+    }
+}
+impl Default for AiConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            models: AiModelsConfig::default(),
+            prompts: AiPromptsConfig::default(),
+            catalog: BTreeMap::from([
+                (
+                    "gemini".to_string(),
+                    AiModelConfig::Gemini(GeminiModelConfig {
+                        model: "gemini-2.5-flash".to_string(),
+                        url: default_gemini_url(),
+                        api_key_env: default_gemini_api_key_env(),
+                    }),
+                ),
+                (
+                    "gemini-fallback".to_string(),
+                    AiModelConfig::Gemini(GeminiModelConfig {
+                        model: "gemini-2.0-flash-lite".to_string(),
+                        url: default_gemini_url(),
+                        api_key_env: default_gemini_api_key_env(),
+                    }),
+                ),
+            ]),
+        }
+    }
+}
+impl Default for AiModelsConfig {
+    fn default() -> Self {
+        Self {
+            suggest: "gemini".to_string(),
+            fix: "gemini".to_string(),
+            import: "gemini".to_string(),
+            fallback: "gemini-fallback".to_string(),
+        }
+    }
+}
+impl Default for AiPromptsConfig {
+    fn default() -> Self {
+        Self {
+            suggest: String::from(
+                r#"##OS_SHELL_INFO##
+##WORKING_DIR##
+### Instructions
+You are an expert CLI assistant. Your task is to generate shell command templates based on the user's request.
+
+Your entire response MUST be a single, valid JSON object conforming to the provided schema and nothing else.
+
+### Command Template Syntax
+When creating the `command` template string, you must use the following placeholder syntax:
+
+- **Standard Placeholder**: `{{variable-name}}`
+  - Use for regular arguments that the user needs to provide.
+  - _Example_: `echo "Hello, {{user-name}}!"`
+
+- **Choice Placeholder**: `{{option1|option2}}`
+  - Use when the user must choose from a specific set of options.
+  - _Example_: `git reset {{--soft|--hard}} HEAD~1`
+
+- **Function Placeholder**: `{{variable:function}}`
+  - Use to apply a transformation function to the user's input. Multiple functions can be chained (e.g., `{{variable:snake:upper}}`).
+  - Allowed functions: `kebab`, `snake`, `upper`, `lower`, `url`.
+  - _Example_: For a user input of "My New Feature", `git checkout -b {{branch-name:kebab}}` would produce `git checkout -b my-new-feature`.
+
+- **Secret/Ephemeral Placeholder**: `{{{...}}}`
+  - Use triple curly braces for sensitive values (like API keys, passwords) or for ephemeral content (like a commit message or a description). 
+    This syntax can wrap any of the placeholder types above.
+  - _Example_: `export GITHUB_TOKEN={{{api-key}}}` or `git commit -m "{{{message}}}"`
+
+### Suggestion Strategy
+- If the user's request is **clear and unambiguous**, provide a single suggestion object in the list.
+- If the user's request is **ambiguous** or has multiple valid interpretations (e.g., "undo a commit" could mean `reset` or `revert`), 
+  provide a distinct suggestion object for each interpretation, ordered by descending relevance.
+"#,
+            ),
+            fix: String::from(
+                r#"##OS_SHELL_INFO##
+##WORKING_DIR##
+##SHELL_HISTORY##
+### Instructions
+You are an expert command-line assistant. Your mission is to analyze a failed shell command and its error output, 
+diagnose the root cause, and provide a structured, actionable solution in a single JSON object.
+
+### Output Schema
+Your response MUST be a single, valid JSON object with no surrounding text or markdown. It must conform to the following structure:
+- `summary`: A very brief, 2-5 word summary of the error category. Examples: "Command Not Found", "Permission Denied", "Invalid Argument", "Git Typo".
+- `diagnosis`: A detailed, human-readable explanation of the root cause of the error. This section should explain *what* went wrong and *why*, based on the provided command and error message. It should not contain the solution.
+- `proposal`: A human-readable description of the recommended next steps. This can be a description of a fix, diagnostic commands to run, or a suggested workaround.
+- `fixed_command`: The corrected, valid, ready-to-execute command string. This field should *only* be populated if a direct command correction is the primary solution (e.g., fixing a typo). For complex issues requiring explanation or privilege changes, this should be an empty string.
+
+### Core Rules
+1.  **JSON Only**: Your entire output must be a single, raw JSON object. Do not wrap it in code blocks or add any explanatory text.
+2.  **Holistic Analysis**: Analyze the command's context, syntax, and common user errors. Don't just parse the error message. Consider the user's likely intent.
+3.  **Strict Wrapping**: Hard-wrap all string values within the JSON to a maximum of 80 characters.
+4.  **`fixed_command` Logic**: Always populate `fixed_command` with the most likely command to resolve the error. Only leave this field as an empty string if the user's intent is unclear from the context.
+"#,
+            ),
+            import: String::from(
+                r#"### Instructions
+You are an expert tool that extracts and generalizes shell command patterns from arbitrary text content. Your goal is to analyze the provided text, identify all unique command patterns, and present them as a list of suggestions.
+
+Your entire response MUST be a single, valid JSON object conforming to the provided schema. Output nothing but the JSON object itself.
+
+Refer to the syntax definitions, process, and example below to construct your response.
+
+### Command Template Syntax
+When creating the `command` template string, you must use the following placeholder syntax:
+
+- **Standard Placeholder**: `{{variable-name}}`
+  - Use for regular arguments that the user needs to provide.
+  - _Example_: `echo "Hello, {{user-name}}!"`
+
+- **Choice Placeholder**: `{{option1|option2}}`
+  - Use when the user must choose from a specific set of options.
+  - _Example_: `git reset {{--soft|--hard}} HEAD~1`
+
+- **Function Placeholder**: `{{variable:function}}`
+  - Use to apply a transformation function to the user's input. Multiple functions can be chained (e.g., `{{variable:snake:upper}}`).
+  - Allowed functions: `kebab`, `snake`, `upper`, `lower`, `url`.
+  - _Example_: For a user input of "My New Feature", `git checkout -b {{branch-name:kebab}}` would produce `git checkout -b my-new-feature`.
+
+- **Secret/Ephemeral Placeholder**: `{{{...}}}`
+  - Use triple curly braces for sensitive values (like API keys, passwords) or for ephemeral content (like a commit message or a description). 
+    This syntax can wrap any of the placeholder types above.
+  - _Example_: `export GITHUB_TOKEN={{{api-key}}}` or `git commit -m "{{{message}}}"`
+
+### Core Process
+1.  **Extract & Generalize**: Scan the text to find all shell commands. Generalize each one into a template by replacing specific values with the appropriate placeholder type defined in the **Command Template Syntax** section.
+2.  **Deduplicate**: Consolidate multiple commands that follow the same pattern into a single, representative template. For example, `git checkout bugfix/some-bug` and `git checkout feature/login` must be merged into a single `git checkout {{feature|bugfix}}/{{{description:kebab}}}` suggestion.
+
+### Output Generation
+For each unique and deduplicated command pattern you identify:
+-   Create a suggestion object containing a `description` and a `command`.
+-   The `description` must be a clear, single-sentence explanation of the command's purpose.
+-   The `command` must be the final, generalized template string from the core process.
+"#,
+            ),
+        }
     }
 }
 

@@ -1,12 +1,15 @@
 Examples:
-  # Open an interactive interface to bookmark a new command
+  # Open an interactive interface to bookmark a new command (ctrl+b)
   intelli-shell new -i
 
-  # Interactively search stored commands, initially filtering for "git"
+  # Interactively search stored commands, initially filtering for "git" (ctrl+space)
   intelli-shell search -i git
 
-  # Interactively replace variables in a command
+  # Interactively replace variables in a command (ctrl+l)
   intelli-shell replace -i "echo {{message}}"
+
+  # Fix a command that is failing (ctrl+x)
+  intelli-shell fix "git comit amend"
 
   # Store a command non-interactively
   intelli-shell new "find . -name '*.py'" --alias "lp" --description "Find Python files" 
@@ -14,8 +17,8 @@ Examples:
   # Export all user commands
   intelli-shell export user.commands
 
-  # Import user commands
-  intelli-shell import user.commands
+  # Interactively import user commands
+  intelli-shell import -i user.commands
 
   # Fetch useful commands from tldr
   intelli-shell tldr fetch

@@ -34,6 +34,7 @@ pub struct CommandWidget {
     highlight_accent_style: Style,
     highlight_comment_style: Style,
     inner: Command,
+    discarded: Option<bool>,
 }
 
 impl CommandWidget {
@@ -51,33 +52,67 @@ impl CommandWidget {
             highlight_accent_style: theme.highlight_accent.into(),
             highlight_comment_style: theme.highlight_comment.into(),
             inner: command,
+            discarded: None,
         }
+    }
+
+    /// Sets whether the command is discarded
+    pub fn discarded(mut self, discarded: bool) -> Self {
+        self.set_discarded(discarded);
+        self
+    }
+
+    /// Sets whether the command is discarded
+    /// This is used to visually indicate that the command is not selected
+    pub fn set_discarded(&mut self, discarded: bool) {
+        self.discarded = Some(discarded);
     }
 }
 
 impl AsWidget for CommandWidget {
     fn as_widget<'a>(&'a self, is_highlighted: bool) -> (impl Widget + 'a, Size) {
-        // Determine the right styles to use based on highligted status
-        let (line_style, primary_style, secondary_style, comment_style, accent_style) = if is_highlighted {
-            let mut line_style = DEFAULT_STYLE;
-            if let Some(color) = self.highlight_color {
-                line_style = line_style.bg(color);
-            }
-            (
-                line_style,
+        let mut line_style = DEFAULT_STYLE;
+        if is_highlighted && let Some(color) = self.highlight_color {
+            line_style = line_style.bg(color);
+        }
+        // Determine the right styles to use based on highligted and discarded status
+        let (primary_style, secondary_style, comment_style, accent_style) = match (self.discarded, is_highlighted) {
+            (Some(true), true) => (
+                self.highlight_secondary_style,
+                self.highlight_secondary_style,
+                self.highlight_secondary_style,
+                self.highlight_secondary_style,
+            ),
+            (Some(true), false) => (
+                self.secondary_style,
+                self.secondary_style,
+                self.secondary_style,
+                self.secondary_style,
+            ),
+            (Some(false), true) => (
+                self.highlight_primary_style,
+                self.highlight_primary_style,
+                self.highlight_comment_style,
+                self.highlight_accent_style,
+            ),
+            (Some(false), false) => (
+                self.primary_style,
+                self.primary_style,
+                self.comment_style,
+                self.accent_style,
+            ),
+            (None, true) => (
                 self.highlight_primary_style,
                 self.highlight_secondary_style,
                 self.highlight_comment_style,
                 self.highlight_accent_style,
-            )
-        } else {
-            (
-                DEFAULT_STYLE,
+            ),
+            (None, false) => (
                 self.primary_style,
                 self.secondary_style,
                 self.comment_style,
                 self.accent_style,
-            )
+            ),
         };
 
         // Build command spans
