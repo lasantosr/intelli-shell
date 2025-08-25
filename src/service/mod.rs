@@ -5,7 +5,6 @@ use std::{
 
 use crate::{
     config::{AiConfig, SearchTuning},
-    errors::Result,
     storage::SqliteStorage,
 };
 
@@ -50,7 +49,7 @@ impl IntelliShellService {
     }
 
     #[cfg(debug_assertions)]
-    pub async fn query(&self, sql: String) -> Result<String> {
+    pub async fn query(&self, sql: String) -> crate::errors::Result<String> {
         self.storage.query(sql).await
     }
 }

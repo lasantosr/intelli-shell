@@ -78,9 +78,6 @@ if [ ! -f "$INTELLI_SHELL_CONFIG_FILE" ]; then
 check_updates = false
 inline = true
 
-[search]
-exec_on_alias_match = true
-
 [logs]
 enabled = true
 filter = "info,intelli_shell=trace"
