@@ -39,61 +39,48 @@ function Invoke-IntelliShellAction {
     $processedArgs = $Args | ForEach-Object { Escape-ArgumentForCommandLine -Argument $_ }
   }
 
-  # Create temporary files for the output 
+  # Create a temporary file for the output 
   $stdoutTempFilePath = $null
-  $stderrTempFilePath = $null
   try {
     $stdoutTempFilePath = [System.IO.Path]::GetTempFileName()
-    $stderrTempFilePath = [System.IO.Path]::GetTempFileName()
     
     # Construct the full argument list for intelli-shell.exe
     $fullArgumentList = (@('--extra-line', '--skip-execution', '--file-output', $stdoutTempFilePath, $Subcommand) + $processedArgs) -join ' '
 
     Write-Verbose "Starting process: $exeName $fullArgumentList"
-    Write-Verbose "Redirecting stderr to: $stderrTempFilePath"
 
     # Clear the current line in the buffer first
     [Microsoft.PowerShell.PSConsoleReadLine]::RevertLine()
     [Microsoft.PowerShell.PSConsoleReadLine]::BeginningOfLine()
     [Microsoft.PowerShell.PSConsoleReadLine]::KillLine()
 
-    # Execute intelli-shell.exe directly, redirecting stdout and stderr
+    # Execute intelli-shell.exe directly
     $process = Start-Process -FilePath $exeName `
       -ArgumentList $fullArgumentList `
-      -RedirectStandardError $stderrTempFilePath `
       -Wait `
       -NoNewWindow `
       -PassThru 
 
     # Check the exit code of the intelli-shell.exe process
     if ($null -eq $process -or $process.ExitCode -ne 0) {
-      # Read stderr if the process failed
-      $stdErrContent = Get-Content -Path $stderrTempFilePath -Raw -ErrorAction SilentlyContinue
-      $exitCodeInfo = if ($null -ne $process) { "exit code $($process.ExitCode)" } else { "failed to start" }
-      # Construct a detailed warning message
-      $warningMessage = "IntelliShell process for '$exeName $Subcommand' failed ($exitCodeInfo)."
-      if (-not [string]::IsNullOrWhiteSpace($stdErrContent)) {
-          $warningMessage += "`n$stdErrContent"
-      }
-      # Use the helper to display the warning correctly
-      Display-ErrorMessage -Message $warningMessage
-      [Microsoft.PowerShell.PSConsoleReadLine]::Ding()
+      # When it fails it might have already printed an error message to the console
+      # We just need to redraw a new prompt
+      [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
       return
     }
+
+    # This ensures the prompt is redrawn correctly after any output IntelliShell might have produced
+    [Microsoft.PowerShell.PSConsoleReadLine]::Insert('')
+    $promptString = (prompt) -join ''
+    Write-Host -NoNewline "`r`e[2K"
+    Write-Host -NoNewline $promptString
 
     # Read the output from the temporary stdout file
     $intelliOutput = Get-Content -Path $stdoutTempFilePath -Raw -ErrorAction SilentlyContinue
 
     if (-not $?) { # Check if Get-Content for stdout failed
       Display-ErrorMessage -Message "Failed to read IntelliShell stdout from '$stdoutTempFilePath'."
-      [Microsoft.PowerShell.PSConsoleReadLine]::Ding()
       return
-    }
-
-    # Read stderr even on success, might contain additional details
-    $stdErrContent = Get-Content -Path $stderrTempFilePath -Raw -ErrorAction SilentlyContinue
-    if (-not [string]::IsNullOrWhiteSpace($stdErrContent)) {
-      Display-ErrorMessage -Message $stdErrContent
     }
 
     # Check if the output starts with the special execution prefix
@@ -115,16 +102,11 @@ function Invoke-IntelliShellAction {
     }
   } catch {
     Display-ErrorMessage -Message "An error occurred during IntelliShell action: $_"
-    [Microsoft.PowerShell.PSConsoleReadLine]::Ding()
   } finally {
-    # Clean up temporary files
+    # Clean up temporary file
     if ($null -ne $stdoutTempFilePath -and (Test-Path $stdoutTempFilePath)) {
       Write-Verbose "Removing temporary stdout file: $stdoutTempFilePath"
       Remove-Item $stdoutTempFilePath -Force -ErrorAction SilentlyContinue
-    }
-    if ($null -ne $stderrTempFilePath -and (Test-Path $stderrTempFilePath)) {
-      Write-Verbose "Removing temporary stderr file: $stderrTempFilePath"
-      Remove-Item $stderrTempFilePath -Force -ErrorAction SilentlyContinue
     }
   }
 }
@@ -134,6 +116,7 @@ function Escape-ArgumentForCommandLine {
   [CmdletBinding()]
   param(
     [Parameter(Mandatory)]
+    [AllowEmptyString()]
     [string]$Argument
   )
 
@@ -220,18 +203,23 @@ Set-PSReadLineKeyHandler -Chord $IntelliFixChord -BriefDescription "IntelliShell
   $cursor = $null
   [Microsoft.PowerShell.PSConsoleReadLine]::GetBufferState([ref]$line, [ref]$cursor)
 
-  # Safely get the last commands, defaulting to an empty array if none exist
+  # Initialize an empty array for arguments
+  $args = @()
+
+  # Safely get the last commands
   $historyLines = @()
   $historyObjects = Get-History -Count 5 -ErrorAction SilentlyContinue
   if ($null -ne $historyObjects) {
     $historyLines = $historyObjects.CommandLine
   }
 
-  # Join the history into a single multi-line string
-  $historyString = $historyLines -join "`n"
+  # Only add the history argument if history lines were found
+  if ($historyLines.Count -gt 0) {
+    $historyString = $historyLines -join "`n"
+    $args += @('--history', $historyString)
+  }
 
-  # Set command arguments, including the history and current line
-  $args = @('--history', $historyString)
+  # Add the current line if it's not empty
   if (-not [string]::IsNullOrWhiteSpace($line)) {
     $args += $line
   }
