@@ -416,7 +416,7 @@ pub async fn execute_shell_command_capture(
     let mut stderr_done = false;
 
     // Loop until both stdout and stderr streams have been completely read
-    loop {
+    while !stdout_done || !stderr_done {
         tokio::select! {
             // Prioritize Ctrl+C handler
             biased;
