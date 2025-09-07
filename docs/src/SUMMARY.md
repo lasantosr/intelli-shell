@@ -9,8 +9,9 @@
 - [Installation](./guide/installation.md)
 - [Basic Usage](./guide/basic_usage.md)
 - [Using Variables](./guide/variables.md)
-- [Workspace-Specific Commands](./guide/workspace_commands.md)
+- [Workspace File](./guide/workspace.md)
 - [Syncing and Sharing](./guide/syncing.md)
+- [Teams & Organizations](./guide/teams.md)
 
 # Reference
 
@@ -31,6 +32,10 @@
   - [tldr](./reference/tldr.md)
     - [fetch](./reference/tldr_fetch.md)
     - [clear](./reference/tldr_clear.md)
+  - [completion](./reference/completion.md)
+    - [new](./reference/completion_new.md)
+    - [list](./reference/completion_list.md)
+    - [delete](./reference/completion_delete.md)
 
 ---
 

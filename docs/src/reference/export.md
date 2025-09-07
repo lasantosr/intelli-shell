@@ -1,12 +1,12 @@
 # `export`
 
-The `export` command allows you to share or back up your user-defined commands by writing them to an external location.
-This is useful for moving your library between machines or sharing it with teammates.
+The `export` command allows you to share or back up your user-defined commands and completions by writing them to an
+external location. This is useful for moving your library between machines or sharing it with teammates.
 
-By default, commands are exported in a simple, human-readable text format.
+By default, commands and completions are exported in a simple, human-readable text format.
 
-> 📝 **Note**: This command only exports your personal, bookmarked commands. Examples fetched from `tldr` pages or
-> workspace-specific commands from `.intellishell` file are not included.
+> 📝 **Note**: This command only exports your personal, bookmarked commands and completions. Examples fetched from `tldr`
+> pages or workspace-specific items from `.intellishell` file are not included.
 
 ## Usage
 
@@ -16,12 +16,10 @@ intelli-shell export [OPTIONS] [LOCATION]
 
 ## Arguments
 
-- **`LOCATION`**
+- **`LOCATION`** Specifies the destination for the exported commands.
   
-  Specifies the destination for the exported commands. This can be a file path, an HTTP(S) URL, or a GitHub Gist
-  ID/URL.
-
-  If omitted or set to `-`, the output is written to standard output (`stdout`), which is useful for piping.
+  This can be a file path, an HTTP(S) URL, or a GitHub Gist ID/URL. If omitted or set to `-`, the output is written to
+  standard output (`stdout`), which is useful for piping.
 
 ## Options
 
@@ -33,6 +31,8 @@ intelli-shell export [OPTIONS] [LOCATION]
 - `--filter <REGEX>`
   
   Exports only the commands whose content or description matches the provided regular expression.
+
+  When commands are filtered, only completions for variables present on those commands are exported.
 
 - `-X, --request <METHOD>`
   
@@ -60,7 +60,7 @@ intelli-shell export my_commands.bak
 
 ### Export to a Private GitHub Gist
 
-To sync your commands across machines, you can export to a Gist. This requires a GitHub Personal Access Token with the
+To sync your library across machines, you can export to a Gist. This requires a GitHub Personal Access Token with the
 `gist` scope, provided via the `GIST_TOKEN` environment variable or in your config file.
 
 ```sh
@@ -70,14 +70,14 @@ intelli-shell export --gist 1a2b3c4d5e6f7g8h9i0j
 
 ### Export a Subset of Commands
 
-Use `--filter` to export only the commands you need. This example exports commands tagged with `#gcp` to standard
-output.
+Use `--filter` to export only the commands you need. This example exports commands tagged with `#gcp` (and any completion
+applicable to those commands) to standard output.
 
 ```sh
 intelli-shell export --filter "#gcp"
 ```
 
-### Send Commands to a Custom Server
+### Send to a Custom Server
 
 You can integrate IntelliShell with your own infrastructure by exporting to a custom HTTP endpoint.
 

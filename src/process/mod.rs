@@ -2,6 +2,9 @@ use clap::{Args, FromArgMatches};
 
 use crate::{component::Component, config::Config, service::IntelliShellService};
 
+pub mod completion_delete;
+pub mod completion_list;
+pub mod completion_new;
 pub mod export;
 pub mod fix;
 pub mod import;
@@ -19,6 +22,7 @@ pub mod query;
 /// This enum determines the action the shell should take after a command has been processed.
 /// It can either lead to the execution of a new shell command or result in exiting the process with specific output
 /// information.
+#[derive(PartialEq, Eq)]
 pub enum ProcessOutput {
     /// Instructs the shell to execute the specified command
     Execute { cmd: String },

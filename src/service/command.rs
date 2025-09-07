@@ -1,14 +1,10 @@
-use std::{env, path::PathBuf};
-
-use tokio::fs::File;
 use tracing::instrument;
 use uuid::Uuid;
 
 use super::IntelliShellService;
 use crate::{
     errors::{Result, UserFacingError},
-    model::{CATEGORY_USER, CATEGORY_WORKSPACE, Command, SOURCE_WORKSPACE, SearchCommandsFilter, SearchMode},
-    service::import_export::parse_commands,
+    model::{CATEGORY_USER, CATEGORY_WORKSPACE, Command, SearchCommandsFilter, SearchMode},
     utils::{extract_tags_and_cleaned_text, extract_tags_with_editing_and_cleaned_text, get_working_dir},
 };
 
@@ -16,41 +12,6 @@ use crate::{
 type Tag = (String, u64, bool);
 
 impl IntelliShellService {
-    /// Loads workspace commands from the `.intellishell` file in the current working directory setting up the temporary
-    /// tables in the database if they don't exist.
-    ///
-    /// Returns the number of commands loaded.
-    #[instrument(skip_all)]
-    pub async fn load_workspace_commands(&self) -> Result<u64> {
-        if env::var("INTELLI_SKIP_WORKSPACE")
-            .map(|v| v != "1" && v.to_lowercase() != "true")
-            .unwrap_or(true)
-            && let Some((workspace_commands, folder_name)) = find_workspace_commands_file()
-        {
-            tracing::debug!("Found workspace commands at {}", workspace_commands.display());
-
-            // Set up the temporary tables in the database
-            self.storage.setup_workspace_storage().await?;
-
-            // Parse the commands from the file
-            let file = File::open(&workspace_commands).await?;
-            let tag = format!("#{}", folder_name.as_deref().unwrap_or("workspace"));
-            let commands_stream = parse_commands(file, vec![tag], CATEGORY_WORKSPACE, SOURCE_WORKSPACE);
-
-            // Import commands into the temp tables
-            let (loaded, _) = self.storage.import_commands(commands_stream, false, true).await?;
-
-            tracing::info!(
-                "Loaded {loaded} workspace commands from {}",
-                workspace_commands.display()
-            );
-
-            Ok(loaded)
-        } else {
-            Ok(0)
-        }
-    }
-
     /// Returns whether the commands storage is empty
     #[instrument(skip_all)]
     pub async fn is_storage_empty(&self) -> Result<bool> {
@@ -182,27 +143,4 @@ impl IntelliShellService {
             .find_commands(filter, get_working_dir(), &self.tuning.commands)
             .await
     }
-}
-/// Searches upwards from the current working dir for a `.intellishell` file.
-///
-/// The search stops if a `.git` directory or the filesystem root is found.
-/// Returns a tuple of (file_path, folder_name) if found.
-fn find_workspace_commands_file() -> Option<(PathBuf, Option<String>)> {
-    let working_dir = PathBuf::from(get_working_dir());
-    let mut current = Some(working_dir.as_path());
-    while let Some(parent) = current {
-        let candidate = parent.join(".intellishell");
-        if candidate.is_file() {
-            let folder_name = parent.file_name().and_then(|n| n.to_str()).map(String::from);
-            return Some((candidate, folder_name));
-        }
-
-        if parent.join(".git").is_dir() {
-            // Workspace boundary found
-            return None;
-        }
-
-        current = parent.parent();
-    }
-    None
 }

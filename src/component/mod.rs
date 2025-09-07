@@ -9,6 +9,8 @@ use crate::{
     process::ProcessOutput,
 };
 
+pub mod completion_edit;
+pub mod completion_list;
 pub mod edit;
 pub mod pick;
 pub mod search;

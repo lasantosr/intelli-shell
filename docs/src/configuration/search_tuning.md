@@ -14,7 +14,7 @@ The final score for a searched command is a weighted sum of points from three so
 query, how often the command has been used, and the directory where it was last used.
 
 ```toml
-{{#include ../../../default_config.toml:176:209}}
+{{#include ../../../default_config.toml:180:213}}
 ```
 
 ### Command Scoring Parameters
@@ -50,19 +50,20 @@ is determined by a score calculated from two sources: the context of other varia
 the value was used. Total usage count is used as a tie-breaker.
 
 ```toml
-{{#include ../../../default_config.toml:158:174}}
+{{#include ../../../default_config.toml:158:178}}
 ```
 
 ### Variable Scoring Parameters
 
-| Key               | Description                                                                                   |
-| ----------------- | --------------------------------------------------------------------------------------------- |
-| `context.points`  | Total points assigned for matching the context (i.e., other variable values already selected) |
-| `path.points`     | Total points assigned based on the value's usage history relative to the current directory    |
-| `path.exact`      | Multiplier for a value used in the exact same directory                                       |
-| `path.ancestor`   | Multiplier for a value used in a parent directory                                             |
-| `path.descendant` | Multiplier for a value used in a child directory                                              |
-| `path.unrelated`  | Multiplier for a value used in an unrelated directory                                         |
+| Key                 | Description                                                                                   |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| `completion.points` | Total points assigned for being present on dynamic variable completions                       |
+| `context.points`    | Total points assigned for matching the context (i.e., other variable values already selected) |
+| `path.points`       | Total points assigned based on the value's usage history relative to the current directory    |
+| `path.exact`        | Multiplier for a value used in the exact same directory                                       |
+| `path.ancestor`     | Multiplier for a value used in a parent directory                                             |
+| `path.descendant`   | Multiplier for a value used in a child directory                                              |
+| `path.unrelated`    | Multiplier for a value used in an unrelated directory                                         |
 
 ---
 

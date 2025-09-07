@@ -152,7 +152,8 @@ Can't remember the exact syntax for `find` or `ffmpeg`? Just describe what you w
 
 ## Populating Your Library
 
-A great command library is a complete one. Here are two ways to quickly add commands without bookmarking them one by one.
+A great command library is a complete one. Here are three ways to quickly add commands without bookmarking them one by
+one.
 
 ### From `tldr` Pages
 
@@ -174,10 +175,29 @@ Now you can type `tar` into the command line and press <kbd>Ctrl</kbd>+<kbd>Spac
 - You'll see a list of `tldr` examples for `tar`
 - Find the one for listing contents, select it, fill in the `{{path/to/file.tar}}` variable, and run it
 
+### From Community Gists
+
+Tap into the collective knowledge of the community by importing command collections from
+[public Gists](https://gist.github.com/search?q=intellishell+commands). This is a great way to share and discover
+workflows for specific tools.
+
+```sh
+# Import all commands from a Gist
+intelli-shell import https://gist.github.com/lasantosr/137846d029efcc59468ff2c9d2098b4f
+
+# Or from a specific file within a Gist
+intelli-shell import --gist 137846d029efcc59468ff2c9d2098b4f/docker.sh
+```
+
+This makes it simple to load command templates shared by other users directly into your library.
+
+> 💡 **Tip**: The `import` command also allows you to filter commands or preview them interactively before importing.
+> For a full list of options, see the [**`import` command reference**](../reference/import.md).
+
 ### From Any Text
 
-You can use the AI to extract and convert commands from any piece of text—a blog post, a tutorial, or even your own
-shell history file.
+You can use the AI when importing to extract and convert commands from any piece of text—a blog post, a tutorial, or
+even your own shell history file.
 
 ```sh
 # Import command templates from your own history
@@ -189,7 +209,6 @@ intelli-shell import -i --ai "https://my-favorite-cheatsheet.com"
 
 The AI will parse the content, identify potential commands, and convert them into reusable templates with
 `{{variables}}`, ready for you to use.
-For a full list of options, see the [**`import` command reference**](../reference/import.md).
 
 ---
 

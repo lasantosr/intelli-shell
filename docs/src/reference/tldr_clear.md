@@ -13,10 +13,9 @@ intelli-shell tldr clear [CATEGORY]
 
 ## Arguments
 
-- **`CATEGORY`**
+- **`CATEGORY`** Specifies a `tldr` category (e.g., `linux`, `osx`, `common`) to clear from your library.
   
-  Specifies a `tldr` category (e.g., `linux`, `osx`, `common`) to clear from your local library. If this argument is
-  omitted, **all** `tldr` commands from all categories will be removed.
+  If this argument is omitted, **all** `tldr` commands from all categories will be removed.
 
   For a list of official categories, see the [tldr pages repository](https://github.com/tldr-pages/tldr/tree/main/pages).
 

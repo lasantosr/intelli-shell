@@ -7,7 +7,7 @@ use crate::{
     component::{Component, variable::VariableReplacementComponent},
     config::Config,
     format_error,
-    model::DynamicCommand,
+    model::CommandTemplate,
     service::IntelliShellService,
 };
 
@@ -27,7 +27,7 @@ impl Process for VariableReplaceProcess {
 impl InteractiveProcess for VariableReplaceProcess {
     #[instrument(skip_all)]
     fn into_component(self, config: Config, service: IntelliShellService, inline: bool) -> Result<Box<dyn Component>> {
-        let command = DynamicCommand::parse(self.command.into_inner(), true);
+        let command = CommandTemplate::parse(self.command.into_inner(), true);
         Ok(Box::new(VariableReplacementComponent::new(
             service,
             config.theme,

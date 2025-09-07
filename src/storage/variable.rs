@@ -9,58 +9,53 @@ use crate::{
     config::SearchVariableTuning,
     errors::{Result, UserFacingError},
     model::VariableValue,
-    utils::{flatten_str, flatten_variable},
 };
 
 impl SqliteStorage {
-    /// Finds variable values for a given root command, variable name and context.
+    /// Finds variable values for a given root command, variable and context.
     ///
-    /// The `variable_name` input can be a single term or multiple terms delimited by `|`.
-    /// The method searches for values matching any of these individual (flattened) terms, as well as the (flattened)
-    /// composite variable itself.
+    /// The method searches for values matching any of these individual `flat_variable_names` terms, as well as the
+    /// `flat_variable_name` composite variable itself.
     ///
     /// Results are returned for the original input variable, even if they don't explicitly exists, ordered to
     /// prioritize overall relevance.
     #[instrument(skip_all)]
     pub async fn find_variable_values(
         &self,
-        root_cmd: impl AsRef<str>,
-        variable_name: impl AsRef<str>,
+        flat_root_cmd: impl Into<String>,
+        flat_variable_name: impl Into<String>,
+        mut flat_variable_names: Vec<String>,
         working_path: impl Into<String>,
         context: &BTreeMap<String, String>,
         tuning: &SearchVariableTuning,
-    ) -> Result<Vec<VariableValue>> {
-        // Prepare flattened inputs
-        // If the variable contains any `|` char, we will consider it as a list of variables to find values for
-        let flat_root_cmd = flatten_str(root_cmd);
-        let flat_variable = flatten_variable(variable_name);
-        let mut flat_variable_values = flat_variable.split('|').map(str::to_owned).collect::<Vec<_>>();
-        // Including values for the entire variable itself
-        flat_variable_values.push(flat_variable.clone());
-        flat_variable_values.dedup();
+    ) -> Result<Vec<(VariableValue, f64)>> {
+        // Also search for values of the composite variable name itself
+        let flat_variable_name = flat_variable_name.into();
+        flat_variable_names.push(flat_variable_name.clone());
+        flat_variable_names.dedup();
 
         // Prepare the query params:
         // -- ?1~5: tuning params
         // -- ?7: flat_root_cmd
-        // -- ?8: original flat_variable
+        // -- ?8: flat_name of the variable
         // -- ?9: working_path
         // -- ?10: context json
-        // -- ?n: all flat_variable placeholders
-        let mut all_sql_params = Vec::with_capacity(2 + flat_variable_values.len());
+        // -- ?n: all variable flat_names placeholders
+        let mut all_sql_params = Vec::with_capacity(10 + flat_variable_names.len());
         all_sql_params.push(Value::from(tuning.path.exact));
         all_sql_params.push(Value::from(tuning.path.ancestor));
         all_sql_params.push(Value::from(tuning.path.descendant));
         all_sql_params.push(Value::from(tuning.path.unrelated));
         all_sql_params.push(Value::from(tuning.path.points));
         all_sql_params.push(Value::from(tuning.context.points));
-        all_sql_params.push(Value::from(flat_root_cmd));
-        all_sql_params.push(Value::from(flat_variable));
+        all_sql_params.push(Value::from(flat_root_cmd.into()));
+        all_sql_params.push(Value::from(flat_variable_name));
         all_sql_params.push(Value::from(working_path.into()));
         all_sql_params.push(Value::from(serde_json::to_string(context)?));
         let prev_params_len = all_sql_params.len();
         let mut in_placeholders = Vec::new();
-        for (idx, variable_param) in flat_variable_values.into_iter().enumerate() {
-            all_sql_params.push(Value::from(variable_param));
+        for (idx, flat_name) in flat_variable_names.into_iter().enumerate() {
+            all_sql_params.push(Value::from(flat_name));
             in_placeholders.push(format!("?{}", idx + prev_params_len + 1));
         }
         let in_placeholders = in_placeholders.join(",");
@@ -136,8 +131,9 @@ impl SqliteStorage {
                 tracing::trace!("With parameters:\n{all_sql_params:?}");
                 Ok(conn
                     .prepare(&query)?
-                    .query(rusqlite::params_from_iter(all_sql_params.iter()))?
-                    .and_then(|r| VariableValue::try_from(r))
+                    .query_map(rusqlite::params_from_iter(all_sql_params.iter()), |r| {
+                        Ok((VariableValue::try_from(r)?, r.get(4)?))
+                    })?
                     .collect::<Result<Vec<_>, _>>()?)
             })
             .await
@@ -154,13 +150,13 @@ impl SqliteStorage {
         // Insert the value into the database
         self.client
             .conn_mut(move |conn| {
-                let res = conn.query_row(
-                    r#"INSERT INTO variable_value (flat_root_cmd, flat_variable, value) 
+                let query = r#"INSERT INTO variable_value (flat_root_cmd, flat_variable, value) 
                     VALUES (?1, ?2, ?3)
-                    RETURNING id"#,
-                    (&value.flat_root_cmd, &value.flat_variable, &value.value),
-                    |r| r.get(0),
-                );
+                    RETURNING id"#;
+                tracing::trace!("Inserting a variable value: {query}");
+                let res = conn.query_row(query, (&value.flat_root_cmd, &value.flat_variable, &value.value), |r| {
+                    r.get(0)
+                });
                 match res {
                     Ok(id) => {
                         value.id = Some(id);
@@ -186,14 +182,16 @@ impl SqliteStorage {
         // Update the value in the database
         self.client
             .conn_mut(move |conn| {
-                let res = conn.execute(
-                    r#"
+                let query = r#"
                     UPDATE variable_value 
                     SET flat_root_cmd = ?2, 
                         flat_variable = ?3, 
                         value = ?4
                     WHERE rowid = ?1
-                    "#,
+                    "#;
+                tracing::trace!("Updating a variable value: {query}");
+                let res = conn.execute(
+                    query,
                     (&value_id, &value.flat_root_cmd, &value.flat_variable, &value.value),
                 );
                 match res {
@@ -221,16 +219,14 @@ impl SqliteStorage {
         let context = serde_json::to_string(context)?;
         self.client
             .conn_mut(move |conn| {
-                Ok(conn.query_row(
-                    r#"
+                let query = r#"
                     INSERT INTO variable_value_usage (value_id, path, context_json, usage_count)
                     VALUES (?1, ?2, ?3, 1)
                     ON CONFLICT(value_id, path, context_json) DO UPDATE SET
                         usage_count = usage_count + 1
-                    RETURNING usage_count;"#,
-                    (&value_id, &path.as_ref(), &context),
-                    |r| r.get(0),
-                )?)
+                    RETURNING usage_count;"#;
+                tracing::trace!("Incrementing variable value usage: {query}");
+                Ok(conn.query_row(query, (&value_id, &path.as_ref(), &context), |r| r.get(0))?)
             })
             .await
     }
@@ -242,7 +238,9 @@ impl SqliteStorage {
     pub async fn delete_variable_value(&self, value_id: i32) -> Result<()> {
         self.client
             .conn_mut(move |conn| {
-                let res = conn.execute("DELETE FROM variable_value WHERE rowid = ?1", (&value_id,));
+                let query = "DELETE FROM variable_value WHERE rowid = ?1";
+                tracing::trace!("Deleting a variable value: {query}");
+                let res = conn.execute(query, (&value_id,));
                 match res {
                     Ok(0) => Err(eyre!("Variable value not found: {value_id}").into()),
                     Ok(_) => Ok(()),
@@ -280,6 +278,7 @@ mod tests {
             .find_variable_values(
                 "cmd",
                 "variable",
+                Vec::new(),
                 "/some/path",
                 &BTreeMap::new(),
                 &SearchVariableTuning::default(),
@@ -314,6 +313,7 @@ mod tests {
             .find_variable_values(
                 root,
                 variable,
+                Vec::new(),
                 current_path,
                 &BTreeMap::new(),
                 &SearchVariableTuning::default(),
@@ -323,10 +323,10 @@ mod tests {
 
         // Assert the order based on path relevance
         assert_eq!(matches.len(), 4);
-        assert_eq!(matches[0].value, "exact-path");
-        assert_eq!(matches[1].value, "parent-path");
-        assert_eq!(matches[2].value, "child-path");
-        assert_eq!(matches[3].value, "unrelated-path");
+        assert_eq!(matches[0].0.value, "exact-path");
+        assert_eq!(matches[1].0.value, "parent-path");
+        assert_eq!(matches[2].0.value, "child-path");
+        assert_eq!(matches[3].0.value, "unrelated-path");
     }
 
     #[tokio::test]
@@ -359,6 +359,7 @@ mod tests {
             .find_variable_values(
                 root,
                 variable,
+                Vec::new(),
                 current_path,
                 &BTreeMap::from_iter(query_context.into_iter().map(|(k, v)| (k.to_owned(), v.to_owned()))),
                 &SearchVariableTuning::default(),
@@ -368,9 +369,9 @@ mod tests {
 
         // Assert the order based on context relevance
         assert_eq!(matches.len(), 3);
-        assert_eq!(matches[0].value, "full-context");
-        assert_eq!(matches[1].value, "partial-context");
-        assert_eq!(matches[2].value, "no-context");
+        assert_eq!(matches[0].0.value, "full-context");
+        assert_eq!(matches[1].0.value, "partial-context");
+        assert_eq!(matches[2].0.value, "no-context");
     }
 
     #[tokio::test]
@@ -396,6 +397,7 @@ mod tests {
             .find_variable_values(
                 root,
                 variable,
+                Vec::new(),
                 current_path,
                 &BTreeMap::new(),
                 &SearchVariableTuning::default(),
@@ -405,9 +407,9 @@ mod tests {
 
         // Assert that usage count correctly breaks the tie, but doesn't override relevance
         assert_eq!(matches.len(), 3);
-        assert_eq!(matches[0].value, "feature-b");
-        assert_eq!(matches[1].value, "feature-a");
-        assert_eq!(matches[2].value, "release-1.0");
+        assert_eq!(matches[0].0.value, "feature-b");
+        assert_eq!(matches[1].0.value, "feature-a");
+        assert_eq!(matches[2].0.value, "release-1.0");
     }
 
     #[tokio::test]
@@ -415,6 +417,7 @@ mod tests {
         let storage = SqliteStorage::new_in_memory().await.unwrap();
         let root = "kubectl";
         let variable_composite = "pod|service";
+        let variable_composite_names = variable_composite.split("|").map(String::from).collect::<Vec<_>>();
 
         // Setup values for the individual variables
         storage
@@ -432,6 +435,7 @@ mod tests {
             .find_variable_values(
                 root,
                 variable_composite,
+                variable_composite_names,
                 "/path",
                 &BTreeMap::new(),
                 &SearchVariableTuning::default(),
@@ -440,10 +444,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(matches.len(), 2);
-        assert_eq!(matches[0].value, "api-pod-123");
-        assert_eq!(matches[0].id, sug_composite.id);
-        assert_eq!(matches[1].value, "api-service");
-        assert!(matches[1].id.is_none());
+        assert_eq!(matches[0].0.value, "api-pod-123");
+        assert_eq!(matches[0].0.id, sug_composite.id);
+        assert_eq!(matches[1].0.value, "api-service");
+        assert!(matches[1].0.id.is_none());
     }
 
     #[tokio::test]

@@ -1,27 +1,46 @@
 # Syncing and Sharing
 
-IntelliShell makes it easy to back up your command library, share it with teammates, or sync it across multiple
-machines. This is all handled by the `intelli-shell export` and `intelli-shell import` commands.
+IntelliShell makes it easy to back up your library, share it with teammates, or sync it across multiple machines.
+This is all handled by the `intelli-shell export` and `intelli-shell import` commands.
 
-You can export your commands to a local file, a remote HTTP endpoint, or a GitHub Gist, and then import them elsewhere.
-The tool automatically detects the location type (file, http, or gist) based on the provided string, but you can also
-specify it explicitly.
+You can export your commands and completions to a local file, a remote HTTP endpoint, or a GitHub Gist, and then import
+them elsewhere. The tool automatically detects the location type (file, http, or gist) based on the provided string, but
+you can also specify it explicitly.
 
-Commands are stored in a simple, human-readable text format. Any commented lines (`#`) directly preceding a command are
-treated as its description, making the files easy to edit by hand.
+Commands are stored in a simple, human-readable text format that supports commands, aliases, descriptions, and dynamic
+variable completions, making the files easy to edit by hand.
+
+Any commented line (`#`) directly preceding a command is treated as its description, and any line starting with a dollar
+sign (`$`) is treated as a completion.
 
 ```sh
+# --------------------------------------------------------------
+#   Commands
+# --------------------------------------------------------------
+
 # A multi-line description for a command
 # with a #hashtag for organization.
-docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Status}}"
+git log --oneline --graph --decorate
 
-# Prints the current working directory
-pwd
+# [alias:tfp] Plan infrastructure changes for a specific environment.
+# This command is multi-line for readability.
+terraform plan \
+    -var-file="envs/{{env}}.tfvars"
+
+# --------------------------------------------------------------
+#   Completions
+# --------------------------------------------------------------
+
+# A global completion for any `{{branch}}` variable.
+$ branch: git branch --format='%(refname:short)'
+
+# A command-specific completion for the `{{env}}` variable when using `terraform`.
+$ (terraform) env: find envs -type f -name "*.tfvars" -printf "%P\n" | sort | sed 's/\.tfvars$//'
 ```
 
 ## Local Backup & Restore
 
-The simplest way to back up your commands is by exporting them to a local file. This creates a portable snapshot of
+The simplest way to back up your library is by exporting them to a local file. This creates a portable snapshot of
 your library that you can store or move to another machine.
 
 ```sh
@@ -34,9 +53,9 @@ intelli-shell import my_commands.bak
 
 ## Syncing with a GitHub Gist
 
-Using a GitHub Gist is a flexible way to manage your command library. You can use a **private** Gist for personal cloud
-sync across your devices, or a **public** Gist to share useful commands with the community. It's also an effective
-method for sharing project-related commands with teammates.
+Using a GitHub Gist is a flexible way to manage your library. You can use a **private** Gist for personal cloud sync
+across your devices, or a **public** Gist to share useful commands with the community. It's also an effective method for
+sharing project-related commands with teammates.
 
 Before you can export to a Gist for the first time, you must create it on GitHub to get its unique ID.
 
@@ -84,11 +103,11 @@ For convenience, you can also use shorter formats (these require `--gist` flag t
 
 ## Syncing with a Custom HTTP Endpoint
 
-If you prefer to host your own command storage, you can configure IntelliShell to sync with any custom HTTP endpoint.
-This is ideal for teams who want to maintain a private, centralized command library on their own infrastructure.
+If you prefer to host your own storage, you can configure IntelliShell to sync with any custom HTTP endpoint.
+This is ideal for teams who want to maintain a private, centralized library on their own infrastructure.
 
-When exporting, IntelliShell sends a `PUT` request with a JSON payload of your commands. When importing, it can handle
-either the standard plain text format (`Content-Type: text/plain`) or a JSON array (`Content-Type: application/json`).
+When exporting, IntelliShell sends a `PUT` request with a JSON payload of your commands and completions. When importing,
+it can handle either the standard plain text format (`Content-Type: text/plain`) or a JSON array (`Content-Type: application/json`).
 You can also specify custom headers for authentication.
 
 ```sh
@@ -106,22 +125,22 @@ Here are a few more options to customize your import and export workflows.
 ### Interactive Review
 
 For more control over what gets imported or exported, you can use the `--interactive` (`-i`) flag. This opens a
-terminal UI that displays a list of all commands _before_ the action is performed.
+terminal UI that displays a list of all commands and completions _before_ the action is performed.
 
 In this interactive view, you can:
 
-- **Review** every command
-- **Edit** a command or its description on the fly
-- **Discard/Undiscard** specific commands by pressing <kbd>Space</kbd>
+- **Review** every command and completion
+- **Edit** a completion, command or its description on the fly
+- **Discard/Undiscard** specific commands or completions by pressing <kbd>Space</kbd>
 
 This is especially useful when importing from a new or untrusted source, or when using the AI parser, as it gives you a
 final chance to clean up and validate the results.
 
 ```sh
-# Interactively review commands from a file before importing them
+# Interactively review the content from a file before importing
 intelli-shell import -i --gist {{gist-url}}
 
-# Interactively choose which docker commands to export
+# Interactively choose which docker commands and completions to export
 intelli-shell export -i --filter docker
 ```
 
@@ -135,6 +154,8 @@ exporting.
 intelli-shell export --filter "^docker" docker_commands.sh
 ```
 
+> ⚠️ **Note**: When exporting filtered commands, only those completions that apply to those filtered commands are exported.
+
 ### Tagging on Import
 
 When importing commands from a shared source, you can use `--add-tag` (`-t`) to automatically organize them.
@@ -147,13 +168,8 @@ intelli-shell import -t project path/to/commands.file
 ### Previewing with Dry Run
 
 If you're not sure what a file or URL contains, use the `--dry-run` flag with the `import` command. It will print the
-commands that would be imported to the terminal without actually saving them to your library.
+commands and completions that would be imported to the terminal without actually saving them to your library.
 
 ```sh
 intelli-shell import --dry-run https://example.com/some-commands.sh 
 ```
-
----
-
-Now that you're familiar with syncing, let's look at how to customize IntelliShell in the
-[**Configuration**](../configuration/index.md) section.

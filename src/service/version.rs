@@ -11,7 +11,7 @@ use super::IntelliShellService;
 use crate::{errors::Result, storage::SqliteStorage};
 
 /// The timeout for the request to check for a new version
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Represents the state of the background version check
 #[derive(Debug)]

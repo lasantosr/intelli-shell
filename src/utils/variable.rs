@@ -2,6 +2,8 @@ use std::sync::LazyLock;
 
 use regex::{CaptureMatches, Captures, Regex};
 
+use crate::model::Variable;
+
 const VARIABLE_REGEX: &str = r"\{\{((?:\{[^}]+\}|[^}]+))\}\}";
 const ALT_VARIABLE_REGEX: &str = r"<([\w.*-]+)>";
 
@@ -29,6 +31,16 @@ pub static COMMAND_VARIABLE_REGEX_QUOTES: LazyLock<Regex> =
 /// Converts alternative variable syntax `<var>` to the regular `{{var}}` syntax
 pub fn convert_alt_to_regular(command: &str) -> String {
     ALT_REGEX.replace_all(command, "{{$1}}").into_owned()
+}
+
+/// Extracts all [`Variable`] instances from a given command string
+pub fn extract_variables(command: &str) -> Vec<Variable> {
+    COMMAND_VARIABLE_REGEX
+        .captures_iter(command)
+        .filter_map(|cap| cap.get(1))
+        .map(|v| v.as_str())
+        .map(Variable::parse)
+        .collect()
 }
 
 /// An iterator that splits a text string based on a regular expression, yielding both the substrings that _don't_ match

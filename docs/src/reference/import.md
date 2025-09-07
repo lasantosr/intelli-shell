@@ -1,11 +1,11 @@
 # `import`
 
-The `import` command is the counterpart to `export`. It allows you to add commands to your library from an external
-source, such as a file, an HTTP endpoint, or a GitHub Gist. This is the primary way to restore backups or onboard
-commands shared by others.
+The `import` command is the counterpart to `export`. It allows you to add commands and completions to your library from
+an external source, such as a file, an HTTP endpoint, or a GitHub Gist. This is the primary way to restore backups or
+onboard commands shared by others.
 
-When importing, IntelliShell merges the incoming commands with your existing library. If a command with the exact same
-command string already exists, it is skipped to prevent duplicates.
+When importing, IntelliShell merges the incoming commands and completions with your existing library. If a command with
+the exact same command string or a completion for the same variable already exists, it is skipped to prevent duplicates.
 
 ## Usage
 
@@ -15,13 +15,10 @@ intelli-shell import [OPTIONS] [LOCATION]
 
 ## Arguments
 
-- **`LOCATION`**
+- **`LOCATION`** Specifies the source of the commands to import.
   
-  Specifies the source of the commands to import. This can be a file path, an HTTP(S) URL, or a GitHub Gist ID/URL.
-
-  If omitted or set to `-`, IntelliShell reads from standard input (`stdin`), allowing you to pipe data into it.
-
----
+  This can be a file path, an HTTP(S) URL, or a GitHub Gist ID/URL. If omitted or set to `-`, IntelliShell reads from
+  standard input (`stdin`), allowing you to pipe data into it.
 
 ## Options
 
@@ -77,13 +74,13 @@ intelli-shell import my_commands.bak
 
 ### Import from a Public Gist
 
-Onboard a set of shared commands from a teammate or the community.
+Onboard a set of shared commands and completions from a teammate or the community.
 
 ```sh
 intelli-shell import https://gist.github.com/lasantosr/137846d029efcc59468ff2c9d2098b4f
 ```
 
-### Preview Commands Before Importing
+### Preview Before Importing
 
 Use `--dry-run` to safely inspect the contents of a remote file without modifying your library.
 

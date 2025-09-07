@@ -20,6 +20,8 @@ mod migrations;
 mod queries;
 
 mod command;
+mod completion;
+mod import_export;
 mod variable;
 mod version;
 

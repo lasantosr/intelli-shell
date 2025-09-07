@@ -59,12 +59,13 @@ static PARENT_SHELL_INFO: LazyLock<ShellInfo> = LazyLock::new(|| {
         .parent()
         .and_then(|parent_pid| sys.process(parent_pid));
 
+    let default = if cfg!(target_os = "windows") {
+        ShellType::WindowsPowerShell
+    } else {
+        ShellType::Sh
+    };
+
     let Some(parent) = parent_process else {
-        let default = if cfg!(target_os = "windows") {
-            ShellType::WindowsPowerShell
-        } else {
-            ShellType::Sh
-        };
         tracing::warn!("Couldn't detect shell, assuming {default}");
         return ShellInfo {
             kind: default,
@@ -79,7 +80,16 @@ static PARENT_SHELL_INFO: LazyLock<ShellInfo> = LazyLock::new(|| {
         .trim()
         .to_lowercase();
 
-    let kind = ShellType::try_from(parent_name.as_str()).expect("infallible");
+    let kind = if parent_name == "cargo" || parent_name == "cargo.exe" {
+        tracing::warn!("Executed through cargo, assuming {default}");
+        return ShellInfo {
+            kind: default,
+            version: None,
+        };
+    } else {
+        ShellType::try_from(parent_name.as_str()).expect("infallible")
+    };
+
     tracing::info!("Detected shell: {kind}");
 
     let exe_path = parent
@@ -357,7 +367,7 @@ fn build_tree_from_map(
 
 /// Executes a shell command, inheriting the parent's `stdout` and `stderr`
 pub async fn execute_shell_command_inherit(command: &str, include_prompt: bool) -> color_eyre::Result<ExitStatus> {
-    let mut cmd = prepare_command_execution(command, include_prompt)?;
+    let mut cmd = prepare_command_execution(command, true, include_prompt)?;
 
     // Spawn the child process to get a handle to it
     let mut child = cmd
@@ -392,7 +402,7 @@ pub async fn execute_shell_command_capture(
     command: &str,
     include_prompt: bool,
 ) -> color_eyre::Result<(ExitStatus, String, bool)> {
-    let mut cmd = prepare_command_execution(command, include_prompt)?;
+    let mut cmd = prepare_command_execution(command, true, include_prompt)?;
 
     // Configure the command to capture output streams by creating pipes
     cmd.stdout(Stdio::piped());
@@ -464,7 +474,11 @@ pub async fn execute_shell_command_capture(
 }
 
 /// Builds a base `Command` object for executing a command string via the OS shell
-fn prepare_command_execution(command: &str, include_prompt: bool) -> color_eyre::Result<tokio::process::Command> {
+pub fn prepare_command_execution(
+    command: &str,
+    output_command: bool,
+    include_prompt: bool,
+) -> color_eyre::Result<tokio::process::Command> {
     // Let the OS shell parse the command, supporting complex commands, arguments, and pipelines
     let shell = get_shell_type();
     let shell_arg = match shell {
@@ -476,22 +490,24 @@ fn prepare_command_execution(command: &str, include_prompt: bool) -> color_eyre:
     tracing::info!("Executing command: {shell} {shell_arg} -- {command}");
 
     // Print the command on stderr
-    let write_result = if include_prompt {
-        writeln!(
-            io::stderr(),
-            "{}{command}",
-            env::var("INTELLI_EXEC_PROMPT").as_deref().unwrap_or("> "),
-        )
-    } else {
-        writeln!(io::stderr(), "{command}")
-    };
-    // Handle broken pipe
-    if let Err(err) = write_result {
-        if err.kind() != io::ErrorKind::BrokenPipe {
-            return Err(err).wrap_err("Failed writing to stderr");
-        }
-        tracing::error!("Failed writing to stderr: Broken pipe");
-    };
+    if output_command {
+        let write_result = if include_prompt {
+            writeln!(
+                io::stderr(),
+                "{}{command}",
+                env::var("INTELLI_EXEC_PROMPT").as_deref().unwrap_or("> "),
+            )
+        } else {
+            writeln!(io::stderr(), "{command}")
+        };
+        // Handle broken pipe
+        if let Err(err) = write_result {
+            if err.kind() != io::ErrorKind::BrokenPipe {
+                return Err(err).wrap_err("Failed writing to stderr");
+            }
+            tracing::error!("Failed writing to stderr: Broken pipe");
+        };
+    }
 
     // Build the base command object
     let mut cmd = tokio::process::Command::new(shell.to_string());

@@ -16,6 +16,7 @@ path = "src/main.rs"
 required-features = []
 
 [dependencies]
+async-stream       = "0.3"
 async-trait        = "0.1"
 chrono             = "0.4"
 clap               = { version = "4", features = ["derive"] }

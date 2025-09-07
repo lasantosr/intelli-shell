@@ -6,6 +6,9 @@ While commands are typically bookmarked interactively using the <kbd>Ctrl</kbd>+
 a **non-interactive** way to add new entries. This is particularly useful for scripting, batch-importing from other tools,
 or when you want to add a command without breaking your terminal flow.
 
+>💡 **Tip**: Can't remember the exact command details? While in the interactive TUI, you can press <kbd>Ctrl</kbd>+<kbd>I</kbd>
+> or <kbd>Ctrl</kbd>+<kbd>X</kbd> with a natural language description to prompt AI for a command.
+
 ## Usage
 
 ```sh
@@ -14,8 +17,9 @@ intelli-shell new [OPTIONS] [COMMAND_STRING]
 
 ## Arguments
 
-- **`COMMAND_STRING`**
-  The command to be stored. This argument is **mandatory** unless you are running in interactive mode (`-i`).
+- **`COMMAND_STRING`** The command to be stored.
+  
+  This argument is **mandatory** unless you are running in interactive mode (`-i`).
   > ⚠️ **Note**: Be mindful of shell expansion. It is best practice to wrap the command string in single quotes (`'`)
   > to ensure special characters like `$` or `&` are preserved exactly as intended.
 

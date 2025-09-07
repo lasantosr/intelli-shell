@@ -1,5 +1,7 @@
-mod command;
-mod variable;
-
-pub use command::*;
-pub use variable::*;
+crate::using! {
+    pub command,
+    pub variable,
+    pub template,
+    pub completion,
+    pub import_export,
+}

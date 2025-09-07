@@ -19,10 +19,10 @@ use crate::model::SearchMode;
 /// Like IntelliSense, but for shells
 ///
 /// Interactive commands are best used with the default shell bindings:
-/// - `ctrl + space` to search for commands
-/// - `ctrl + b` to bookmark a new command
-/// - `ctrl + l` to replace variables from a command
-/// - `ctrl + x` to fix a command that is failing
+/// - `ctrl+space` to search for commands
+/// - `ctrl+b` to bookmark a new command
+/// - `ctrl+l` to replace variables from a command
+/// - `ctrl+x` to fix a command that is failing
 #[derive(Parser)]
 #[cfg_attr(debug_assertions, derive(Debug))]
 #[command(
@@ -30,6 +30,7 @@ use crate::model::SearchMode;
     version,
     verbatim_doc_comment,
     infer_subcommands = true,
+    subcommand_required = true,
     after_long_help = include_str!("_examples/cli.txt")
 )]
 pub struct Cli {
@@ -91,19 +92,23 @@ pub enum CliProcess {
     #[command(after_long_help = include_str!("_examples/fix.txt"))]
     Fix(CommandFixProcess),
 
-    /// Exports stored user commands to an external location
+    /// Exports stored user commands and completions to an external location
     ///
     /// Commands fetched from tldr are not exported
     #[command(after_long_help = include_str!("_examples/export.txt"))]
-    Export(Interactive<ExportCommandsProcess>),
+    Export(Interactive<ExportItemsProcess>),
 
-    /// Imports user commands from an external location
+    /// Imports user commands and completions from an external location
     #[command(after_long_help = include_str!("_examples/import.txt"))]
-    Import(Interactive<ImportCommandsProcess>),
+    Import(Interactive<ImportItemsProcess>),
 
     /// Manages tldr integration
     #[command(name = "tldr", subcommand)]
     Tldr(TldrProcess),
+
+    /// Manages dynamic completions for variables
+    #[command(subcommand)]
+    Completion(CompletionProcess),
 }
 
 #[derive(Subcommand)]
@@ -111,13 +116,27 @@ pub enum CliProcess {
 pub enum TldrProcess {
     /// Fetches command examples from tldr pages and imports them
     ///
-    /// Imported commands will reside on a dfferent category and can be excluded when querying
+    /// Imported commands will reside on a different category and can be excluded when querying
     #[command(after_long_help = include_str!("_examples/tldr_fetch.txt"))]
     Fetch(TldrFetchProcess),
 
     /// Clear command examples imported from tldr pages
     #[command(after_long_help = include_str!("_examples/tldr_clear.txt"))]
     Clear(TldrClearProcess),
+}
+
+#[derive(Subcommand)]
+#[cfg_attr(debug_assertions, derive(Debug))]
+pub enum CompletionProcess {
+    /// Adds a new dynamic completion for a variable
+    #[command(after_long_help = include_str!("_examples/completion_new.txt"))]
+    New(Interactive<CompletionNewProcess>),
+    /// Deletes an existing dynamic variable completions
+    #[command(after_long_help = include_str!("_examples/completion_delete.txt"))]
+    Delete(CompletionDeleteProcess),
+    /// Lists all configured dynamic variable completions
+    #[command(alias = "ls", after_long_help = include_str!("_examples/completion_list.txt"))]
+    List(Interactive<CompletionListProcess>),
 }
 
 /// A generic struct that combines process-specific arguments with common interactive mode options.
@@ -256,10 +275,10 @@ pub struct CommandFixProcess {
     pub history: Option<String>,
 }
 
-/// Exports stored user commands
+/// Exports stored user commands and completions
 #[derive(Args, Clone, Debug)]
-pub struct ExportCommandsProcess {
-    /// Location to export commands to (writes to stdout if '-')
+pub struct ExportItemsProcess {
+    /// Location to export items to (writes to stdout if '-')
     ///
     /// The location type will be auto detected based on the content, if no type is specified
     #[arg(default_value = "-")]
@@ -291,10 +310,10 @@ pub struct ExportCommandsProcess {
     pub method: HttpMethod,
 }
 
-/// Imports user commands
+/// Imports user commands and completions
 #[derive(Args, Clone, Debug)]
-pub struct ImportCommandsProcess {
-    /// Location to import commands from (reads from stdin if '-')
+pub struct ImportItemsProcess {
+    /// Location to import items from (reads from stdin if '-')
     ///
     /// The location type will be auto detected based on the content, if no type is specified
     #[arg(default_value = "-", required_unless_present = "history")]
@@ -324,9 +343,9 @@ pub struct ImportCommandsProcess {
     /// The regular expression will be checked against both the command and the description
     #[arg(long, value_name = "REGEX")]
     pub filter: Option<Regex>,
-    /// Add hastags to imported commands
+    /// Add hashtags to imported commands
     ///
-    /// This argument can be specified multiple times to add more than one, hastags will be included at the end of the
+    /// This argument can be specified multiple times to add more than one, hashtags will be included at the end of the
     /// description
     #[arg(short = 't', long = "add-tag", value_name = "TAG")]
     pub tags: Vec<String>,
@@ -399,6 +418,40 @@ pub struct TldrClearProcess {
     ///
     /// For a full list of available categories, see: https://github.com/tldr-pages/tldr/tree/main/pages
     pub category: Option<String>,
+}
+
+/// Adds a new dynamic completion for a variable
+#[derive(Args, Debug)]
+pub struct CompletionNewProcess {
+    /// The root command where this completion must be triggered
+    #[arg(short = 'c', long)]
+    pub command: Option<String>,
+    /// The name of the variable to provide completions for
+    #[arg(required_unless_present = "interactive")]
+    pub variable: Option<String>,
+    /// The shell command that generates the suggestion values when executed (newline-separated)
+    #[arg(required_unless_present_any = ["interactive", "ai"])]
+    pub provider: Option<String>,
+    /// Use AI to suggest the completion command
+    #[arg(long)]
+    pub ai: bool,
+}
+
+/// Deletes an existing variable dynamic completion
+#[derive(Args, Debug)]
+pub struct CompletionDeleteProcess {
+    /// The root command of the completion to delete
+    #[arg(short = 'c', long)]
+    pub command: Option<String>,
+    /// The variable name of the completion to delete
+    pub variable: String,
+}
+
+/// Lists all configured variable dynamic completions
+#[derive(Args, Debug)]
+pub struct CompletionListProcess {
+    /// The root command to filter the list of completions by
+    pub command: Option<String>,
 }
 
 impl Cli {

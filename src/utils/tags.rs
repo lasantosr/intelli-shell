@@ -6,15 +6,6 @@ use unicode_width::UnicodeWidthChar;
 /// Characters to be trimmed from the raw tag body
 const TRIM_CHARS_PATTERN: &str = r#".,!?;:)[]{}'"`<>-_\/"#;
 
-/// Regex to match hashtags in the description.
-///
-/// The regex captures:
-/// - The start of the string or a whitespace character before the hashtag
-/// - The hashtag itself, which is defined as a '#' followed by one or more non-whitespace characters
-///
-/// The regex uses a named capture group `raw_body` to extract the content of the hashtag.
-static HASHTAG_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|\s)#(?P<raw_body>[^\s]*)").unwrap());
-
 /// Extracts hashtags from a description string
 pub fn extract_tags_from_description(description: Option<&str>) -> Option<Vec<String>> {
     let output = process_text_for_tags(description?, false, None)?;
@@ -56,6 +47,15 @@ fn process_text_for_tags(text: &str, clean_text: bool, cursor_pos: Option<usize>
     if text.is_empty() {
         return None;
     }
+
+    /// Regex to match hashtags in the description.
+    ///
+    /// The regex captures:
+    /// - The start of the string or a whitespace character before the hashtag
+    /// - The hashtag itself, which is defined as a '#' followed by one or more non-whitespace characters
+    ///
+    /// The regex uses a named capture group `raw_body` to extract the content of the hashtag.
+    static HASHTAG_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|\s)#(?P<raw_body>[^\s]*)").unwrap());
 
     let mut all_tags = HashSet::new();
     let mut editing_tag: Option<String> = None;

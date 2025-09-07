@@ -11,7 +11,7 @@ through configuring these features.
 AI integration is disabled by default. To turn on all AI-powered functionality, you must first enable it:
 
 ```toml
-{{#include ../../../default_config.toml:221:223}}
+{{#include ../../../default_config.toml:225:227}}
 ```
 
 > 📝 **Note**: By default, IntelliShell is configured to use **Google Gemini**, given that it has a generous free tier.
@@ -39,7 +39,7 @@ Let's look at each part in detail.
 In the `[ai.models]` section, you tell IntelliShell which model from your catalog to use for each specific AI-powered task.
 
 ```toml
-{{#include ../../../default_config.toml:226:235}}
+{{#include ../../../default_config.toml:230:241}}
 ```
 
 ### 2. Model Catalog
@@ -48,7 +48,7 @@ The `[ai.catalog]` section is where you define the connection details for every 
 you to configure multiple models from different providers and easily switch between them in the Task Assignment section.
 
 ```toml
-{{#include ../../../default_config.toml:246:252}}
+{{#include ../../../default_config.toml:252:258}}
 ```
 
 #### Supported Providers
@@ -161,7 +161,7 @@ Each model you define must be under `ai.catalog.<your-alias-name>`.
 ### 3. Customizing Prompts
 
 For advanced users, IntelliShell allows you to completely customize the system prompts sent to the AI for the `suggest`,
-`fix`, and `import` tasks. This gives you fine-grained control over the AI's behavior, tone, and output format.
+`fix`, `import` and `completion` tasks. This gives you fine-grained control over the AI's behavior, tone, and output format.
 
 The prompts are defined in the `[ai.prompts]` section.
 
@@ -177,8 +177,3 @@ information before sending the request to the AI:
 
 You can view the well-tuned default prompts in the [`default_config.toml`](https://github.com/lasantosr/intelli-shell/blob/main/default_config.toml)
 file to use as a starting point for your own customizations.
-
----
-
-This concludes the configuration guide. With your setup perfectly tuned, let's dive into the detailed breakdown of each
-[**Command Line Tool**](../reference/index.md).

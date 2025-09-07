@@ -249,6 +249,21 @@ const MIGRATION_SLICE: &[M<'_>] = &[
         -- Insert an initial record to ensure a row always exists
         INSERT INTO version_info (latest_version, last_checked_at) VALUES ('0.0.0', datetime(0, 'unixepoch'));"#,
     ),
+    // Migration 5: Variable completions
+    M::up(
+        r#"CREATE TABLE variable_completion (
+            id BLOB PRIMARY KEY NOT NULL,
+            source TEXT NOT NULL,
+            root_cmd TEXT NOT NULL,
+            flat_root_cmd TEXT NOT NULL,
+            variable TEXT NOT NULL,
+            flat_variable TEXT NOT NULL,
+            suggestions_provider TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime() || '.000+00:00'),
+            updated_at TEXT NULL,
+            UNIQUE(flat_root_cmd, flat_variable)
+        );"#,
+    ),
 ];
 
 #[cfg(test)]

@@ -1,16 +1,32 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashSet};
 
 use ratatui::{
     buffer::Buffer,
-    layout::Rect,
+    layout::{Rect, Size},
     prelude::StatefulWidget,
-    style::Style,
+    style::{Style, Styled},
     widgets::{Block, Borders, Widget},
 };
 use tui_widget_list::{ListBuilder, ListState, ListView, ScrollAxis};
 use unicode_width::UnicodeWidthStr;
 
-use super::AsWidget;
+use crate::config::Theme;
+
+/// A trait for types that can be rendered inside a [`CustomList`]
+pub trait CustomListItem {
+    type Widget<'w>: Widget + 'w
+    where
+        Self: 'w;
+
+    /// Converts the item into a ratatui widget and its size
+    fn as_widget<'a>(
+        &'a self,
+        theme: &Theme,
+        inline: bool,
+        is_highlighted: bool,
+        is_discarded: bool,
+    ) -> (Self::Widget<'a>, Size);
+}
 
 /// Defines how a highlight symbol is rendered next to a list item
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -24,7 +40,11 @@ pub enum HighlightSymbolMode {
 }
 
 /// A widget that displays a customizable list of items
-pub struct CustomList<'a, T: AsWidget> {
+pub struct CustomList<'a, T: CustomListItem> {
+    /// Application theme
+    theme: Theme,
+    /// Whether the TUI is rendered inline or not
+    inline: bool,
     /// An optional `Block` to surround the list
     block: Option<Block<'a>>,
     /// The scroll axis
@@ -35,32 +55,38 @@ pub struct CustomList<'a, T: AsWidget> {
     focus: bool,
     /// The state of the list, managing selection and scrolling
     state: ListState,
+    /// The indices of the items marked as discarded
+    discarded_indices: HashSet<usize>,
     /// An optional symbol string to display in front of the selected item
     highlight_symbol: Option<String>,
     /// Determines how the `highlight_symbol` is rendered
     highlight_symbol_mode: HighlightSymbolMode,
-    /// The `Style` to apply to the `highlight_symbol`.
+    /// The `Style` to apply to the `highlight_symbol`
     highlight_symbol_style: Style,
+    /// The `Style` to apply to the `highlight_symbol` when focused
+    highlight_symbol_style_focused: Style,
 }
 
-impl<'a, T: AsWidget> CustomList<'a, T> {
+impl<'a, T: CustomListItem> CustomList<'a, T> {
     /// Creates a new [`CustomList`]
-    pub fn new(style: impl Into<Style>, inline: bool, mut items: Vec<T>) -> Self {
-        let style = style.into();
+    pub fn new(theme: Theme, inline: bool, items: Vec<T>) -> Self {
         let mut state = ListState::default();
-        if let Some(first) = items.first_mut() {
-            first.set_highlighted(true);
+        if !items.is_empty() {
             state.select(Some(0));
         }
         Self {
-            block: (!inline).then(|| Block::default().borders(Borders::ALL).style(style)),
+            block: (!inline).then(|| Block::default().borders(Borders::ALL).style(theme.primary)),
             axis: ScrollAxis::Vertical,
             items,
             focus: true,
             state,
-            highlight_symbol_style: style,
-            highlight_symbol: None,
-            highlight_symbol_mode: HighlightSymbolMode::First,
+            discarded_indices: HashSet::new(),
+            highlight_symbol_style: theme.primary.into(),
+            highlight_symbol_style_focused: theme.highlight_primary_full().into(),
+            highlight_symbol: Some(theme.highlight_symbol.clone()).filter(|s| !s.trim().is_empty()),
+            highlight_symbol_mode: HighlightSymbolMode::Last,
+            theme,
+            inline,
         }
     }
 
@@ -100,23 +126,25 @@ impl<'a, T: AsWidget> CustomList<'a, T> {
         self
     }
 
+    /// Sets the style for the highlight symbol when focused
+    pub fn highlight_symbol_style_focused(mut self, highlight_symbol_style_focused: Style) -> Self {
+        self.highlight_symbol_style_focused = highlight_symbol_style_focused;
+        self
+    }
+
     /// Updates the title of the list
     pub fn set_title(&mut self, new_title: impl Into<Cow<'a, str>>) {
         if let Some(ref mut block) = self.block {
-            *block = block.clone().title(new_title.into());
+            *block = Block::default()
+                .borders(Borders::ALL)
+                .style(Styled::style(block))
+                .title(new_title.into());
         }
     }
 
     /// Sets the focus state of the list
     pub fn set_focus(&mut self, focus: bool) {
-        if focus != self.focus {
-            self.focus = focus;
-            if let Some(selected) = self.state.selected
-                && let Some(selected) = self.items.get_mut(selected)
-            {
-                selected.set_highlighted(focus);
-            }
-        }
+        self.focus = focus;
     }
 
     /// Returns whether the text area is currently focused or not
@@ -145,52 +173,49 @@ impl<'a, T: AsWidget> CustomList<'a, T> {
         &mut self.items
     }
 
-    /// Updates the items displayed in this list
-    pub fn update_items(&mut self, items: Vec<T>) {
-        self.items = items;
-
-        if self.items.is_empty() {
-            self.state.select(None);
-        } else if let Some(selected) = self.state.selected {
-            if selected > self.items.len() - 1 {
-                self.state.select(Some(self.items.len() - 1));
-            }
-        } else {
-            self.state.select(Some(0));
-        }
-        if let Some(selected) = self.state.selected
-            && let Some(selected) = self.items.get_mut(selected)
-        {
-            selected.set_highlighted(true);
-        }
+    /// Returns an iterator over the references to items that have not been discarded
+    pub fn non_discarded_items(&self) -> impl Iterator<Item = &T> {
+        self.items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| if self.is_discarded(index) { None } else { Some(item) })
     }
 
-    /// Resets the internal selected state
-    pub fn reset_selection(&mut self) {
-        if self.focus {
-            if let Some(selected) = self.state.selected
-                && let Some(selected) = self.items.get_mut(selected)
-            {
-                selected.set_highlighted(false);
+    /// Checks if an item at a given index is discarded
+    pub fn is_discarded(&self, index: usize) -> bool {
+        self.discarded_indices.contains(&index)
+    }
+
+    /// Updates the items displayed in this list.
+    ///
+    /// The discarded state will always be reset.
+    pub fn update_items(&mut self, items: Vec<T>, keep_selection: bool) {
+        self.items = items;
+        self.discarded_indices.clear();
+
+        if keep_selection {
+            if self.items.is_empty() {
+                self.state.select(None);
+            } else if let Some(selected) = self.state.selected {
+                if selected > self.items.len() - 1 {
+                    self.state.select(Some(self.items.len() - 1));
+                }
+            } else {
+                self.state.select(Some(0));
             }
+        } else {
             self.state = ListState::default();
             if !self.items.is_empty() {
                 self.state.select(Some(0));
-                if let Some(selected) = self.items.get_mut(0) {
-                    selected.set_highlighted(true);
-                }
             }
         }
     }
 
-    /// Selects the next item in the list, wrapping around to the beginning if at the end.
+    /// Selects the next item in the list, wrapping around to the beginning if at the end
     pub fn select_next(&mut self) {
         if self.focus
             && let Some(selected) = self.state.selected
         {
-            if let Some(selected) = self.items.get_mut(selected) {
-                selected.set_highlighted(false);
-            }
             if self.items.is_empty() {
                 self.state.select(None);
             } else {
@@ -200,21 +225,15 @@ impl<'a, T: AsWidget> CustomList<'a, T> {
                     selected + 1
                 };
                 self.state.select(Some(i));
-                if let Some(selected) = self.items.get_mut(i) {
-                    selected.set_highlighted(true);
-                }
             }
         }
     }
 
-    /// Selects the previous item in the list, wrapping around to the end if at the beginning.
+    /// Selects the previous item in the list, wrapping around to the end if at the beginning
     pub fn select_prev(&mut self) {
         if self.focus
             && let Some(selected) = self.state.selected
         {
-            if let Some(selected) = self.items.get_mut(selected) {
-                selected.set_highlighted(false);
-            }
             if self.items.is_empty() {
                 self.state.select(None);
             } else {
@@ -224,9 +243,6 @@ impl<'a, T: AsWidget> CustomList<'a, T> {
                     selected - 1
                 };
                 self.state.select(Some(i));
-                if let Some(selected) = self.items.get_mut(i) {
-                    selected.set_highlighted(true);
-                }
             }
         }
     }
@@ -234,46 +250,37 @@ impl<'a, T: AsWidget> CustomList<'a, T> {
     /// Selects the first item in the list
     pub fn select_first(&mut self) {
         if self.focus && !self.items.is_empty() {
-            if let Some(selected) = self.state.selected
-                && let Some(selected) = self.items.get_mut(selected)
-            {
-                selected.set_highlighted(false);
-            }
             self.state.select(Some(0));
-            if let Some(selected) = self.items.get_mut(0) {
-                selected.set_highlighted(true);
-            }
         }
     }
 
     /// Selects the last item in the list
     pub fn select_last(&mut self) {
         if self.focus && !self.items.is_empty() {
-            if let Some(selected) = self.state.selected
-                && let Some(selected) = self.items.get_mut(selected)
-            {
-                selected.set_highlighted(false);
-            }
             let i = self.items.len() - 1;
             self.state.select(Some(i));
-            if let Some(selected) = self.items.get_mut(i) {
-                selected.set_highlighted(true);
-            }
+        }
+    }
+
+    /// Selects the first item that matches the given predicate
+    pub fn select_matching<F>(&mut self, predicate: F) -> bool
+    where
+        F: FnMut(&T) -> bool,
+    {
+        if !self.items.is_empty()
+            && let Some(index) = self.items.iter().position(predicate)
+        {
+            self.state.select(Some(index));
+            true
+        } else {
+            false
         }
     }
 
     /// Selects the given index
     pub fn select(&mut self, index: usize) {
         if self.focus && index < self.items.len() {
-            if let Some(selected) = self.state.selected
-                && let Some(selected) = self.items.get_mut(selected)
-            {
-                selected.set_highlighted(false);
-            }
             self.state.select(Some(index));
-            if let Some(selected) = self.items.get_mut(index) {
-                selected.set_highlighted(true);
-            }
         }
     }
 
@@ -282,27 +289,19 @@ impl<'a, T: AsWidget> CustomList<'a, T> {
         self.state.selected
     }
 
-    /// Returns a mutable reference to the currently selected item
+    /// Returns a mutable reference to the currently selected item and its index
     pub fn selected_mut(&mut self) -> Option<&mut T> {
-        if self.focus {
-            if let Some(selected) = self.state.selected {
-                self.items.get_mut(selected)
-            } else {
-                None
-            }
+        if let Some(selected) = self.state.selected {
+            self.items.get_mut(selected)
         } else {
             None
         }
     }
 
-    /// Returns a reference to the currently selected item
+    /// Returns a reference to the currently selected item and its index
     pub fn selected(&self) -> Option<&T> {
-        if self.focus {
-            if let Some(selected) = self.state.selected {
-                self.items.get(selected)
-            } else {
-                None
-            }
+        if let Some(selected) = self.state.selected {
+            self.items.get(selected)
         } else {
             None
         }
@@ -310,59 +309,88 @@ impl<'a, T: AsWidget> CustomList<'a, T> {
 
     /// Returns a reference to the currently selected item and its index
     pub fn selected_with_index(&self) -> Option<(usize, &T)> {
-        if self.focus {
-            if let Some(selected) = self.state.selected {
-                self.items.get(selected).map(|i| (selected, i))
-            } else {
-                None
-            }
+        if let Some(selected) = self.state.selected {
+            self.items.get(selected).map(|i| (selected, i))
         } else {
             None
         }
     }
 
-    /// Deletes the currently selected item from the list and returns it
-    pub fn delete_selected(&mut self) -> Option<T> {
+    /// Deletes the currently selected item from the list and returns it (along with its index)
+    pub fn delete_selected(&mut self) -> Option<(usize, T)> {
         if self.focus {
             let selected = self.state.selected?;
-            let mut deleted = self.items.remove(selected);
-            deleted.set_highlighted(false);
+            let deleted = self.items.remove(selected);
+
+            // Update discarded indices
+            self.discarded_indices = self
+                .discarded_indices
+                .iter()
+                .filter_map(|&idx| {
+                    if idx < selected {
+                        // Indices before the deleted one are unaffected
+                        Some(idx)
+                    } else if idx > selected {
+                        // Indices after the deleted one must be decremented
+                        Some(idx - 1)
+                    } else {
+                        // The deleted index itself is removed from the set
+                        None
+                    }
+                })
+                .collect();
 
             if self.items.is_empty() {
                 self.state.select(None);
             } else if selected >= self.items.len() {
                 self.state.select(Some(self.items.len() - 1));
             }
-            if let Some(selected) = self.state.selected
-                && let Some(selected) = self.items.get_mut(selected)
-            {
-                selected.set_highlighted(true);
-            }
 
-            Some(deleted)
+            Some((selected, deleted))
         } else {
             None
         }
     }
+
+    /// Toggles the discarded state of the currently selected item
+    pub fn toggle_discard_selected(&mut self) {
+        if let Some(selected) = self.state.selected
+            && !self.discarded_indices.remove(&selected)
+        {
+            self.discarded_indices.insert(selected);
+        }
+    }
+
+    /// Toggles the discarded state for all items
+    pub fn toggle_discard_all(&mut self) {
+        if self.items.is_empty() {
+            return;
+        }
+        // If all items are already discarded
+        if self.discarded_indices.len() == self.items.len() {
+            // Clear the set
+            self.discarded_indices.clear();
+        } else {
+            // Otherwise, discard all
+            self.discarded_indices.extend(0..self.items.len());
+        }
+    }
 }
 
-impl<'a, T: AsWidget> Widget for &mut CustomList<'a, T> {
+impl<'a, T: CustomListItem> Widget for &mut CustomList<'a, T> {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {
-        let mut default_state = ListState::default();
-        let state = if self.focus {
-            &mut self.state
-        } else {
-            &mut default_state
-        };
         if let Some(ref highlight_symbol) = self.highlight_symbol {
             // Render items with the highlight symbol
             render_list_view(
                 ListBuilder::new(|ctx| {
+                    let is_highlighted = self.focus && ctx.is_selected;
+                    let is_discarded = self.discarded_indices.contains(&ctx.index);
                     // Get the base widget and its height from the item
-                    let (item_widget, item_size) = self.items[ctx.index].as_widget(ctx.is_selected);
+                    let (item_widget, item_size) =
+                        self.items[ctx.index].as_widget(&self.theme, self.inline, is_highlighted, is_discarded);
 
                     // Wrap the widget with a symbol
                     let item = SymbolAndWidget {
@@ -371,7 +399,11 @@ impl<'a, T: AsWidget> Widget for &mut CustomList<'a, T> {
                         symbol: if ctx.is_selected { highlight_symbol.as_str() } else { "" },
                         symbol_width: highlight_symbol.width() as u16,
                         symbol_mode: self.highlight_symbol_mode,
-                        symbol_style: self.highlight_symbol_style,
+                        symbol_style: if self.focus {
+                            self.highlight_symbol_style_focused
+                        } else {
+                            self.highlight_symbol_style
+                        },
                     };
 
                     let main_axis_size = match ctx.scroll_axis {
@@ -385,7 +417,7 @@ impl<'a, T: AsWidget> Widget for &mut CustomList<'a, T> {
                 self.block.is_none(),
                 self.items.len(),
                 self.block.clone(),
-                state,
+                &mut self.state,
                 area,
                 buf,
             );
@@ -393,7 +425,10 @@ impl<'a, T: AsWidget> Widget for &mut CustomList<'a, T> {
             // No highlight symbol, render items directly
             render_list_view(
                 ListBuilder::new(|ctx| {
-                    let (item_widget, item_size) = self.items[ctx.index].as_widget(ctx.is_selected);
+                    let is_highlighted = ctx.is_selected;
+                    let is_discarded = self.discarded_indices.contains(&ctx.index);
+                    let (item_widget, item_size) =
+                        self.items[ctx.index].as_widget(&self.theme, self.inline, is_highlighted, is_discarded);
                     let main_axis_size = match ctx.scroll_axis {
                         ScrollAxis::Vertical => item_size.height,
                         ScrollAxis::Horizontal => item_size.width + 1,
@@ -404,7 +439,7 @@ impl<'a, T: AsWidget> Widget for &mut CustomList<'a, T> {
                 self.block.is_none(),
                 self.items.len(),
                 self.block.clone(),
-                state,
+                &mut self.state,
                 area,
                 buf,
             );

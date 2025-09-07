@@ -52,9 +52,9 @@ impl<'a> LoadingSpinner<'a> {
     pub fn render_in(&self, frame: &mut Frame, area: Rect) {
         let spinner_char = SPINNER_CHARS[self.spinner_state];
         let loading_text = if let Some(ref msg) = self.message {
-            format!(" {spinner_char} {msg} ")
+            format!("{spinner_char} {msg}")
         } else {
-            format!(" {spinner_char} ")
+            spinner_char.to_string()
         };
 
         // Create the main paragraph widget

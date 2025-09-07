@@ -1,29 +1,25 @@
-use std::{cmp::Ordering, pin::pin, sync::atomic::Ordering as AtomicOrdering};
+use std::{cmp::Ordering, sync::atomic::Ordering as AtomicOrdering};
 
-use chrono::{DateTime, Utc};
 use color_eyre::{Report, eyre::eyre};
-use futures_util::StreamExt;
-use regex::Regex;
 use rusqlite::{Row, fallible_iterator::FallibleIterator, ffi, types::Type};
 use sea_query::SqliteQueryBuilder;
 use sea_query_rusqlite::RusqliteBinder;
-use tokio::sync::mpsc;
-use tokio_stream::{Stream, wrappers::ReceiverStream};
 use tracing::instrument;
 use uuid::Uuid;
 
 use super::{SqliteStorage, queries::*};
 use crate::{
     config::SearchCommandTuning,
-    errors::{AppError, Result, UserFacingError},
-    model::{CATEGORY_USER, Command, SOURCE_TLDR, SearchCommandsFilter},
+    errors::{Result, UserFacingError},
+    model::{Command, SOURCE_TLDR, SearchCommandsFilter},
 };
 
 impl SqliteStorage {
-    /// Creates temporary tables for workspace-specific commands for the current session by reflecting the schema of the
-    /// main `command` table.
+    /// Creates temporary tables for workspace-specific commands and completions for the current session by reflecting
+    /// the schema of the main tables.
     #[instrument(skip_all)]
     pub async fn setup_workspace_storage(&self) -> Result<()> {
+        tracing::trace!("Creating workspace-specific tables");
         self.client
             .conn_mut(|conn| {
                 // Fetch the schema for the main tables and triggers
@@ -31,7 +27,8 @@ impl SqliteStorage {
                     .prepare(
                         r"SELECT sql 
                         FROM sqlite_master 
-                        WHERE (type = 'table' AND name = 'command') 
+                        WHERE (type = 'table' AND name = 'variable_completion') 
+                            OR (type = 'table' AND name = 'command') 
                             OR (type = 'table' AND name LIKE 'command_%fts')
                             OR (type = 'trigger' AND name LIKE 'command_%_fts' AND tbl_name = 'command')",
                     )?
@@ -43,10 +40,12 @@ impl SqliteStorage {
                 // Modify and execute each schema statement to create temporary versions
                 for schema in schemas {
                     let temp_schema = schema
+                        .replace("variable_completion", "workspace_variable_completion")
                         .replace("command", "workspace_command")
-                        .replace("CREATE TABLE", "CREATE TEMP TABLE")
+                        .replace("CREATE TABLE ", "CREATE TEMP TABLE ")
                         .replace("CREATE VIRTUAL TABLE ", "CREATE VIRTUAL TABLE temp.")
-                        .replace("CREATE TRIGGER", "CREATE TEMP TRIGGER");
+                        .replace("CREATE TRIGGER ", "CREATE TEMP TRIGGER ");
+                    tracing::trace!("Executing:\n{temp_schema}");
                     tx.execute(&temp_schema, [])?;
                 }
 
@@ -66,15 +65,13 @@ impl SqliteStorage {
         let workspace_tables_loaded = self.workspace_tables_loaded.load(AtomicOrdering::SeqCst);
         self.client
             .conn(move |conn| {
-                if workspace_tables_loaded {
-                    Ok(conn.query_row(
-                        "SELECT NOT EXISTS (SELECT 1 FROM command UNION ALL SELECT 1 FROM workspace_command)",
-                        [],
-                        |r| r.get(0),
-                    )?)
+                let query = if workspace_tables_loaded {
+                    "SELECT NOT EXISTS (SELECT 1 FROM command UNION ALL SELECT 1 FROM workspace_command)"
                 } else {
-                    Ok(conn.query_row("SELECT NOT EXISTS(SELECT 1 FROM command)", [], |r| r.get(0))?)
-                }
+                    "SELECT NOT EXISTS(SELECT 1 FROM command)"
+                };
+                tracing::trace!("Checking if storage is empty:\n{query}");
+                Ok(conn.query_row(query, [], |r| r.get(0))?)
             })
             .await
     }
@@ -163,6 +160,7 @@ impl SqliteStorage {
             .conn(move |conn| {
                 // If there's a query to find the command by alias
                 if let Some((query_alias, a_params)) = query_alias {
+                    tracing::trace!("Querying aliased commands:\n{query_alias}");
                     // Run the query
                     let rows = conn
                         .prepare(&query_alias)?
@@ -192,189 +190,6 @@ impl SqliteStorage {
             .await
     }
 
-    /// Imports a collection of commands into the database.
-    ///
-    /// This function allows for bulk insertion or updating of commands from a stream.
-    /// The behavior for existing commands depends on the `overwrite` flag.
-    ///
-    /// Returns the number of new commands inserted and skipped/updated.
-    #[instrument(skip_all)]
-    pub async fn import_commands(
-        &self,
-        commands: impl Stream<Item = Result<Command>> + Send + 'static,
-        overwrite: bool,
-        workspace: bool,
-    ) -> Result<(u64, u64)> {
-        // Create a channel to bridge the async stream with the sync database operations
-        let (tx, mut rx) = mpsc::channel(100);
-
-        // Spawn a producer task to read from the async stream and send to the channel
-        tokio::spawn(async move {
-            // Pin the stream to be able to iterate over it
-            let mut commands = pin!(commands);
-            while let Some(command_result) = commands.next().await {
-                if tx.send(command_result).await.is_err() {
-                    // Receiver has been dropped, so we can stop
-                    tracing::debug!("Import stream channel closed by receiver");
-                    break;
-                }
-            }
-        });
-
-        // Determine which table to import into based on the `workspace` flag
-        let table = if workspace { "workspace_command" } else { "command" };
-
-        self.client
-            .conn_mut(move |conn| {
-                let mut inserted = 0;
-                let mut skipped_or_updated = 0;
-                let tx = conn.transaction()?;
-                let mut stmt = if overwrite {
-                    tx.prepare(&format!(
-                        r#"INSERT INTO {table} (
-                                id,
-                                category,
-                                source,
-                                alias,
-                                cmd,
-                                flat_cmd,
-                                description,
-                                flat_description,
-                                tags,
-                                created_at
-                            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-                            ON CONFLICT (cmd) DO UPDATE SET
-                                alias = COALESCE(excluded.alias, alias),
-                                cmd = excluded.cmd,
-                                flat_cmd = excluded.flat_cmd,
-                                description = COALESCE(excluded.description, description),
-                                flat_description = COALESCE(excluded.flat_description, flat_description),
-                                tags = COALESCE(excluded.tags, tags),
-                                updated_at = excluded.created_at
-                            RETURNING updated_at;"#
-                    ))?
-                } else {
-                    tx.prepare(&format!(
-                        r#"INSERT OR IGNORE INTO {table} (
-                                id,
-                                category,
-                                source,
-                                alias,
-                                cmd,
-                                flat_cmd,
-                                description,
-                                flat_description,
-                                tags,
-                                created_at
-                            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-                            RETURNING updated_at;"#,
-                    ))?
-                };
-
-                // Process commands from the channel
-                while let Some(command_result) = rx.blocking_recv() {
-                    let command = command_result?;
-
-                    let mut rows = stmt.query((
-                        &command.id,
-                        &command.category,
-                        &command.source,
-                        &command.alias,
-                        &command.cmd,
-                        &command.flat_cmd,
-                        &command.description,
-                        &command.flat_description,
-                        serde_json::to_value(&command.tags)?,
-                        &command.created_at,
-                    ))?;
-
-                    match rows.next()? {
-                        // No row returned, this happens only when overwrite = false, meaning it was skipped
-                        None => skipped_or_updated += 1,
-                        // When a row is returned (can happen on both paths)
-                        Some(r) => {
-                            let updated_at = r.get::<_, Option<DateTime<Utc>>>(0)?;
-                            match updated_at {
-                                // If there's no update date, it's a new insert
-                                None => inserted += 1,
-                                // If it has a value, it was updated
-                                Some(_) => skipped_or_updated += 1,
-                            }
-                        }
-                    }
-                }
-
-                drop(stmt);
-                tx.commit()?;
-                Ok((inserted, skipped_or_updated))
-            })
-            .await
-    }
-
-    /// Export user commands
-    #[instrument(skip_all)]
-    pub async fn export_user_commands(
-        &self,
-        filter: Option<Regex>,
-    ) -> impl Stream<Item = Result<Command>> + Send + 'static {
-        // Create a channel to stream results from the database with a small buffer to provide backpressure
-        let (tx, rx) = mpsc::channel(100);
-
-        // Spawn a new task to run the query and send results back through the channel
-        let client = self.client.clone();
-        tokio::spawn(async move {
-            let res = client
-                .conn_mut(move |conn| {
-                    // Prepare the query
-                    let mut q_values = vec![CATEGORY_USER.to_owned()];
-                    let mut query = String::from(
-                        r"SELECT
-                            rowid,
-                            id,
-                            category,
-                            source,
-                            alias,
-                            cmd,
-                            flat_cmd,
-                            description,
-                            flat_description,
-                            tags,
-                            created_at,
-                            updated_at
-                        FROM command
-                        WHERE category = ?1",
-                    );
-                    if let Some(filter) = filter {
-                        q_values.push(filter.as_str().to_owned());
-                        query.push_str(" AND (cmd REGEXP ?2 OR (description IS NOT NULL AND description REGEXP ?2))");
-                    }
-                    query.push_str("\nORDER BY cmd ASC");
-
-                    // Create an iterator over the rows
-                    let mut stmt = conn.prepare(&query)?;
-                    let records_iter =
-                        stmt.query_and_then(rusqlite::params_from_iter(q_values), |r| Command::try_from(r))?;
-
-                    // Iterate and send each record back through the channel
-                    for record_result in records_iter {
-                        if tx.blocking_send(record_result.map_err(AppError::from)).is_err() {
-                            tracing::debug!("Async stream receiver dropped, closing db query");
-                            break;
-                        }
-                    }
-
-                    Ok(())
-                })
-                .await;
-            if let Err(err) = res {
-                panic!("Couldn't fetch commands to export: {err:?}");
-            }
-        });
-
-        // Return the receiver stream
-        ReceiverStream::new(rx)
-    }
-
     /// Removes tldr commands
     #[instrument(skip_all)]
     pub async fn delete_tldr_commands(&self, category: Option<String>) -> Result<u64> {
@@ -386,6 +201,7 @@ impl SqliteStorage {
                     query.push_str(" AND category = ?2");
                     params.push(cat);
                 }
+                tracing::trace!("Deleting tldr commands:\n{query}");
                 let affected = conn.execute(&query, rusqlite::params_from_iter(params))?;
                 Ok(affected as u64)
             })
@@ -399,8 +215,7 @@ impl SqliteStorage {
     pub async fn insert_command(&self, command: Command) -> Result<Command> {
         self.client
             .conn(move |conn| {
-                let res = conn.execute(
-                    r#"INSERT INTO command (
+                let query = r#"INSERT INTO command (
                         id,
                         category,
                         source,
@@ -412,7 +227,10 @@ impl SqliteStorage {
                         tags,
                         created_at,
                         updated_at
-                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"#,
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"#;
+                tracing::trace!("Inserting a command:\n{query}");
+                let res = conn.execute(
+                    query,
                     (
                         &command.id,
                         &command.category,
@@ -449,8 +267,7 @@ impl SqliteStorage {
     pub async fn update_command(&self, command: Command) -> Result<Command> {
         self.client
             .conn(move |conn| {
-                let res = conn.execute(
-                    r#"UPDATE command SET 
+                let query = r#"UPDATE command SET 
                         category = ?2,
                         source = ?3,
                         alias = ?4,
@@ -461,7 +278,10 @@ impl SqliteStorage {
                         tags = ?9,
                         created_at = ?10,
                         updated_at = ?11
-                    WHERE id = ?1"#,
+                    WHERE id = ?1"#;
+                tracing::trace!("Updating a command:\n{query}");
+                let res = conn.execute(
+                    query,
                     (
                         &command.id,
                         &command.category,
@@ -501,16 +321,14 @@ impl SqliteStorage {
     ) -> Result<i32> {
         self.client
             .conn_mut(move |conn| {
-                Ok(conn.query_row(
-                    r#"
+                let query = r#"
                     INSERT INTO command_usage (command_id, path, usage_count)
                     VALUES (?1, ?2, 1)
                     ON CONFLICT(command_id, path) DO UPDATE SET
                         usage_count = usage_count + 1
-                    RETURNING usage_count;"#,
-                    (&command_id, &path.as_ref()),
-                    |r| r.get(0),
-                )?)
+                    RETURNING usage_count;"#;
+                tracing::trace!("Incrementing command usage:\n{query}");
+                Ok(conn.query_row(query, (&command_id, &path.as_ref()), |r| r.get(0))?)
             })
             .await
     }
@@ -522,7 +340,9 @@ impl SqliteStorage {
     pub async fn delete_command(&self, command_id: Uuid) -> Result<()> {
         self.client
             .conn(move |conn| {
-                let res = conn.execute("DELETE FROM command WHERE id = ?1", (&command_id,));
+                let query = "DELETE FROM command WHERE id = ?1";
+                tracing::trace!("Deleting command:\n{query}");
+                let res = conn.execute(query, (&command_id,));
                 match res {
                     Ok(0) => Err(eyre!("Command not found: {command_id}").into()),
                     Ok(_) => Ok(()),
@@ -677,7 +497,6 @@ impl<'a> TryFrom<&'a Row<'a>> for QueryResultItem {
 
 #[cfg(test)]
 mod tests {
-    use futures_util::StreamExt;
     use pretty_assertions::assert_eq;
     use strum::IntoEnumIterator;
     use tokio_stream::iter;
@@ -686,7 +505,7 @@ mod tests {
     use super::*;
     use crate::{
         errors::AppError,
-        model::{CATEGORY_USER, SOURCE_IMPORT, SOURCE_USER, SearchMode},
+        model::{CATEGORY_USER, ImportExportItem, SOURCE_IMPORT, SOURCE_USER, SearchMode},
     };
 
     const PROJ_A_PATH: &str = "/home/user/project-a";
@@ -1169,19 +988,19 @@ mod tests {
 
         storage.setup_workspace_storage().await.unwrap();
         let commands_to_import = vec![
-            Command {
+            ImportExportItem::Command(Command {
                 id: Uuid::now_v7(),
                 cmd: "cmd1".to_string(),
                 ..Default::default()
-            },
-            Command {
+            }),
+            ImportExportItem::Command(Command {
                 id: Uuid::now_v7(),
                 cmd: "cmd2".to_string(),
                 ..Default::default()
-            },
+            }),
         ];
         let stream = iter(commands_to_import.clone().into_iter().map(Ok));
-        storage.import_commands(stream, false, true).await.unwrap();
+        storage.import_items(stream, false, true).await.unwrap();
 
         let (commands, _) = storage
             .find_commands(
@@ -1199,13 +1018,13 @@ mod tests {
         let storage = setup_ranking_storage().await;
 
         storage.setup_workspace_storage().await.unwrap();
-        let commands_to_import = vec![Command {
+        let commands_to_import = vec![ImportExportItem::Command(Command {
             id: Uuid::now_v7(),
             cmd: "git checkout -b feature/{{name:kebab}}".to_string(),
             ..Default::default()
-        }];
+        })];
         let stream = iter(commands_to_import.clone().into_iter().map(Ok));
-        storage.import_commands(stream, false, true).await.unwrap();
+        storage.import_items(stream, false, true).await.unwrap();
 
         let filter = SearchCommandsFilter {
             search_term: Some("git".to_string()),
@@ -1222,165 +1041,6 @@ mod tests {
                 .iter()
                 .any(|c| c.cmd == "git checkout -b feature/{{name:kebab}}")
         );
-    }
-
-    #[tokio::test]
-    async fn test_import_commands_no_overwrite() {
-        let storage = SqliteStorage::new_in_memory().await.unwrap();
-
-        let commands_to_import = vec![
-            Command {
-                id: Uuid::now_v7(),
-                cmd: "cmd1".to_string(),
-                ..Default::default()
-            },
-            Command {
-                id: Uuid::now_v7(),
-                cmd: "cmd2".to_string(),
-                ..Default::default()
-            },
-        ];
-
-        let stream = iter(commands_to_import.clone().into_iter().map(Ok));
-        let (inserted, skipped_or_updated) = storage.import_commands(stream, false, false).await.unwrap();
-
-        assert_eq!(inserted, 2, "Expected 2 commands inserted");
-        assert_eq!(skipped_or_updated, 0, "Expected 0 commands skipped or updated");
-
-        // Import the same commands again with no overwrite
-        let stream = iter(commands_to_import.into_iter().map(Ok));
-        let (inserted, skipped_or_updated) = storage.import_commands(stream, false, false).await.unwrap();
-
-        assert_eq!(
-            inserted, 0,
-            "Expected 0 commands inserted on second import (no overwrite)"
-        );
-        assert_eq!(
-            skipped_or_updated, 2,
-            "Expected 2 commands skipped on second import (no overwrite)"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_import_commands_overwrite() {
-        let storage = SqliteStorage::new_in_memory().await.unwrap();
-
-        let existing_cmd = Command {
-            id: Uuid::now_v7(),
-            cmd: "existing_cmd".to_string(),
-            description: Some("original desc".to_string()),
-            alias: Some("original_alias".to_string()),
-            tags: Some(vec!["tag_a".to_string()]),
-            ..Default::default()
-        };
-        storage.insert_command(existing_cmd.clone()).await.unwrap();
-
-        let new_cmd = Command {
-            id: Uuid::now_v7(),
-            cmd: "new_cmd".to_string(),
-            ..Default::default()
-        };
-
-        // Import a list containing the existing command (modified) and a new command
-        let commands_to_import = vec![
-            Command {
-                id: Uuid::now_v7(),
-                cmd: "existing_cmd".to_string(),
-                description: Some("updated desc".to_string()),
-                alias: None,
-                tags: Some(vec!["tag_b".to_string()]),
-                ..Default::default()
-            },
-            new_cmd.clone(),
-        ];
-
-        let stream = iter(commands_to_import.into_iter().map(Ok));
-        let (inserted, skipped_or_updated) = storage.import_commands(stream, true, false).await.unwrap();
-
-        assert_eq!(inserted, 1, "Expected 1 new command inserted");
-        assert_eq!(skipped_or_updated, 1, "Expected 1 existing command updated");
-
-        // Verify the existing command was updated
-        let filter = SearchCommandsFilter {
-            search_term: Some("existing_cmd".to_string()),
-            search_mode: SearchMode::Exact,
-            ..Default::default()
-        };
-        let (found_commands, _) = storage
-            .find_commands(filter, "/some/path", &SearchCommandTuning::default())
-            .await
-            .unwrap();
-        assert_eq!(found_commands.len(), 1);
-        let updated_cmd_in_db = &found_commands[0];
-        assert_eq!(
-            updated_cmd_in_db.description,
-            Some("updated desc".to_string()),
-            "Description should be updated"
-        );
-        assert_eq!(
-            updated_cmd_in_db.alias,
-            Some("original_alias".to_string()),
-            "Alias should NOT be updated to NULL"
-        );
-        assert_eq!(
-            updated_cmd_in_db.tags,
-            Some(vec!["tag_b".to_string()]),
-            "Tags should be updated"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_import_workspace_commands() {
-        let storage = SqliteStorage::new_in_memory().await.unwrap();
-        storage.setup_workspace_storage().await.unwrap();
-
-        let commands_to_import = vec![
-            Command {
-                id: Uuid::now_v7(),
-                cmd: "cmd1".to_string(),
-                ..Default::default()
-            },
-            Command {
-                id: Uuid::now_v7(),
-                cmd: "cmd2".to_string(),
-                ..Default::default()
-            },
-        ];
-
-        let stream = iter(commands_to_import.clone().into_iter().map(Ok));
-        let (inserted, skipped_or_updated) = storage.import_commands(stream, false, true).await.unwrap();
-
-        assert_eq!(inserted, 2, "Expected 2 commands inserted");
-        assert_eq!(skipped_or_updated, 0, "Expected 0 commands skipped or updated");
-    }
-
-    #[tokio::test]
-    async fn test_export_user_commands_no_filter() {
-        let storage = setup_ranking_storage().await;
-        let mut exported_commands = Vec::new();
-        let mut stream = storage.export_user_commands(None).await;
-        while let Some(Ok(cmd)) = stream.next().await {
-            exported_commands.push(cmd);
-        }
-
-        assert_eq!(exported_commands.len(), 7, "Expected 7 user commands to be exported");
-    }
-
-    #[tokio::test]
-    async fn test_export_user_commands_with_filter() {
-        let storage = setup_ranking_storage().await;
-        let filter = Regex::new(r"^git").unwrap(); // Commands starting with "git"
-        let mut exported_commands = Vec::new();
-        let mut stream = storage.export_user_commands(Some(filter)).await;
-        while let Some(Ok(cmd)) = stream.next().await {
-            exported_commands.push(cmd);
-        }
-
-        assert_eq!(exported_commands.len(), 3, "Expected 3 git commands to be exported");
-
-        let exported_cmd_values: Vec<String> = exported_commands.into_iter().map(|c| c.cmd).collect();
-        assert!(exported_cmd_values.contains(&"git status".to_string()));
-        assert!(exported_cmd_values.contains(&"git checkout main".to_string()));
     }
 
     #[tokio::test]

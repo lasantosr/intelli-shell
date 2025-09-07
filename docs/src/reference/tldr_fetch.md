@@ -18,10 +18,10 @@ intelli-shell tldr fetch [OPTIONS] [CATEGORY]
 
 ## Arguments
 
-- **`CATEGORY`**
-  
-  Specifies which `tldr` category (a collection of pages) to fetch. If omitted, IntelliShell automatically fetches the
-  `common` pages as well as the pages for your current operating system (e.g., `linux`, `osx`, or `windows`).
+- **`CATEGORY`** Specifies which `tldr` category (a collection of pages) to fetch.
+
+  If omitted, IntelliShell automatically fetches the `common` pages as well as the pages for your current operating system
+  (e.g., `linux`, `osx`, or `windows`).
 
   For a full list of available categories, you can visit the
   [tldr pages repository](https://github.com/tldr-pages/tldr/tree/main/pages).

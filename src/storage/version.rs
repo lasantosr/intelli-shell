@@ -11,16 +11,14 @@ impl SqliteStorage {
     pub async fn get_version_info(&self) -> Result<(Version, DateTime<Utc>)> {
         self.client
             .conn(move |conn| {
-                Ok(conn.query_one(
-                    "SELECT latest_version, last_checked_at FROM version_info LIMIT 1",
-                    [],
-                    |r| {
-                        Ok((
-                            Version::parse(&r.get::<_, String>(0)?).expect("valid version"),
-                            r.get(1)?,
-                        ))
-                    },
-                )?)
+                let query = "SELECT latest_version, last_checked_at FROM version_info LIMIT 1";
+                tracing::trace!("Checking version info: {query}");
+                Ok(conn.query_one(query, [], |r| {
+                    Ok((
+                        Version::parse(&r.get::<_, String>(0)?).expect("valid version"),
+                        r.get(1)?,
+                    ))
+                })?)
             })
             .await
     }
@@ -30,10 +28,9 @@ impl SqliteStorage {
     pub async fn update_version_info(&self, latest_version: Version, last_checked_at: DateTime<Utc>) -> Result<()> {
         self.client
             .conn_mut(move |conn| {
-                Ok(conn.execute(
-                    "UPDATE version_info SET latest_version = ?1, last_checked_at = ?2",
-                    (latest_version.to_string(), last_checked_at),
-                )?)
+                let query = "UPDATE version_info SET latest_version = ?1, last_checked_at = ?2";
+                tracing::trace!("Updating version info: {query}");
+                Ok(conn.execute(query, (latest_version.to_string(), last_checked_at))?)
             })
             .await?;
         Ok(())

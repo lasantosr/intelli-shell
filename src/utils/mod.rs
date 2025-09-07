@@ -50,4 +50,6 @@ using! {
     pub variable,
     pub widget,
     pub history,
+    pub completion,
+    pub import_export,
 }

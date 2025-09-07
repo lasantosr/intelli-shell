@@ -13,6 +13,7 @@ Works on **Bash**, **Zsh**, **Fish**, and **PowerShell**, with standalone binari
 
 - **Seamless Shell Integration**: Search with `ctrl+space`, bookmark with `ctrl+b` or fix with `ctrl+x`
 - **Dynamic Variables**: Create command templates with `{{variables}}` and replace them on the fly
+- **Smart Completions**: Power up your variables with dynamic suggestions from any command
 - **AI-Powered Commands**: Generate, fix, and import commands effortlessly using local or remote LLMs
 - **Highly Configurable**: Tailor search modes, keybindings, themes, and even search-ranking algorithms
 - **Workspace-Aware**: Automatically discovers and loads commands from your workspace's directory
@@ -46,8 +47,8 @@ Works on **Bash**, **Zsh**, **Fish**, and **PowerShell**, with standalone binari
 2. Bookmark your first command by typing it on a terminal and hitting `ctrl+b`
 
 3. _(optional)_ [Enable AI features](https://lasantosr.github.io/intelli-shell/configuration/ai.html#enabling-ai-features),
-   import commands from shared [gists](https://gist.github.com/search?q=intellishell+commands) or fetch them from
-   [tldr](https://lasantosr.github.io/intelli-shell/guide/basic_usage.html#from-tldr-pages)
+   import commands and completions from shared [gists](https://gist.github.com/search?q=intellishell+commands) or fetch
+   commands from [tldr](https://lasantosr.github.io/intelli-shell/guide/basic_usage.html#from-tldr-pages)
 
 4. Hit `ctrl+space` to begin the journey and don't forget to checkout the [tips](#tips)!
 
@@ -118,9 +119,9 @@ available options._
 - **Format variables**: Apply formatting functions directly within your variable placeholders. This is perfect for
   transforming input on the fly, like a git-friendly branch name: `git checkout -b {{feature|bugfix}}/{{{description:kebab}}}`
 
-- **Define workspace-specific commands**: Create a `.intellishell` file in your workspace's root directory and commit it
-  to git. These commands are temporary, prioritized in search results, and don't clutter your global library.
-  It's the perfect way to define and share common tasks (like build or deploy scripts) with your team.
+- **Define workspace-specific commands**: Create a [`.intellishell`](./.intellishell) file in your workspace's root
+  directory and commit it to git. These commands are temporary, prioritized in search results, and don't clutter your
+  global library. It's the perfect way to define and share common tasks (like build or deploy scripts) with your team.
 
 - **Share your knowledge**: Found a set of commands that could help others? Use the export feature to a public Gist of
   your bookmarks. Share the link on your blog, with your team, or contribute to a curated list
@@ -142,10 +143,10 @@ A common question is: "How is this different from my shell's history (`ctrl+r`) 
 
 The key distinction is that they solve different problems and are **complementary tools**, not competitors.
 
-- **`ctrl+r` (Shell History)** is perfect for recalling a specific, unique command you ran recently.
-  It's a chronological log of _what you've done_.
-- **`ctrl+space` (IntelliShell)** is for your day-to-day, frequently used commands, or for discovering how to perform a
-  task in a new project. It's a curated library of _what you want to do_.
+- **`ctrl+r`** (Shell History) is perfect for recalling a specific, unique command you ran recently.
+  It's a chronological log of **_what you've done_**.
+- **`ctrl+space`** (IntelliShell) is for your day-to-day, frequently used commands, or for discovering how to perform a
+  task in a new project. It's a curated library of **_what you want to do_**.
 
 To put it another way: your shell history is an automatic, unfiltered log of everything you've ever typed—the good, the
 bad, and the typos.

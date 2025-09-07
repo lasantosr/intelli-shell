@@ -1,0 +1,6 @@
+Examples:
+  # Deletes the dynamic completion for global {{container}} variable
+  intelli-shell completion delete container
+
+  # Deletes the dynamic completion for {{branch}} variable of 'git' commands
+  intelli-shell completion delete --command git branch

@@ -258,10 +258,21 @@ pub struct SearchUsageTuning {
 #[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct SearchVariableTuning {
+    /// Defines points for completions relevance component
+    pub completion: SearchVariableCompletionTuning,
     /// Defines points for the context relevance component
     pub context: SearchVariableContextTuning,
     /// Defines weights and points for the path-aware usage component
     pub path: SearchPathTuning,
+}
+
+/// Defines points for the completions relevance score component of variable values
+#[derive(Clone, Copy, Deserialize)]
+#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(not(test), serde(default))]
+pub struct SearchVariableCompletionTuning {
+    /// Points assigned for values present on the completions
+    pub points: u32,
 }
 
 /// Defines points for the context relevance score component of variable values
@@ -302,6 +313,8 @@ pub struct AiPromptsConfig {
     pub fix: String,
     /// The prompt to use when importing commands (e.g., from a natural language page).
     pub import: String,
+    /// The prompt used to generate a command for a dynamic completion.
+    pub completion: String,
 }
 
 /// Configuration for the models to be used
@@ -318,6 +331,9 @@ pub struct AiModelsConfig {
     /// The alias of the AI model to use when importing commands (e.g., from a natural language page).
     /// This alias must correspond to a key in the `catalog` map.
     pub import: String,
+    /// The alias of the AI model to use when suggesting variable completion commands
+    /// This alias must correspond to a key in the `catalog` map.
+    pub completion: String,
     /// The alias of a model to use as a fallback when the primary model for a task fails due to rate limiting.
     /// This alias must correspond to a key in the `catalog` map.
     pub fallback: String,
@@ -467,6 +483,7 @@ impl Config {
                 suggest,
                 fix,
                 import,
+                completion,
                 fallback,
             } = &config.ai.models;
             let catalog = &config.ai.catalog;
@@ -480,6 +497,9 @@ impl Config {
             }
             if !catalog.contains_key(import) {
                 missing.push((import, "import"));
+            }
+            if !catalog.contains_key(completion) {
+                missing.push((completion, "completion"));
             }
             if !catalog.contains_key(fallback) {
                 missing.push((fallback, "fallback"));
@@ -635,6 +655,16 @@ impl AiConfig {
         AiClient::new(
             &self.models.import,
             self.catalog.get(&self.models.import).unwrap(),
+            &self.models.fallback,
+            self.catalog.get(&self.models.fallback),
+        )
+    }
+
+    /// Retrieves a client configured for the `completion` action
+    pub fn completion_client(&self) -> crate::errors::Result<AiClient<'_>> {
+        AiClient::new(
+            &self.models.completion,
+            self.catalog.get(&self.models.completion).unwrap(),
             &self.models.fallback,
             self.catalog.get(&self.models.fallback),
         )
@@ -802,6 +832,11 @@ impl Default for SearchPathTuning {
         }
     }
 }
+impl Default for SearchVariableCompletionTuning {
+    fn default() -> Self {
+        Self { points: 200 }
+    }
+}
 impl Default for SearchVariableContextTuning {
     fn default() -> Self {
         Self { points: 700 }
@@ -840,6 +875,7 @@ impl Default for AiModelsConfig {
             suggest: "gemini".to_string(),
             fix: "gemini".to_string(),
             import: "gemini".to_string(),
+            completion: "gemini".to_string(),
             fallback: "gemini-fallback".to_string(),
         }
     }
@@ -877,9 +913,20 @@ When creating the `command` template string, you must use the following placehol
   - _Example_: `export GITHUB_TOKEN={{{api-key}}}` or `git commit -m "{{{message}}}"`
 
 ### Suggestion Strategy
-- If the user's request is **clear and unambiguous**, provide a single suggestion object in the list.
-- If the user's request is **ambiguous** or has multiple valid interpretations (e.g., "undo a commit" could mean `reset` or `revert`), 
-  provide a distinct suggestion object for each interpretation, ordered by descending relevance.
+Your primary goal is to provide the most relevant and comprehensive set of command templates. Adhere strictly to the following principles when deciding how many suggestions to provide:
+
+1. **Explicit Single Suggestion:**
+   - If the user's request explicitly asks for **a single suggestion**, you **MUST** return a list containing exactly one suggestion object.
+   - To cover variations within this single command, make effective use of choice placeholders (e.g., `git reset {{--soft|--hard}}`).
+
+2. **Clear & Unambiguous Request:**
+   - If the request is straightforward and has one primary, standard solution, provide a **single, well-formed suggestion**.
+
+3. **Ambiguous or Multi-faceted Request:**
+   - If a request is ambiguous, has multiple valid interpretations, or can be solved using several distinct tools or methods, you **MUST provide a comprehensive list of suggestions**.
+   - Each distinct approach or interpretation **must be a separate suggestion object**.
+   - **Be comprehensive and do not limit your suggestions**. For example, a request for "undo a git commit" could mean `git reset`, `git revert`, or `git checkout`. A request to "find files" could yield suggestions for `find`, `fd`, and `locate`. Provide all valid, distinct alternatives.
+   - **Order the suggestions by relevance**, with the most common or recommended solution appearing first.
 "#,
             ),
             fix: String::from(
@@ -898,10 +945,10 @@ Your response MUST be a single, valid JSON object with no surrounding text or ma
 - `fixed_command`: The corrected, valid, ready-to-execute command string. This field should *only* be populated if a direct command correction is the primary solution (e.g., fixing a typo). For complex issues requiring explanation or privilege changes, this should be an empty string.
 
 ### Core Rules
-1.  **JSON Only**: Your entire output must be a single, raw JSON object. Do not wrap it in code blocks or add any explanatory text.
-2.  **Holistic Analysis**: Analyze the command's context, syntax, and common user errors. Don't just parse the error message. Consider the user's likely intent.
-3.  **Strict Wrapping**: Hard-wrap all string values within the JSON to a maximum of 80 characters.
-4.  **`fixed_command` Logic**: Always populate `fixed_command` with the most likely command to resolve the error. Only leave this field as an empty string if the user's intent is unclear from the context.
+1. **JSON Only**: Your entire output must be a single, raw JSON object. Do not wrap it in code blocks or add any explanatory text.
+2. **Holistic Analysis**: Analyze the command's context, syntax, and common user errors. Don't just parse the error message. Consider the user's likely intent.
+3. **Strict Wrapping**: Hard-wrap all string values within the JSON to a maximum of 80 characters.
+4. **`fixed_command` Logic**: Always populate `fixed_command` with the most likely command to resolve the error. Only leave this field as an empty string if the user's intent is unclear from the context.
 "#,
             ),
             import: String::from(
@@ -934,14 +981,44 @@ When creating the `command` template string, you must use the following placehol
   - _Example_: `export GITHUB_TOKEN={{{api-key}}}` or `git commit -m "{{{message}}}"`
 
 ### Core Process
-1.  **Extract & Generalize**: Scan the text to find all shell commands. Generalize each one into a template by replacing specific values with the appropriate placeholder type defined in the **Command Template Syntax** section.
-2.  **Deduplicate**: Consolidate multiple commands that follow the same pattern into a single, representative template. For example, `git checkout bugfix/some-bug` and `git checkout feature/login` must be merged into a single `git checkout {{feature|bugfix}}/{{{description:kebab}}}` suggestion.
+1. **Extract & Generalize**: Scan the text to find all shell commands. Generalize each one into a template by replacing specific values with the appropriate placeholder type defined in the **Command Template Syntax** section.
+2. **Deduplicate**: Consolidate multiple commands that follow the same pattern into a single, representative template. For example, `git checkout bugfix/some-bug` and `git checkout feature/login` must be merged into a single `git checkout {{feature|bugfix}}/{{{description:kebab}}}` suggestion.
 
 ### Output Generation
 For each unique and deduplicated command pattern you identify:
--   Create a suggestion object containing a `description` and a `command`.
--   The `description` must be a clear, single-sentence explanation of the command's purpose.
--   The `command` must be the final, generalized template string from the core process.
+- Create a suggestion object containing a `description` and a `command`.
+- The `description` must be a clear, single-sentence explanation of the command's purpose.
+- The `command` must be the final, generalized template string from the core process.
+"#,
+            ),
+            completion: String::from(
+                r#"##OS_SHELL_INFO##
+### Instructions
+You are an expert CLI assistant. Your task is to generate a single-line shell command that will be executed in the background to fetch a list of dynamic command-line completions for a given variable.
+
+Your entire response MUST be a single, valid JSON object conforming to the provided schema and nothing else.
+
+### Core Task
+The command you create will be run non-interactively to generate a list of suggestions for the user. It must adapt to information that is already known (the "context").
+
+### Command Template Syntax
+To make the command context-aware, you must use a special syntax for optional parts of the command. Any segment of the command that depends on contextual information must be wrapped in double curly braces `{{...}}`.
+
+- **Syntax**: `{{--parameter {{variable-name}}}}`
+- **Rule**: The entire block, including the parameter and its variable, will only be included in the final command if the `variable-name` exists in the context. If the variable is not present, the entire block is omitted.
+- **All-or-Nothing**: If a block contains multiple variables, all of them must be present in the context for the block to be included.
+
+- **_Example_**:
+  - **Template**: `kubectl get pods {{--context {{context}}}} {{-n {{namespace}}}}`
+  - If the context provides a `namespace`, the executed command becomes: `kubectl get pods -n prod`
+  - If the context provides both `namespace` and `context`, it becomes: `kubectl get pods --context my-cluster -n prod`
+  - If the context is empty, it is simply: `kubectl get pods`
+
+### Requirements
+1. **JSON Only**: Your entire output must be a single, raw JSON object. Do not add any explanatory text.
+2. **Context is Key**: Every variable like `{{variable-name}}` must be part of a surrounding conditional block `{{...}}`. The command cannot ask for new information.
+3. **Produce a List**: The final command, after resolving the context, must print a list of strings to standard output, with each item on a new line. This list will be the source for the completions.
+4. **Executable**: The command must be syntactically correct and executable.
 "#,
             ),
         }

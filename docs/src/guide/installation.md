@@ -41,7 +41,7 @@ After installing it with powershell, it should also work on cmd (without hotkeys
 If you have the Rust toolchain installed, you can build and install the binary directly from _crates.io_.
 
 ```sh
-cargo install intelli-shell --locked
+LIBSQLITE3_FLAGS="-DSQLITE_ENABLE_MATH_FUNCTIONS" cargo install intelli-shell --locked
 ```
 
 To enable hotkeys integration, additional steps are required:

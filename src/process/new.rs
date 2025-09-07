@@ -30,20 +30,16 @@ impl Process for BookmarkCommandProcess {
 
         // If AI is enabled, we expect a command or description to be provided
         if ai {
-            let c = command.as_deref().filter(|c| !c.trim().is_empty());
-            let d = description.as_deref().filter(|c| !c.trim().is_empty());
-            let prompt = match (c, d) {
-                (Some(cmd), Some(desc)) => format!("Write a command for: {desc} (cmd: {cmd})"),
-                (Some(cmd), None) => format!("Write a command for: {cmd}"),
-                (None, Some(desc)) => format!("Write a command for: {desc}"),
-                (None, None) => {
-                    return Ok(ProcessOutput::fail().stderr(format_error!(
-                        config.theme,
-                        "{}",
-                        UserFacingError::AiEmptyCommand
-                    )));
-                }
-            };
+            let cmd = command.clone().unwrap_or_default();
+            let desc = description.clone().unwrap_or_default();
+
+            if cmd.trim().is_empty() && desc.trim().is_empty() {
+                return Ok(ProcessOutput::fail().stderr(format_error!(
+                    config.theme,
+                    "{}",
+                    UserFacingError::AiEmptyCommand
+                )));
+            }
 
             // Setup the progress bar
             let pb = ProgressBar::new_spinner();
@@ -56,23 +52,21 @@ impl Process for BookmarkCommandProcess {
             pb.set_message("Thinking ...");
 
             // Suggest commands using AI
-            let res = service.suggest_commands(&prompt).await;
+            let res = service.suggest_command(cmd, desc).await;
 
             // Clear the spinner
             pb.finish_and_clear();
 
             // Handle the result
             match res {
-                Ok(mut commands) => {
-                    if !commands.is_empty() {
-                        let c = commands.remove(0);
-                        command = Some(c.cmd);
-                        description = c.description.or(description);
-                    } else {
-                        return Ok(
-                            ProcessOutput::fail().stderr(format_error!(config.theme, "AI didn't generate any command"))
-                        );
-                    }
+                Ok(Some(suggestion)) => {
+                    command = Some(suggestion.cmd);
+                    description = suggestion.description;
+                }
+                Ok(None) => {
+                    return Ok(
+                        ProcessOutput::fail().stderr(format_error!(config.theme, "AI didn't generate any command"))
+                    );
                 }
                 Err(AppError::UserFacing(err)) => {
                     return Ok(ProcessOutput::fail().stderr(format_error!(config.theme, "{err}")));

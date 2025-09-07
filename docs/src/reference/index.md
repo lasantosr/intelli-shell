@@ -24,6 +24,7 @@ Here is a summary of all available commands, with each one detailed on its own p
 | [`import`](./import.md)                   | Imports commands from various sources, using AI for unstructured text        |
 | [`export`](./export.md)                   | Exports stored user commands to a file, URL, Gist, or stdout                 |
 | [`tldr`](./tldr.md)                       | Manages integration with tldr pages, allowing you to fetch or clear examples |
+| [`completion`](./completion.md)           | Manages dynamic variable completions                                         |
 
 ## Global Flags for Interactive Mode
 

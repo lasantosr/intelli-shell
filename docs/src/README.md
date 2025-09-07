@@ -14,28 +14,31 @@ simple execution tool into a structured, searchable, and **intelligent library**
 
 ## Key Features
 
-IntelliShell is built with a focus on efficiency and seamless integration:
+IntelliShell is built with a focus on **user experience**, efficiency and seamless integration:
 
 - **Instant Access**: Find and execute commands in seconds with an interactive search UI, triggered by a simple
   keybinding (`ctrl+space`).
 
-- **Dynamic Commands**: Create powerful command templates using `{{variables}}`. IntelliShell will prompt you to fill
+- **Command Templates**: Create powerful command templates using `{{variables}}`. IntelliShell will prompt you to fill
   them in on the fly, making your commands reusable for any scenario.
+
+- **Smart Completions**: Power up your templates by defining custom scripts that generate live suggestions for your
+  variables, like listing available git branches or docker containers.
 
 - **AI-Powered Assistance**: Generate complex commands from natural language, instantly fix errors in your last command,
   and import templates from any text source—all powered by your favorite language models.
 
-- **Effortless Organization**: Use descriptions and hashtags (`#work`, `#gcp`) to categorize your commands, making them
-  easy to filter and find.
+- **Effortless Organization**: Use descriptions and hashtags (`#work`, `#maintenance`) to categorize your commands, making
+  them easy to filter and find.
 
-- **Workspace-Specific Commands**: Automatically load and prioritize workspace-specific commands from `.intellishell`
-  files in your current workspace.
+- **Workspace-Aware**: Automatically load workspace-specific commands and completions from a `.intellishell` file in your
+  current folder or workspace.
 
 - **Sync & Share**: Export your command library to a file, an HTTP endpoint, or a GitHub Gist to back it up or share it
   with your team.
 
 - **Extensible Knowledge**: Instantly boost your library by fetching and importing command examples from the
-  community-driven _tldr_ pages.
+  community-driven _tldr_ pages (or virtually any blog post or content with AI enabled).
 
 ## How to Use This Book
 

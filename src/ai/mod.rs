@@ -73,7 +73,7 @@ impl<'a> AiClient<'a> {
 
         // Build the reqwest client
         let inner = ClientBuilder::new()
-            .connect_timeout(Duration::from_secs(2))
+            .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(5 * 60))
             .user_agent("intelli-shell")
             .default_headers(headers)
@@ -105,6 +105,16 @@ impl<'a> AiClient<'a> {
         self.generate_content(sys_prompt, user_prompt).await
     }
 
+    /// Generate a command for a dynamic variable completion
+    #[instrument(skip_all)]
+    pub async fn generate_completion_suggestion(
+        &self,
+        sys_prompt: &str,
+        user_prompt: &str,
+    ) -> Result<VariableCompletionSuggestion> {
+        self.generate_content(sys_prompt, user_prompt).await
+    }
+
     /// The inner logic to generate content from a prompt with an AI provider.
     ///
     /// It attempts the primary model first, and uses the fallback model if the primary is rate-limited.
@@ -121,6 +131,19 @@ impl<'a> AiClient<'a> {
             if let Some(fallback) = self.fallback {
                 tracing::warn!(
                     "Primary model ({}) rate-limited, retrying with fallback ({})",
+                    self.primary_alias,
+                    self.fallback_alias
+                );
+                return self.execute_request(fallback, sys_prompt, user_prompt).await;
+            }
+        }
+
+        // Check if the primary attempt failed with a service unavailable error
+        if let Err(AppError::UserFacing(UserFacingError::AiUnavailable)) = &primary_result {
+            // Some APIs respond this status when a specific model is overloaded, so we try with the fallback
+            if let Some(fallback) = self.fallback {
+                tracing::warn!(
+                    "Primary model ({}) unavailable, retrying with fallback ({})",
                     self.primary_alias,
                     self.fallback_alias
                 );
@@ -192,6 +215,10 @@ impl<'a> AiClient<'a> {
                 tracing::info!("Got response [{status_str}] Too Many Requests");
                 tracing::debug!("{body}");
                 return Err(UserFacingError::AiRateLimit.into());
+            } else if status == StatusCode::SERVICE_UNAVAILABLE {
+                tracing::info!("Got response [{status_str}] Service Unavailable");
+                tracing::debug!("{body}");
+                return Err(UserFacingError::AiUnavailable.into());
             } else if status == StatusCode::BAD_REQUEST {
                 tracing::error!("Got response [{status_str}] Bad Request:\n{body}");
                 return Err(eyre!("Bad request while fetching {} API:\n{body}", provider.provider_name()).into());
@@ -251,6 +278,13 @@ pub struct CommandFix {
     /// This field should only be populated if a direct command correction is the primary solution.
     /// Example: "git status"
     pub fixed_command: String,
+}
+
+/// A structured object to propose a command for a dynamic variable completion
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct VariableCompletionSuggestion {
+    /// The shell command that generates the suggestion values when executed
+    pub command: String,
 }
 
 /// Build the json schema for the given type, including `additionalProperties: false`

@@ -13,7 +13,7 @@ use crate::{
     cli::TldrFetchProcess,
     config::Config,
     errors::AppError,
-    format_error, format_msg,
+    format_error,
     service::{IntelliShellService, RepoStatus, TldrFetchProgress},
     widgets::SPINNER_CHARS,
 };
@@ -108,19 +108,7 @@ impl Process for TldrFetchProcess {
         pb3.finish_with_message("Done processing files");
 
         match service_handle.await? {
-            Ok((0, 0)) => Ok(ProcessOutput::fail().stderr(format_error!(config.theme, "No commands were found"))),
-            Ok((0, updated)) => Ok(ProcessOutput::success().stderr(format_msg!(
-                config.theme,
-                "No new commands imported, {updated} already existed"
-            ))),
-            Ok((imported, 0)) => {
-                Ok(ProcessOutput::success().stderr(format_msg!(config.theme, "Imported {imported} new commands")))
-            }
-            Ok((imported, updated)) => Ok(ProcessOutput::success().stderr(format_msg!(
-                config.theme,
-                "Imported {imported} new commands {}",
-                config.theme.secondary.apply(format!("({updated} already existed)"))
-            ))),
+            Ok(stats) => Ok(stats.into_output(&config.theme)),
             Err(AppError::UserFacing(err)) => Ok(ProcessOutput::fail().stderr(format_error!(config.theme, "{err}"))),
             Err(AppError::Unexpected(report)) => Err(report),
         }

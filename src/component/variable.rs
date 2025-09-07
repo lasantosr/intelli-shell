@@ -1,12 +1,15 @@
-use std::ops::DerefMut;
+use std::{cmp::Ordering, collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;
-use color_eyre::{Result, eyre::eyre};
+use color_eyre::Result;
 use crossterm::event::{MouseEvent, MouseEventKind};
+use futures_util::StreamExt;
+use parking_lot::RwLock;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
 };
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use super::Component;
@@ -15,13 +18,12 @@ use crate::{
     config::Theme,
     errors::AppError,
     format_msg,
-    model::{DynamicCommand, VariableSuggestion, VariableValue},
+    model::{CommandTemplate, VariableValue},
     process::ProcessOutput,
     service::IntelliShellService,
-    utils::format_env_var,
     widgets::{
-        CustomList, CustomTextArea, DynamicCommandWidget, ErrorPopup, ExistingVariableValue, LiteralVariableValue,
-        NewVariableValue, NewVersionBanner, VariableSuggestionRow,
+        CommandTemplateWidget, CustomList, CustomTextArea, ErrorPopup, LoadingSpinner, NewVersionBanner,
+        items::VariableSuggestionItem,
     },
 };
 
@@ -29,6 +31,8 @@ use crate::{
 pub struct VariableReplacementComponent {
     /// Visual theme for styling the component
     theme: Theme,
+    /// Whether the TUI is in inline mode or not
+    inline: bool,
     /// Service for interacting with command storage
     service: IntelliShellService,
     /// Layout for arranging the input fields
@@ -37,20 +41,24 @@ pub struct VariableReplacementComponent {
     execute_mode: bool,
     /// Whether this component is part of the replace process (or maybe rendered after another process)
     replace_process: bool,
-    /// The command with variables to be replaced
-    command: DynamicCommandWidget,
-    /// Context of the current variable of the command or `None` if there are no more variables to replace
-    variable_ctx: Option<CurrentVariableContext>,
-    /// Widget list of filtered suggestions for the variable value
-    suggestions: CustomList<'static, VariableSuggestionRow<'static>>,
-    /// Popup for displaying error messages
-    error: ErrorPopup<'static>,
+    /// Cancellation token for the background completions task
+    cancellation_token: CancellationToken,
+    /// The state of the component
+    state: Arc<RwLock<VariableReplacementComponentState<'static>>>,
 }
-struct CurrentVariableContext {
-    /// Name of the variable being replaced
-    name: String,
-    /// Full list of suggestions for the variable value
-    suggestions: Vec<VariableSuggestionRow<'static>>,
+struct VariableReplacementComponentState<'a> {
+    /// The command with variables to be replaced
+    template: CommandTemplateWidget,
+    /// Flat name of the current variable being set
+    flat_variable_name: String,
+    /// Full list of suggestions for the current variable
+    variable_suggestions: Vec<VariableSuggestionItem<'static>>,
+    /// Widget list of filtered suggestions for the variable value
+    suggestions: CustomList<'a, VariableSuggestionItem<'a>>,
+    /// Popup for displaying error messages
+    error: ErrorPopup<'a>,
+    /// A spinner to indicate that completions are being fetched
+    loading: Option<LoadingSpinner<'a>>,
 }
 
 impl VariableReplacementComponent {
@@ -61,13 +69,11 @@ impl VariableReplacementComponent {
         inline: bool,
         execute_mode: bool,
         replace_process: bool,
-        command: DynamicCommand,
+        command: CommandTemplate,
     ) -> Self {
-        let command = DynamicCommandWidget::new(&theme, inline, command);
+        let command = CommandTemplateWidget::new(&theme, inline, command);
 
-        let suggestions = CustomList::new(theme.primary, inline, Vec::new())
-            .highlight_symbol(theme.highlight_symbol.clone())
-            .highlight_symbol_style(theme.highlight_primary_full().into());
+        let suggestions = CustomList::new(theme.clone(), inline, Vec::new());
 
         let error = ErrorPopup::empty(&theme);
 
@@ -79,14 +85,20 @@ impl VariableReplacementComponent {
 
         Self {
             theme,
+            inline,
             service,
             layout,
             execute_mode,
             replace_process,
-            command,
-            variable_ctx: None,
-            suggestions,
-            error,
+            cancellation_token: CancellationToken::new(),
+            state: Arc::new(RwLock::new(VariableReplacementComponentState {
+                template: command,
+                flat_variable_name: String::new(),
+                variable_suggestions: Vec::new(),
+                suggestions,
+                error,
+                loading: None,
+            })),
         }
     }
 }
@@ -99,18 +111,12 @@ impl Component for VariableReplacementComponent {
 
     fn min_inline_height(&self) -> u16 {
         // Command + Values
-        1 + 3
+        1 + 5
     }
 
     #[instrument(skip_all)]
     async fn init_and_peek(&mut self) -> Result<Action> {
-        self.update_variable_context(false).await?;
-        if self.variable_ctx.is_none() {
-            tracing::info!("The command has no variables to replace");
-            self.quit_action(true)
-        } else {
-            Ok(Action::NoOp)
-        }
+        self.update_variable_context(true).await
     }
 
     #[instrument(skip_all)]
@@ -118,35 +124,65 @@ impl Component for VariableReplacementComponent {
         // Split the area according to the layout
         let [cmd_area, suggestions_area] = self.layout.areas(area);
 
+        let mut state = self.state.write();
+
         // Render the command widget
-        frame.render_widget(&self.command, cmd_area);
+        frame.render_widget(&state.template, cmd_area);
 
         // Render the suggestions
-        frame.render_widget(&mut self.suggestions, suggestions_area);
+        frame.render_widget(&mut state.suggestions, suggestions_area);
 
         // Render the new version banner and error message as an overlay
         if let Some(new_version) = self.service.check_new_version() {
             NewVersionBanner::new(&self.theme, new_version).render_in(frame, area);
         }
-        self.error.render_in(frame, area);
+        state.error.render_in(frame, area);
+        // Display the loading spinner, if any
+        if let Some(loading) = &state.loading {
+            let loading_area = if self.inline {
+                Rect {
+                    x: suggestions_area.x,
+                    y: suggestions_area.y + suggestions_area.height.saturating_sub(1),
+                    width: 1,
+                    height: 1,
+                }
+            } else {
+                Rect {
+                    x: suggestions_area.x.saturating_add(1),
+                    y: suggestions_area.y + suggestions_area.height.saturating_sub(2),
+                    width: 1,
+                    height: 1,
+                }
+            };
+            loading.render_in(frame, loading_area);
+        }
     }
 
     fn tick(&mut self) -> Result<Action> {
-        self.error.tick();
+        let mut state = self.state.write();
+        state.error.tick();
+        if let Some(loading) = &mut state.loading {
+            loading.tick();
+        }
 
         Ok(Action::NoOp)
     }
 
     fn exit(&mut self) -> Result<Action> {
-        if let Some(VariableSuggestionRow::Existing(e)) = self.suggestions.selected_mut()
-            && e.editing.is_some()
+        self.cancellation_token.cancel();
+        let mut state = self.state.write();
+        if let Some(VariableSuggestionItem::Existing { editing, .. }) = state.suggestions.selected_mut()
+            && editing.is_some()
         {
             tracing::debug!("Closing variable value edit mode: user request");
-            e.editing = None;
-            return Ok(Action::NoOp);
+            *editing = None;
+            Ok(Action::NoOp)
+        } else {
+            tracing::info!("User requested to exit");
+            Ok(Action::Quit(
+                ProcessOutput::success().fileout(state.template.to_string()),
+            ))
         }
-        tracing::info!("User requested to exit");
-        Ok(Action::Quit(ProcessOutput::success().fileout(self.command.to_string())))
     }
 
     fn process_mouse_event(&mut self, mouse: MouseEvent) -> Result<Action> {
@@ -158,30 +194,31 @@ impl Component for VariableReplacementComponent {
     }
 
     fn move_up(&mut self) -> Result<Action> {
-        match self.suggestions.selected() {
-            Some(VariableSuggestionRow::Existing(e)) if e.editing.is_some() => (),
-            _ => self.suggestions.select_prev(),
+        let mut state = self.state.write();
+        match state.suggestions.selected() {
+            Some(VariableSuggestionItem::Existing { editing: Some(_), .. }) => (),
+            _ => state.suggestions.select_prev(),
         }
         Ok(Action::NoOp)
     }
 
     fn move_down(&mut self) -> Result<Action> {
-        match self.suggestions.selected() {
-            Some(VariableSuggestionRow::Existing(e)) if e.editing.is_some() => (),
-            _ => self.suggestions.select_next(),
+        let mut state = self.state.write();
+        match state.suggestions.selected() {
+            Some(VariableSuggestionItem::Existing { editing: Some(_), .. }) => (),
+            _ => state.suggestions.select_next(),
         }
         Ok(Action::NoOp)
     }
 
     fn move_left(&mut self, word: bool) -> Result<Action> {
-        match self.suggestions.selected_mut() {
-            Some(VariableSuggestionRow::New(n)) => {
-                n.move_cursor_left(word);
+        let mut state = self.state.write();
+        match state.suggestions.selected_mut() {
+            Some(VariableSuggestionItem::New { textarea, .. }) => {
+                textarea.move_cursor_left(word);
             }
-            Some(VariableSuggestionRow::Existing(e)) => {
-                if let Some(ref mut ta) = e.editing {
-                    ta.move_cursor_left(word);
-                }
+            Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
+                ta.move_cursor_left(word);
             }
             _ => (),
         }
@@ -189,14 +226,13 @@ impl Component for VariableReplacementComponent {
     }
 
     fn move_right(&mut self, word: bool) -> Result<Action> {
-        match self.suggestions.selected_mut() {
-            Some(VariableSuggestionRow::New(n)) => {
-                n.move_cursor_right(word);
+        let mut state = self.state.write();
+        match state.suggestions.selected_mut() {
+            Some(VariableSuggestionItem::New { textarea, .. }) => {
+                textarea.move_cursor_right(word);
             }
-            Some(VariableSuggestionRow::Existing(e)) => {
-                if let Some(ref mut ta) = e.editing {
-                    ta.move_cursor_right(word);
-                }
+            Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
+                ta.move_cursor_right(word);
             }
             _ => (),
         }
@@ -212,48 +248,47 @@ impl Component for VariableReplacementComponent {
     }
 
     fn move_home(&mut self, absolute: bool) -> Result<Action> {
-        match self.suggestions.selected_mut() {
-            Some(VariableSuggestionRow::New(n)) => {
-                n.move_home(absolute);
+        let mut state = self.state.write();
+        match state.suggestions.selected_mut() {
+            Some(VariableSuggestionItem::New { textarea, .. }) => {
+                textarea.move_home(absolute);
             }
-            Some(VariableSuggestionRow::Existing(e)) => {
-                if let Some(ref mut ta) = e.editing {
-                    ta.move_home(absolute);
-                }
+            Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
+                ta.move_home(absolute);
             }
-            _ => self.suggestions.select_first(),
+            _ => state.suggestions.select_first(),
         }
         Ok(Action::NoOp)
     }
 
     fn move_end(&mut self, absolute: bool) -> Result<Action> {
-        match self.suggestions.selected_mut() {
-            Some(VariableSuggestionRow::New(n)) => {
-                n.move_end(absolute);
+        let mut state = self.state.write();
+        match state.suggestions.selected_mut() {
+            Some(VariableSuggestionItem::New { textarea, .. }) => {
+                textarea.move_end(absolute);
             }
-            Some(VariableSuggestionRow::Existing(e)) => {
-                if let Some(ref mut ta) = e.editing {
-                    ta.move_end(absolute);
-                }
+            Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
+                ta.move_end(absolute);
             }
-            _ => self.suggestions.select_last(),
+            _ => state.suggestions.select_last(),
         }
         Ok(Action::NoOp)
     }
 
     fn undo(&mut self) -> Result<Action> {
-        match self.suggestions.selected_mut() {
-            Some(VariableSuggestionRow::New(n)) => {
-                n.undo();
-                if !n.is_secret() {
-                    let query = n.lines_as_string();
-                    self.filter_suggestions(&query);
+        let mut state = self.state.write();
+        match state.suggestions.selected_mut() {
+            Some(VariableSuggestionItem::New {
+                textarea, is_secret, ..
+            }) => {
+                textarea.undo();
+                if !*is_secret {
+                    let query = textarea.lines_as_string();
+                    state.filter_suggestions(&query);
                 }
             }
-            Some(VariableSuggestionRow::Existing(e)) => {
-                if let Some(ref mut ta) = e.editing {
-                    ta.undo();
-                }
+            Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
+                ta.undo();
             }
             _ => (),
         }
@@ -261,18 +296,19 @@ impl Component for VariableReplacementComponent {
     }
 
     fn redo(&mut self) -> Result<Action> {
-        match self.suggestions.selected_mut() {
-            Some(VariableSuggestionRow::New(n)) => {
-                n.redo();
-                if !n.is_secret() {
-                    let query = n.lines_as_string();
-                    self.filter_suggestions(&query);
+        let mut state = self.state.write();
+        match state.suggestions.selected_mut() {
+            Some(VariableSuggestionItem::New {
+                textarea, is_secret, ..
+            }) => {
+                textarea.redo();
+                if !*is_secret {
+                    let query = textarea.lines_as_string();
+                    state.filter_suggestions(&query);
                 }
             }
-            Some(VariableSuggestionRow::Existing(e)) => {
-                if let Some(ref mut ta) = e.editing {
-                    ta.redo();
-                }
+            Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
+                ta.redo();
             }
             _ => (),
         }
@@ -280,21 +316,22 @@ impl Component for VariableReplacementComponent {
     }
 
     fn insert_text(&mut self, mut text: String) -> Result<Action> {
-        if let Some(variable) = self.command.current_variable() {
+        let mut state = self.state.write();
+        if let Some(variable) = state.template.current_variable() {
             text = variable.apply_functions_to(text);
         }
-        match self.suggestions.selected_mut() {
-            Some(VariableSuggestionRow::New(n)) => {
-                n.insert_str(text);
-                if !n.is_secret() {
-                    let query = n.lines_as_string();
-                    self.filter_suggestions(&query);
+        match state.suggestions.selected_mut() {
+            Some(VariableSuggestionItem::New {
+                textarea, is_secret, ..
+            }) => {
+                textarea.insert_str(text);
+                if !*is_secret {
+                    let query = textarea.lines_as_string();
+                    state.filter_suggestions(&query);
                 }
             }
-            Some(VariableSuggestionRow::Existing(e)) => {
-                if let Some(ref mut ta) = e.editing {
-                    ta.insert_str(text);
-                }
+            Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
+                ta.insert_str(text);
             }
             _ => (),
         }
@@ -302,36 +339,42 @@ impl Component for VariableReplacementComponent {
     }
 
     fn insert_char(&mut self, c: char) -> Result<Action> {
+        let mut state = self.state.write();
+        let maybe_replacement = state
+            .template
+            .current_variable()
+            .and_then(|variable| variable.check_functions_char(c));
         let insert_content = |ta: &mut CustomTextArea<'_>| {
-            if let Some(variable) = self.command.current_variable()
-                && let Some(r) = variable.check_functions_char(c)
-            {
-                ta.insert_str(&r);
+            if let Some(r) = &maybe_replacement {
+                ta.insert_str(r);
             } else {
                 ta.insert_char(c);
             }
         };
-        match self.suggestions.selected_mut() {
-            Some(VariableSuggestionRow::New(n)) => {
-                insert_content(n.deref_mut());
-                if !n.is_secret() {
-                    let query = n.lines_as_string();
-                    self.filter_suggestions(&query);
+        match state.suggestions.selected_mut() {
+            Some(VariableSuggestionItem::New {
+                textarea, is_secret, ..
+            }) => {
+                insert_content(textarea);
+                if !*is_secret {
+                    let query = textarea.lines_as_string();
+                    state.filter_suggestions(&query);
                 }
             }
-            Some(VariableSuggestionRow::Existing(e)) if e.editing.is_some() => {
-                if let Some(ref mut ta) = e.editing {
-                    insert_content(ta);
-                }
+            Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
+                insert_content(ta);
             }
             _ => {
-                if let Some(VariableSuggestionRow::New(_)) = self.suggestions.items().iter().next() {
-                    self.suggestions.select_first();
-                    if let Some(VariableSuggestionRow::New(n)) = self.suggestions.selected_mut() {
-                        insert_content(n.deref_mut());
-                        if !n.is_secret() {
-                            let query = n.lines_as_string();
-                            self.filter_suggestions(&query);
+                if let Some(VariableSuggestionItem::New { .. }) = state.suggestions.items().iter().next() {
+                    state.suggestions.select_first();
+                    if let Some(VariableSuggestionItem::New {
+                        textarea, is_secret, ..
+                    }) = state.suggestions.selected_mut()
+                    {
+                        insert_content(textarea);
+                        if !*is_secret {
+                            let query = textarea.lines_as_string();
+                            state.filter_suggestions(&query);
                         }
                     }
                 }
@@ -341,18 +384,19 @@ impl Component for VariableReplacementComponent {
     }
 
     fn delete(&mut self, backspace: bool, word: bool) -> Result<Action> {
-        match self.suggestions.selected_mut() {
-            Some(VariableSuggestionRow::New(n)) => {
-                n.delete(backspace, word);
-                if !n.is_secret() {
-                    let query = n.lines_as_string();
-                    self.filter_suggestions(&query);
+        let mut state = self.state.write();
+        match state.suggestions.selected_mut() {
+            Some(VariableSuggestionItem::New {
+                textarea, is_secret, ..
+            }) => {
+                textarea.delete(backspace, word);
+                if !*is_secret {
+                    let query = textarea.lines_as_string();
+                    state.filter_suggestions(&query);
                 }
             }
-            Some(VariableSuggestionRow::Existing(e)) => {
-                if let Some(ref mut ta) = e.editing {
-                    ta.delete(backspace, word);
-                }
+            Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
+                ta.delete(backspace, word);
             }
             _ => (),
         }
@@ -361,67 +405,121 @@ impl Component for VariableReplacementComponent {
 
     #[instrument(skip_all)]
     async fn selection_delete(&mut self) -> Result<Action> {
-        let suggestion = match self.suggestions.selected_mut() {
-            Some(VariableSuggestionRow::Existing(e)) if e.editing.is_none() => self.suggestions.delete_selected(),
-            _ => return Ok(Action::NoOp),
-        };
-
-        let Some(VariableSuggestionRow::Existing(e)) = suggestion else {
-            return Err(eyre!("Unexpected selected suggestion after removal"));
+        let deleted_id = {
+            let mut state = self.state.write();
+            match state.suggestions.selected_mut() {
+                Some(VariableSuggestionItem::New { .. }) => return Ok(Action::NoOp),
+                Some(VariableSuggestionItem::Existing {
+                    value: VariableValue { id: Some(id), .. },
+                    editing,
+                    ..
+                }) => {
+                    if editing.is_none() {
+                        let id = *id;
+                        state.suggestions.delete_selected();
+                        id
+                    } else {
+                        return Ok(Action::NoOp);
+                    }
+                }
+                _ => {
+                    state.error.set_temp_message("This value is not yet stored");
+                    return Ok(Action::NoOp);
+                }
+            }
         };
 
         self.service
-            .delete_variable_value(e.value.id.unwrap())
+            .delete_variable_value(deleted_id)
             .await
             .map_err(AppError::into_report)?;
+
+        self.state
+            .write()
+            .variable_suggestions
+            .retain(|s| !matches!(s, VariableSuggestionItem::Existing { value, .. } if value.id == Some(deleted_id)));
 
         Ok(Action::NoOp)
     }
 
     #[instrument(skip_all)]
     async fn selection_update(&mut self) -> Result<Action> {
-        if let Some(VariableSuggestionRow::Existing(e)) = self.suggestions.selected_mut()
-            && e.editing.is_none()
-        {
-            tracing::debug!(
-                "Entering edit mode for existing variable value: {}",
-                e.value.id.unwrap_or_default()
-            );
-            e.enter_edit_mode();
+        let mut state = self.state.write();
+
+        match state.suggestions.selected_mut() {
+            Some(VariableSuggestionItem::New { .. }) => (),
+            Some(i @ VariableSuggestionItem::Existing { .. }) => {
+                if let VariableSuggestionItem::Existing { value, editing, .. } = i {
+                    if let Some(id) = value.id {
+                        if editing.is_none() {
+                            tracing::debug!("Entering edit mode for existing variable value: {id}");
+                            i.enter_edit_mode();
+                        }
+                    } else {
+                        state.error.set_temp_message("This value is not yet stored");
+                    }
+                }
+            }
+            _ => state.error.set_temp_message("This value is not yet stored"),
         }
         Ok(Action::NoOp)
     }
 
     async fn selection_confirm(&mut self) -> Result<Action> {
-        match self.suggestions.selected_mut() {
-            None => Ok(Action::NoOp),
-            Some(VariableSuggestionRow::New(n)) if n.is_secret() => {
-                let value = n.lines_as_string();
-                self.confirm_new_secret_value(value).await
-            }
-            Some(VariableSuggestionRow::New(n)) => {
-                let value = n.lines_as_string();
-                self.confirm_new_regular_value(value).await
-            }
-            Some(VariableSuggestionRow::Existing(e)) => match e.editing.take() {
-                Some(ta) => {
-                    let value = e.value.clone();
-                    let new_value = ta.lines_as_string();
-                    self.confirm_existing_edition(value, new_value).await
+        self.cancellation_token.cancel();
+
+        // Helper enum to hold the data extracted from the lock
+        enum NextAction {
+            NoOp,
+            ConfirmNewSecret(String),
+            ConfirmNewRegular(String),
+            ConfirmExistingEdition(VariableValue, String),
+            ConfirmExistingValue(VariableValue),
+            ConfirmLiteral(String, bool),
+        }
+
+        let next_action = {
+            let mut state = self.state.write();
+            match state.suggestions.selected_mut() {
+                None => NextAction::NoOp,
+                Some(VariableSuggestionItem::New {
+                    textarea,
+                    is_secret: true,
+                    ..
+                }) => NextAction::ConfirmNewSecret(textarea.lines_as_string()),
+                Some(VariableSuggestionItem::New {
+                    textarea,
+                    is_secret: false,
+                    ..
+                }) => NextAction::ConfirmNewRegular(textarea.lines_as_string()),
+                Some(VariableSuggestionItem::Existing { value, editing, .. }) => match editing.take() {
+                    Some(ta) => NextAction::ConfirmExistingEdition(value.clone(), ta.lines_as_string()),
+                    None => NextAction::ConfirmExistingValue(value.clone()),
+                },
+                Some(VariableSuggestionItem::Environment {
+                    content,
+                    is_value: false,
+                    ..
+                }) => NextAction::ConfirmLiteral(content.clone(), false),
+                Some(VariableSuggestionItem::Environment {
+                    content: value,
+                    is_value: true,
+                    ..
+                })
+                | Some(VariableSuggestionItem::Completion { value, .. })
+                | Some(VariableSuggestionItem::Derived { value, .. }) => {
+                    NextAction::ConfirmLiteral(value.clone(), true)
                 }
-                None => {
-                    let value = e.value.clone();
-                    self.confirm_existing_value(value, false).await
-                }
-            },
-            Some(VariableSuggestionRow::Environment(l, false)) => {
-                let value = l.to_string();
-                self.confirm_literal_value(value, false).await
             }
-            Some(VariableSuggestionRow::Environment(l, true)) | Some(VariableSuggestionRow::Derived(l)) => {
-                let value = l.to_string();
-                self.confirm_literal_value(value, true).await
-            }
+        };
+
+        match next_action {
+            NextAction::NoOp => Ok(Action::NoOp),
+            NextAction::ConfirmNewSecret(value) => self.confirm_new_secret_value(value).await,
+            NextAction::ConfirmNewRegular(value) => self.confirm_new_regular_value(value).await,
+            NextAction::ConfirmExistingEdition(val, new_val) => self.confirm_existing_edition(val, new_val).await,
+            NextAction::ConfirmExistingValue(val) => self.confirm_existing_value(val, false).await,
+            NextAction::ConfirmLiteral(val, is_value) => self.confirm_literal_value(val, is_value).await,
         }
     }
 
@@ -430,99 +528,218 @@ impl Component for VariableReplacementComponent {
     }
 }
 
-impl VariableReplacementComponent {
+impl<'a> VariableReplacementComponentState<'a> {
     /// Filters the suggestions widget based on the query
     fn filter_suggestions(&mut self, query: &str) {
-        if let Some(ref mut ctx) = self.variable_ctx {
-            tracing::debug!("Filtering suggestions for: {query}");
-            // From the original variable suggestions, keep those matching the query only
-            let mut filtered_suggestions = ctx.suggestions.clone();
-            filtered_suggestions.retain(|s| match s {
-                VariableSuggestionRow::New(_) => false,
-                VariableSuggestionRow::Existing(e) => e.value.value.contains(query),
-                VariableSuggestionRow::Environment(l, _) | VariableSuggestionRow::Derived(l) => l.contains(query),
-            });
-            // Find and insert the new row, which contains the query
-            let new_row = self
-                .suggestions
-                .items()
-                .iter()
-                .find(|s| matches!(s, VariableSuggestionRow::New(_)));
-            if let Some(new_row) = new_row.cloned() {
-                filtered_suggestions.insert(0, new_row);
-            }
-            // Update the items
-            self.suggestions.update_items(filtered_suggestions);
-        } else if !self.suggestions.is_empty() {
-            self.suggestions.update_items(Vec::new());
-        }
-    }
-
-    /// Updates the variable context and the suggestions widget, or returns an acton
-    async fn update_variable_context(&mut self, quit_action: bool) -> Result<Action> {
-        let Some(current_variable) = self.command.current_variable() else {
-            if quit_action {
-                tracing::info!("There are no more variables");
-                return self.quit_action(false);
-            } else {
-                return Ok(Action::NoOp);
-            }
-        };
-
-        // Search for suggestions
-        let suggestions = self
-            .service
-            .search_variable_suggestions(
-                &self.command.root,
-                current_variable,
-                self.command.current_variable_context(),
-            )
-            .await
-            .map_err(AppError::into_report)?;
-
-        // Map the suggestions to the widget rows
-        let suggestion_widgets = suggestions
-            .into_iter()
-            .map(|s| match s {
-                VariableSuggestion::Secret => VariableSuggestionRow::New(NewVariableValue::new(&self.theme, true)),
-                VariableSuggestion::New => VariableSuggestionRow::New(NewVariableValue::new(&self.theme, false)),
-                VariableSuggestion::Environment { env_var_name, value } => {
-                    if let Some(value) = value {
-                        VariableSuggestionRow::Environment(LiteralVariableValue::new(&self.theme, value), true)
-                    } else {
-                        VariableSuggestionRow::Environment(
-                            LiteralVariableValue::new(&self.theme, format_env_var(env_var_name)),
-                            false,
-                        )
-                    }
-                }
-                VariableSuggestion::Existing(value) => {
-                    VariableSuggestionRow::Existing(ExistingVariableValue::new(&self.theme, value))
-                }
-                VariableSuggestion::Derived(value) => {
-                    VariableSuggestionRow::Derived(LiteralVariableValue::new(&self.theme, value))
-                }
-            })
-            .collect::<Vec<_>>();
-
-        // Update the context
-        self.variable_ctx = Some(CurrentVariableContext {
-            name: current_variable.name.clone(),
-            suggestions: suggestion_widgets.clone(),
+        tracing::debug!("Filtering suggestions for: {query}");
+        // From the original variable suggestions, keep those matching the query only
+        let mut filtered_suggestions = self.variable_suggestions.clone();
+        filtered_suggestions.retain(|s| match s {
+            VariableSuggestionItem::New { .. } => false,
+            VariableSuggestionItem::Existing { value, .. } => value.value.contains(query),
+            VariableSuggestionItem::Environment { content: value, .. }
+            | VariableSuggestionItem::Completion { value, .. }
+            | VariableSuggestionItem::Derived { value, .. } => value.contains(query),
         });
 
-        // Update the suggestions list
-        self.suggestions.update_items(suggestion_widgets);
-        self.suggestions.reset_selection();
-
-        // Pre-select the first environment or existing suggestion
-        if let Some(idx) = self
+        // Find and insert the new row, which contains the query
+        let new_row = self
             .suggestions
             .items()
             .iter()
-            .position(|s| !matches!(s, VariableSuggestionRow::New(_) | VariableSuggestionRow::Derived(_)))
-        {
-            self.suggestions.select(idx);
+            .find(|s| matches!(s, VariableSuggestionItem::New { .. }));
+        if let Some(new_row) = new_row.cloned() {
+            filtered_suggestions.insert(0, new_row);
+        }
+        // Retrieve the identifier for the selected item
+        let selected_id = self.suggestions.selected().map(|s| s.identifier());
+        // Update the items
+        self.suggestions.update_items(filtered_suggestions, false);
+        // Restore the same selected item
+        if let Some(selected_id) = selected_id {
+            self.suggestions.select_matching(|i| i.identifier() == selected_id);
+        }
+    }
+}
+
+impl VariableReplacementComponent {
+    /// Updates the variable context and the suggestions widget, or returns an acton
+    async fn update_variable_context(&mut self, peek: bool) -> Result<Action> {
+        // Cancels previous completion task
+        self.cancellation_token.cancel();
+        self.cancellation_token = CancellationToken::new();
+
+        // Retrieves the current variable and its context
+        let (flat_root_cmd, current_variable, context) = {
+            let state = self.state.read();
+            match state.template.current_variable().cloned() {
+                Some(variable) => (
+                    state.template.flat_root_cmd.clone(),
+                    variable,
+                    state.template.current_variable_context(),
+                ),
+                None => {
+                    if peek {
+                        tracing::info!("There are no variables to replace");
+                    } else {
+                        tracing::info!("There are no more variables");
+                    }
+                    return self.quit_action(peek, state.template.to_string());
+                }
+            }
+        };
+
+        // Search for the variable suggestions
+        let (initial_suggestions, completion_stream) = self
+            .service
+            .search_variable_suggestions(&flat_root_cmd, &current_variable, context)
+            .await
+            .map_err(AppError::into_report)?;
+
+        // Update the context
+        let mut state = self.state.write();
+        let suggestions = initial_suggestions
+            .into_iter()
+            .map(VariableSuggestionItem::from)
+            .collect::<Vec<_>>();
+        state.flat_variable_name = current_variable.flat_name.clone();
+        state.variable_suggestions = suggestions.clone();
+
+        // And the displayed items
+        state.suggestions.update_items(suggestions, false);
+
+        // Pre-select the first non-derived suggestion
+        if let Some(idx) = state.suggestions.items().iter().position(|s| {
+            !matches!(
+                s,
+                VariableSuggestionItem::New { .. } | VariableSuggestionItem::Derived { .. }
+            )
+        }) {
+            state.suggestions.select(idx);
+        }
+
+        // If there's some completions stream
+        if let Some(mut stream) = completion_stream {
+            let token = self.cancellation_token.clone();
+            let state_clone = self.state.clone();
+
+            // Show the loading spinner
+            state.loading = Some(LoadingSpinner::new(&self.theme));
+
+            // Spawn a background task to wait for them
+            tokio::spawn(async move {
+                while let Some((score_boost, result)) = tokio::select! {
+                    biased;
+                    _ = token.cancelled() => None,
+                    item = stream.next() => item,
+                } {
+                    match result {
+                        // If an error happens while resolving the completion, display the first line
+                        Err(err) => {
+                            let mut state = state_clone.write();
+                            if let Some(line) = err.lines().next() {
+                                state.error.set_temp_message(line.to_string());
+                            }
+                        }
+                        // Otherwise, merge suggestions
+                        Ok(completion_suggestions) => {
+                            let mut state = state_clone.write();
+
+                            // Retrieve the current set of suggestions
+                            let master_suggestions = &mut state.variable_suggestions;
+
+                            // Remove all `Derived` items that are about to be added as a `Completion`
+                            let completion_set = completion_suggestions.iter().collect::<HashSet<_>>();
+                            master_suggestions.retain_mut(|item| {
+                                !matches!(
+                                    item,
+                                    VariableSuggestionItem::Derived { value, .. }
+                                        if completion_set.contains(value)
+                                )
+                            });
+
+                            // For each new suggestion given by the completion
+                            for suggestion in completion_suggestions {
+                                // Check if there's already a suggestion for the same value
+                                let mut skip_completion = false;
+                                for item in master_suggestions.iter_mut() {
+                                    match item {
+                                        // `New` items doesn't affect
+                                        VariableSuggestionItem::New { .. } => (),
+                                        // `Derived` are already handled above
+                                        VariableSuggestionItem::Derived { .. } => (),
+                                        // If already an environment, just skip completion
+                                        VariableSuggestionItem::Environment { content, is_value, .. } => {
+                                            if *is_value && content == &suggestion {
+                                                skip_completion = true;
+                                                break;
+                                            }
+                                        }
+                                        // If already an existing, boost its score and skip completion
+                                        VariableSuggestionItem::Existing {
+                                            value,
+                                            score,
+                                            completion_merged,
+                                            ..
+                                        } => {
+                                            if value.value == suggestion {
+                                                if !*completion_merged {
+                                                    *score += score_boost;
+                                                    *completion_merged = true;
+                                                }
+                                                skip_completion = true;
+                                                break;
+                                            }
+                                        }
+                                        // If already a completion, keep the maximum score and skip this one
+                                        VariableSuggestionItem::Completion { value, score, .. } => {
+                                            if value == &suggestion {
+                                                *score += score_boost.max(*score);
+                                                skip_completion = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                if skip_completion {
+                                    continue;
+                                }
+
+                                // Add the new suggestion
+                                master_suggestions.push(VariableSuggestionItem::Completion {
+                                    sort_index: 3,
+                                    value: suggestion,
+                                    score: score_boost,
+                                });
+                            }
+
+                            // Re-sort suggestions
+                            master_suggestions.sort_by(|a, b| {
+                                a.sort_index()
+                                    .cmp(&b.sort_index())
+                                    .then_with(|| b.score().partial_cmp(&a.score()).unwrap_or(Ordering::Equal))
+                            });
+
+                            // After sorting, filter suggestions
+                            let query = state
+                                .suggestions
+                                .items()
+                                .iter()
+                                .find_map(|s| match s {
+                                    VariableSuggestionItem::New {
+                                        textarea,
+                                        is_secret: false,
+                                        ..
+                                    } => Some(textarea.lines_as_string()),
+                                    _ => None,
+                                })
+                                .unwrap_or_default();
+                            state.filter_suggestions(&query);
+                        }
+                    }
+                }
+                state_clone.write().loading = None;
+            });
         }
 
         Ok(Action::NoOp)
@@ -531,34 +748,33 @@ impl VariableReplacementComponent {
     #[instrument(skip_all)]
     async fn confirm_new_secret_value(&mut self, value: String) -> Result<Action> {
         tracing::debug!("Secret variable value selected");
-        self.command.set_next_variable(value);
-        self.update_variable_context(true).await
+        self.state.write().template.set_next_variable(value);
+        self.update_variable_context(false).await
     }
 
     #[instrument(skip_all)]
     async fn confirm_new_regular_value(&mut self, value: String) -> Result<Action> {
         if !value.trim().is_empty() {
-            let variable_name = &self.variable_ctx.as_ref().unwrap().name;
-            match self
-                .service
-                .insert_variable_value(self.command.new_variable_value_for(variable_name, &value))
-                .await
-            {
+            let variable_value = {
+                let state = self.state.read();
+                state.template.new_variable_value_for(&state.flat_variable_name, &value)
+            };
+            match self.service.insert_variable_value(variable_value).await {
                 Ok(v) => {
                     tracing::debug!("New variable value stored");
                     self.confirm_existing_value(v, true).await
                 }
                 Err(AppError::UserFacing(err)) => {
                     tracing::warn!("{err}");
-                    self.error.set_temp_message(err.to_string());
+                    self.state.write().error.set_temp_message(err.to_string());
                     Ok(Action::NoOp)
                 }
                 Err(AppError::Unexpected(report)) => Err(report),
             }
         } else {
             tracing::debug!("New empty variable value selected");
-            self.command.set_next_variable(value);
-            self.update_variable_context(true).await
+            self.state.write().template.set_next_variable(value);
+            self.update_variable_context(false).await
         }
     }
 
@@ -567,14 +783,15 @@ impl VariableReplacementComponent {
         value.value = new_value;
         match self.service.update_variable_value(value).await {
             Ok(v) => {
-                if let VariableSuggestionRow::Existing(e) = self.suggestions.selected_mut().unwrap() {
-                    e.value = v;
+                let mut state = self.state.write();
+                if let VariableSuggestionItem::Existing { value, .. } = state.suggestions.selected_mut().unwrap() {
+                    *value = v;
                 };
                 Ok(Action::NoOp)
             }
             Err(AppError::UserFacing(err)) => {
                 tracing::warn!("{err}");
-                self.error.set_temp_message(err.to_string());
+                self.state.write().error.set_temp_message(err.to_string());
                 Ok(Action::NoOp)
             }
             Err(AppError::Unexpected(report)) => Err(report),
@@ -582,11 +799,22 @@ impl VariableReplacementComponent {
     }
 
     #[instrument(skip_all)]
-    async fn confirm_existing_value(&mut self, value: VariableValue, new: bool) -> Result<Action> {
-        let value_id = value.id.expect("existing must have id");
+    async fn confirm_existing_value(&mut self, mut value: VariableValue, new: bool) -> Result<Action> {
+        let value_id = match value.id {
+            Some(id) => id,
+            None => {
+                value = self
+                    .service
+                    .insert_variable_value(value)
+                    .await
+                    .map_err(AppError::into_report)?;
+                value.id.expect("just inserted")
+            }
+        };
+        let context = self.state.read().template.current_variable_context();
         match self
             .service
-            .increment_variable_value_usage(value_id, self.command.current_variable_context())
+            .increment_variable_value_usage(value_id, context)
             .await
             .map_err(AppError::into_report)
         {
@@ -594,8 +822,8 @@ impl VariableReplacementComponent {
                 if !new {
                     tracing::debug!("Existing variable value selected");
                 }
-                self.command.set_next_variable(value.value);
-                self.update_variable_context(true).await
+                self.state.write().template.set_next_variable(value.value);
+                self.update_variable_context(false).await
             }
             Err(report) => Err(report),
         }
@@ -604,33 +832,31 @@ impl VariableReplacementComponent {
     #[instrument(skip_all)]
     async fn confirm_literal_value(&mut self, value: String, store: bool) -> Result<Action> {
         if store && !value.trim().is_empty() {
-            let variable_name = &self.variable_ctx.as_ref().unwrap().name;
-            match self
-                .service
-                .insert_variable_value(self.command.new_variable_value_for(variable_name, &value))
-                .await
-            {
+            let variable_value = {
+                let state = self.state.read();
+                state.template.new_variable_value_for(&state.flat_variable_name, &value)
+            };
+            match self.service.insert_variable_value(variable_value).await {
                 Ok(v) => {
                     tracing::debug!("Literal variable value selected and stored");
                     self.confirm_existing_value(v, true).await
                 }
                 Err(AppError::UserFacing(err)) => {
                     tracing::debug!("Literal variable value selected but couldn't be stored: {err}");
-                    self.command.set_next_variable(value);
-                    self.update_variable_context(true).await
+                    self.state.write().template.set_next_variable(value);
+                    self.update_variable_context(false).await
                 }
                 Err(AppError::Unexpected(report)) => Err(report),
             }
         } else {
             tracing::debug!("Literal variable value selected");
-            self.command.set_next_variable(value);
-            self.update_variable_context(true).await
+            self.state.write().template.set_next_variable(value);
+            self.update_variable_context(false).await
         }
     }
 
     /// Returns an action to quit the component, with the current variable content
-    fn quit_action(&self, peek: bool) -> Result<Action> {
-        let cmd = self.command.to_string();
+    fn quit_action(&self, peek: bool, cmd: String) -> Result<Action> {
         if self.execute_mode {
             Ok(Action::Quit(ProcessOutput::execute(cmd)))
         } else if self.replace_process && peek {

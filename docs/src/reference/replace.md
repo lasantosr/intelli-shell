@@ -19,10 +19,9 @@ intelli-shell replace [OPTIONS] [COMMAND_STRING]
 
 ## Arguments
 
-- **`COMMAND_STRING`**
+- **`COMMAND_STRING`** The command template containing variables to be replaced.
   
-  The command template containing variables to be replaced. If this argument is omitted or set to `-`, the
-  command will be read from standard input, allowing for piping.
+  If this argument is omitted or set to `-`, the command will be read from standard input, allowing for piping.
 
 ## Options
 
@@ -89,7 +88,7 @@ intelli-shell replace 'tar -czvf archive.tar.gz {{filename}}' --use-env
 If you prefer to fill in variables using the TUI, use the `--interactive` flag.
 
 ```sh
-intelli-shell replace 'scp {{file}} {{user}}@{{host}}:/remote/path' -i
+intelli-shell replace -i 'scp {{file}} {{user}}@{{host}}:/remote/path'
 ```
 
 This will open an interactive prompt asking you to provide values for `file`, `user`, and `host`.

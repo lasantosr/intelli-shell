@@ -1,24 +1,54 @@
+use std::time::Duration;
+
 use color_eyre::Result;
 use futures_util::StreamExt;
+use indicatif::{ProgressBar, ProgressStyle};
 
 use super::{Process, ProcessOutput};
 use crate::{
-    cli::ImportCommandsProcess,
+    cli::ImportItemsProcess,
     component::{
         Component,
-        pick::{CommandsPickerComponent, CommandsPickerComponentMode},
+        pick::{ImportExportPickerComponent, ImportExportPickerComponentMode},
     },
     config::Config,
     errors::AppError,
-    format_error, format_msg,
+    format_error,
     process::InteractiveProcess,
     service::IntelliShellService,
+    widgets::SPINNER_CHARS,
 };
 
-impl Process for ImportCommandsProcess {
+impl Process for ImportItemsProcess {
     async fn execute(self, config: Config, service: IntelliShellService) -> color_eyre::Result<ProcessOutput> {
         let dry_run = self.dry_run;
-        let mut commands = match service.get_commands_from_location(self, config.gist).await {
+
+        // If AI is enabled
+        let res = if self.ai {
+            // Setup the progress bar
+            let pb = ProgressBar::new_spinner();
+            pb.set_style(
+                ProgressStyle::with_template("{spinner:.blue} {wide_msg}")
+                    .unwrap()
+                    .tick_strings(&SPINNER_CHARS),
+            );
+            pb.enable_steady_tick(Duration::from_millis(100));
+            pb.set_message("Thinking ...");
+
+            // Retrieve items using AI
+            let res = service.get_items_from_location(self, config.gist).await;
+
+            // Clear the spinner
+            pb.finish_and_clear();
+
+            res
+        } else {
+            // If no AI, it's fast enough to not require a spinner
+            service.get_items_from_location(self, config.gist).await
+        };
+
+        // Check retrieval result
+        let mut items = match res {
             Ok(s) => s,
             Err(AppError::UserFacing(err)) => {
                 return Ok(ProcessOutput::fail().stderr(format_error!(config.theme, "{err}")));
@@ -26,49 +56,22 @@ impl Process for ImportCommandsProcess {
             Err(AppError::Unexpected(report)) => return Err(report),
         };
 
+        // Print them out when in dry-run
         if dry_run {
             let mut stdout = String::new();
-            while let Some(command) = commands.next().await {
-                stdout += &command.map_err(AppError::into_report)?.to_string();
+            while let Some(item) = items.next().await {
+                stdout += &item.map_err(AppError::into_report)?.to_string();
                 stdout += "\n";
             }
             if stdout.is_empty() {
-                Ok(ProcessOutput::fail().stderr(format_error!(&config.theme, "No commands were found")))
+                Ok(ProcessOutput::fail().stderr(format_error!(&config.theme, "No commands or completions were found")))
             } else {
                 Ok(ProcessOutput::success().stdout(stdout))
             }
         } else {
-            match service.import_commands(commands, false).await {
-                Ok((0, 0)) => Ok(ProcessOutput::fail().stderr(format_error!(config.theme, "No commands were found"))),
-                Ok((0, skipped)) => {
-                    if dry_run {
-                        Ok(ProcessOutput::success())
-                    } else {
-                        Ok(ProcessOutput::success().stderr(format_msg!(
-                            config.theme,
-                            "No commands imported, {skipped} already existed"
-                        )))
-                    }
-                }
-                Ok((imported, 0)) => {
-                    if dry_run {
-                        Ok(ProcessOutput::success())
-                    } else {
-                        Ok(ProcessOutput::success()
-                            .stderr(format_msg!(config.theme, "Imported {imported} new commands")))
-                    }
-                }
-                Ok((imported, skipped)) => {
-                    if dry_run {
-                        Ok(ProcessOutput::success())
-                    } else {
-                        Ok(ProcessOutput::success().stderr(format_msg!(
-                            config.theme,
-                            "Imported {imported} new commands {}",
-                            config.theme.secondary.apply(format!("({skipped} already existed)"))
-                        )))
-                    }
-                }
+            // Or import them when not dry-run
+            match service.import_items(items, false).await {
+                Ok(stats) => Ok(stats.into_output(&config.theme)),
                 Err(AppError::UserFacing(err)) => {
                     Ok(ProcessOutput::fail().stderr(format_error!(config.theme, "{err}")))
                 }
@@ -78,13 +81,13 @@ impl Process for ImportCommandsProcess {
     }
 }
 
-impl InteractiveProcess for ImportCommandsProcess {
+impl InteractiveProcess for ImportItemsProcess {
     fn into_component(self, config: Config, service: IntelliShellService, inline: bool) -> Result<Box<dyn Component>> {
-        Ok(Box::new(CommandsPickerComponent::new(
+        Ok(Box::new(ImportExportPickerComponent::new(
             service,
             config,
             inline,
-            CommandsPickerComponentMode::Import { input: self },
+            ImportExportPickerComponentMode::Import { input: self },
         )))
     }
 }

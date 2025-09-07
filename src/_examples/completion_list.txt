@@ -1,0 +1,9 @@
+Examples:
+  # Opens an interactive list of dynamic variable completions 
+  intelli-shell completion list -i
+  
+  # Lists all dynamic variable completions non-interactively
+  intelli-shell completion list
+  
+  # Lists dynamic variable completions for git command
+  intelli-shell completion list git

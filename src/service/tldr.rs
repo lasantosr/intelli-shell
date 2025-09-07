@@ -11,8 +11,11 @@ use tokio::{fs::File, sync::mpsc};
 use tracing::instrument;
 use walkdir::WalkDir;
 
-use super::{IntelliShellService, import_export::parse_commands};
-use crate::{errors::Result, model::SOURCE_TLDR};
+use super::{IntelliShellService, import::parse_import_items};
+use crate::{
+    errors::Result,
+    model::{ImportStats, SOURCE_TLDR},
+};
 
 /// Progress events for the `tldr fetch` operation
 #[derive(Debug)]
@@ -57,16 +60,14 @@ impl IntelliShellService {
         self.storage.delete_tldr_commands(category).await
     }
 
-    /// Fetches and imports tldr commands matching the given criteria.
-    ///
-    /// Returns the number of new commands inserted and potentially updated (because they already existed)
+    /// Fetches and imports tldr commands matching the given criteria
     #[instrument(skip_all)]
     pub async fn fetch_tldr_commands(
         &self,
         category: Option<String>,
         commands: Vec<String>,
         progress: mpsc::Sender<TldrFetchProgress>,
-    ) -> Result<(u64, u64)> {
+    ) -> Result<ImportStats> {
         // Setup repository
         self.setup_tldr_repo(progress.clone()).await?;
 
@@ -170,7 +171,7 @@ impl IntelliShellService {
             .ok();
 
         // Create a stream that reads and parses each command file concurrently
-        let commands_stream = stream::iter(command_files)
+        let items_stream = stream::iter(command_files)
             .map(move |(path, category, command)| {
                 let progress = progress.clone();
                 async move {
@@ -183,7 +184,7 @@ impl IntelliShellService {
                     let file = File::open(&path)
                         .await
                         .wrap_err_with(|| format!("Failed to open tldr file: {}", path.display()))?;
-                    let stream = parse_commands(file, vec![], category, SOURCE_TLDR);
+                    let stream = parse_import_items(file, vec![], category, SOURCE_TLDR);
 
                     progress.send(TldrFetchProgress::FileProcessed(command)).await.ok();
                     Ok::<_, Report>(stream)
@@ -193,7 +194,7 @@ impl IntelliShellService {
             .try_flatten();
 
         // Import the commands
-        self.storage.import_commands(commands_stream, true, false).await
+        self.storage.import_items(items_stream, true, false).await
     }
 
     #[instrument(skip_all)]

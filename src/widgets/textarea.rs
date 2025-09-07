@@ -10,6 +10,7 @@ use ratatui::{
     text::Text,
     widgets::{Block, Borders, Paragraph, Widget},
 };
+use regex::Regex;
 use tui_textarea::{CursorMove, TextArea};
 
 use crate::utils::remove_newlines;
@@ -29,6 +30,7 @@ pub struct CustomTextArea<'a> {
     ai_loading: bool,
     spinner_state: usize,
     original_title: Option<Cow<'a, str>>,
+    forbidden_chars_regex: Option<Regex>,
 }
 
 impl<'a> CustomTextArea<'a> {
@@ -66,12 +68,19 @@ impl<'a> CustomTextArea<'a> {
             ai_loading: false,
             spinner_state: 0,
             original_title: None,
+            forbidden_chars_regex: None,
         }
     }
 
     /// Updates the title of the text area
     pub fn title(mut self, title: impl Into<Cow<'a, str>>) -> Self {
         self.set_title(title);
+        self
+    }
+
+    /// Updates the regex to filter out forbidden characters
+    pub fn forbidden_chars_regex(mut self, regex: Regex) -> Self {
+        self.set_forbidden_chars_regex(regex);
         self
     }
 
@@ -136,6 +145,11 @@ impl<'a> CustomTextArea<'a> {
             let new_block = Block::default().borders(Borders::ALL).style(style).title(title_content);
             self.textarea.set_block(new_block);
         }
+    }
+
+    /// Updates the regex to filter out forbidden characters
+    pub fn set_forbidden_chars_regex(&mut self, regex: Regex) {
+        self.forbidden_chars_regex = Some(regex);
     }
 
     /// Updates the style of this text area
@@ -239,7 +253,15 @@ impl<'a> CustomTextArea<'a> {
 
     /// Inserts a char at the current cursor position
     pub fn insert_char(&mut self, c: char) {
-        if self.focus && !self.ai_loading && self.multiline || c != '\n' {
+        if self.focus && !self.ai_loading && (self.multiline || c != '\n') {
+            if let Some(ref regex) = self.forbidden_chars_regex {
+                let mut buf = [0u8; 4];
+                let char_str = c.encode_utf8(&mut buf);
+                // If the character matches the forbidden regex, skip the insertion
+                if regex.is_match(char_str) {
+                    return;
+                }
+            }
             self.textarea.insert_char(c);
         }
     }
@@ -250,10 +272,17 @@ impl<'a> CustomTextArea<'a> {
         S: AsRef<str>,
     {
         if self.focus && !self.ai_loading {
-            if self.multiline {
-                self.textarea.insert_str(text);
+            let text_to_insert = if let Some(ref regex) = self.forbidden_chars_regex {
+                // Filter the input string to remove the forbidden characters matching the regex
+                regex.replace_all(text.as_ref(), "")
             } else {
-                self.textarea.insert_str(remove_newlines(text.as_ref()));
+                Cow::Borrowed(text.as_ref())
+            };
+
+            if self.multiline {
+                self.textarea.insert_str(text_to_insert);
+            } else {
+                self.textarea.insert_str(remove_newlines(text_to_insert.as_ref()));
             };
         }
     }

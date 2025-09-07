@@ -66,13 +66,13 @@ git checkout -b feature/{{{description:kebab}}}
 
 Here are the available functions:
 
-| Function | Description | Example Input | Example Output |
-| :--- | :--- | :--- | :--- |
-| `kebab` | Converts text to `kebab-case` | `My Project` | `My-Project` |
-| `snake` | Converts text to `snake_case` | `My Project` | `My_Project` |
-| `upper` | Converts text to `UPPERCASE` | `hello` | `HELLO` |
-| `lower` | Converts text to `lowercase` | `HELLO` | `hello` |
-| `url` | URL-encodes the text | `a/b?c=1` | `a%2Fb%3Fc%3D1` |
+| Function | Description                   | Example Input | Example Output  |
+| :------- | :---------------------------- | :------------ | :-------------- |
+| `kebab`  | Converts text to `kebab-case` | `My Project`  | `My-Project`    |
+| `snake`  | Converts text to `snake_case` | `My Project`  | `My_Project`    |
+| `upper`  | Converts text to `UPPERCASE`  | `hello`       | `HELLO`         |
+| `lower`  | Converts text to `lowercase`  | `HELLO`       | `hello`         |
+| `url`    | URL-encodes the text          | `a/b?c=1`     | `a%2Fb%3Fc%3D1` |
 
 Functions are applied from left to right.
 
@@ -96,7 +96,76 @@ This means:
 This system gives you fine-grained control over which commands share suggestion histories, helping you keep different
 contexts neatly organized.
 
+## Dynamic Suggestions with Completions
+
+While providing static options with `|` is useful, the real power of templates comes from **dynamic completions**.
+A completion is a shell command that IntelliShell executes to generate a list of suggestions in real-time.
+
+To ensure your workflow is never interrupted, completions run **asynchronously in the background**. When IntelliShell
+prompts for a variable that has an associated completion:
+
+- **Instantly**, you'll see suggestions from your history and matching environment variables.
+- **In the background**, the completion command is executed.
+- **Once finished**, its output (split by newlines) is seamlessly merged into the existing suggestion list.
+
+This non-blocking approach means you can include potentially slow network commands (like `kubectl` or `gh`) as
+completions without ever slowing down your terminal experience.
+
+For instance, to get dynamic suggestions for all local git branches whenever you use a `{{branch}}` variable in a `git`
+command, you can register the following completion:
+
+```sh
+intelli-shell completion new --command git branch "git branch --format='%(refname:short)'"
+```
+
+Now, commands like `git checkout {{branch}}` or `git rebase {{branch}}` will automatically suggest your local branches,
+making your workflow faster and less error-prone.
+
+### Global Completions
+
+By omitting the `--command` flag, you create a **global completion** that applies to a variable name in _any_ command.
+This is ideal for universally useful variables, like system usernames.
+
+```sh
+# A global completion for `{{user}}`, useful for commands like `chown {{user}} ...`
+intelli-shell completion new user "awk -F: '\$3 >= 1000 {print \$1}' /etc/passwd"
+```
+
+It's important to note that IntelliShell always prioritizes specificity. If a command-scoped completion also exists for the
+same variable, it will **always take precedence** over the global one.
+
+### Context-Aware Completions
+
+Completions can adapt their suggestions based on the values of other variables you've already filled in. This is done by
+using variables inside the completion's command itself. IntelliShell will substitute these variables before execution,
+making your completions context-aware.
+
+#### Example: Contextual Kubernetes Pods
+
+Imagine you have a command to view logs for a pod in a specific namespace: `kubectl logs -n {{namespace}} {{pod}}`.
+You want the `{{pod}}` suggestions to be filtered by the `{{namespace}}` you just selected.
+
+You can achieve this with two completions:
+
+1. **Namespace Completion**: First, create a completion to list all available namespaces.
+
+   ```sh
+   intelli-shell completion new --command kubectl namespace "kubectl get ns --no-headers -o custom-columns=':.metadata.name'"
+   ```
+
+2. **Context-Aware Pod Completion**: Next, create a completion for pods that uses the `{{namespace}}` variable.
+
+   ```sh
+   intelli-shell completion new --command kubectl pod "kubectl get pods {{-n {{namespace}}}} --no-headers -o custom-columns=':.metadata.name'"
+   ```
+
+Now, when you use the `kubectl logs` template, IntelliShell will first prompt for the `namespace`. Once you select one
+(e.g., `production`), it substitutes that value into the pod completion's command, running
+`kubectl get pods -n production ...` to get a list of pods only from that specific namespace. Because this runs in the
+background, you can immediately type a pod name you already know without waiting for the `kubectl` command to return its
+list.
+
 ---
 
 Now that you can create powerful, reusable command templates, let's look at how to manage commands that are specific to
-your current workspace in [**Workspace-Specific Commands**](./workspace_commands.md).
+your current workspace in [**Workspace File**](./workspace.md).

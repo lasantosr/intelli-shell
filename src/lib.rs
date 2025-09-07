@@ -9,6 +9,7 @@
 //!
 //! - **Seamless Shell Integration**: Search with `ctrl+space`, bookmark with `ctrl+b` or fix with `ctrl+x`
 //! - **Dynamic Variables**: Create command templates with `{{variables}}` and replace them on the fly
+//! - **Smart Completions**: Power up your variables with dynamic suggestions from any command
 //! - **AI-Powered Commands**: Generate, fix, and import commands effortlessly using local or remote LLMs
 //! - **Highly Configurable**: Tailor search modes, keybindings, themes, and even search-ranking algorithms
 //! - **Workspace-Aware**: Automatically discovers and loads commands from your workspace's directory

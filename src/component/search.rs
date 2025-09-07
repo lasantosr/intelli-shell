@@ -26,12 +26,10 @@ use crate::{
     config::{Config, KeyBindingsConfig, SearchConfig, Theme},
     errors::AppError,
     format_msg,
-    model::{Command, DynamicCommand, SOURCE_WORKSPACE, SearchMode},
+    model::{Command, CommandTemplate, SOURCE_WORKSPACE, SearchMode},
     process::ProcessOutput,
     service::IntelliShellService,
-    widgets::{
-        CommandWidget, CustomList, CustomTextArea, ErrorPopup, HighlightSymbolMode, NewVersionBanner, TagWidget,
-    },
+    widgets::{CustomList, CustomTextArea, ErrorPopup, NewVersionBanner, items::string::CommentString},
 };
 
 const EMPTY_STORAGE_MESSAGE: &str = r#"There are no stored commands yet!
@@ -59,7 +57,7 @@ pub struct SearchCommandsComponent {
     state: Arc<RwLock<SearchCommandsComponentState<'static>>>,
 }
 struct SearchCommandsComponentState<'a> {
-    /// The nexxt component initialization must prompt AI
+    /// The next component initialization must prompt AI
     initialize_with_ai: bool,
     /// The default search mode
     mode: SearchMode,
@@ -70,11 +68,11 @@ struct SearchCommandsComponentState<'a> {
     /// Whether ai mode is currently enabled
     ai_mode: bool,
     /// List of tags, if currently editing a tag
-    tags: Option<CustomList<'a, TagWidget>>,
+    tags: Option<CustomList<'a, CommentString>>,
     /// Whether the command search was an alias match
     alias_match: bool,
     /// The list of commands
-    commands: CustomList<'a, CommandWidget>,
+    commands: CustomList<'a, Command>,
     /// Popup for displaying error messages
     error: ErrorPopup<'a>,
 }
@@ -90,10 +88,7 @@ impl SearchCommandsComponent {
     ) -> Self {
         let query = CustomTextArea::new(config.theme.primary, inline, false, query.into()).focused();
 
-        let commands = CustomList::new(config.theme.primary, inline, Vec::new())
-            .highlight_symbol(config.theme.highlight_symbol.clone())
-            .highlight_symbol_mode(HighlightSymbolMode::Last)
-            .highlight_symbol_style(config.theme.highlight_primary_full().into());
+        let commands = CustomList::new(config.theme.clone(), inline, Vec::new());
 
         let error = ErrorPopup::empty(&config.theme);
 
@@ -183,7 +178,7 @@ impl Component for SearchCommandsComponent {
             self.state.write().initialize_with_ai = false;
             return res;
         }
-        // If the strorage is empty, quit with a message
+        // If the storage is empty, quit with a message
         if self.service.is_storage_empty().await.map_err(AppError::into_report)? {
             Ok(Action::Quit(
                 ProcessOutput::success().stderr(format_msg!(self.theme, "{EMPTY_STORAGE_MESSAGE}")),
@@ -202,7 +197,7 @@ impl Component for SearchCommandsComponent {
                 let command = {
                     let state = self.state.read();
                     if state.alias_match && state.commands.len() == 1 {
-                        state.commands.selected().cloned().map(Command::from)
+                        state.commands.selected().cloned()
                     } else {
                         None
                     }
@@ -481,14 +476,15 @@ impl Component for SearchCommandsComponent {
                 if selected.source != SOURCE_WORKSPACE {
                     state.commands.delete_selected()
                 } else {
-                    None
+                    state.error.set_temp_message("Workspace commands can't be deleted");
+                    return Ok(Action::NoOp);
                 }
             } else {
                 None
             }
         };
 
-        if let Some(command) = command {
+        if let Some((_, command)) = command {
             self.service
                 .delete_command(command.id)
                 .await
@@ -505,21 +501,27 @@ impl Component for SearchCommandsComponent {
             if state.ai_mode {
                 return Ok(Action::NoOp);
             }
-            state.commands.selected().cloned().map(Command::from)
+            state.commands.selected().cloned()
         };
-        if let Some(command) = command
-            && command.source != SOURCE_WORKSPACE
-        {
-            tracing::info!("Entering command update for: {}", command.cmd);
-            Ok(Action::SwitchComponent(Box::new(EditCommandComponent::new(
-                self.service.clone(),
-                self.theme.clone(),
-                self.inline,
-                command,
-                EditCommandComponentMode::Edit {
-                    parent: Box::new(self.clone()),
-                },
-            ))))
+        if let Some(command) = command {
+            if command.source != SOURCE_WORKSPACE {
+                tracing::info!("Entering command update for: {}", command.cmd);
+                Ok(Action::SwitchComponent(Box::new(EditCommandComponent::new(
+                    self.service.clone(),
+                    self.theme.clone(),
+                    self.inline,
+                    command,
+                    EditCommandComponentMode::Edit {
+                        parent: Box::new(self.clone()),
+                    },
+                ))))
+            } else {
+                self.state
+                    .write()
+                    .error
+                    .set_temp_message("Workspace commands can't be updated");
+                Ok(Action::NoOp)
+            }
         } else {
             Ok(Action::NoOp)
         }
@@ -532,12 +534,12 @@ impl Component for SearchCommandsComponent {
             if state.query.is_ai_loading() {
                 return Ok(Action::NoOp);
             }
-            let selected_tag = state.tags.as_ref().and_then(|s| s.selected().map(TagWidget::text));
+            let selected_tag = state.tags.as_ref().and_then(|s| s.selected().cloned());
             (
                 selected_tag.map(String::from),
                 state.query.cursor().1,
                 state.query.lines_as_string(),
-                state.commands.selected().cloned().map(Command::from),
+                state.commands.selected().cloned(),
                 state.ai_mode,
             )
         };
@@ -560,7 +562,7 @@ impl Component for SearchCommandsComponent {
             if state.query.is_ai_loading() {
                 return Ok(Action::NoOp);
             }
-            (state.commands.selected().cloned().map(Command::from), state.ai_mode)
+            (state.commands.selected().cloned(), state.ai_mode)
         };
         if let Some(command) = command {
             tracing::info!("Selected command to execute: {}", command.cmd);
@@ -584,15 +586,12 @@ impl Component for SearchCommandsComponent {
             tokio::spawn(async move {
                 let res = this.service.suggest_commands(&query).await;
                 let mut state = this.state.write();
-                let command_widgets = match res {
+                let commands = match res {
                     Ok(suggestions) => {
                         if !suggestions.is_empty() {
                             state.error.clear_message();
                             state.alias_match = false;
                             suggestions
-                                .into_iter()
-                                .map(|command| CommandWidget::new(&this.theme, this.inline, command))
-                                .collect()
                         } else {
                             state
                                 .error
@@ -607,7 +606,7 @@ impl Component for SearchCommandsComponent {
                     }
                     Err(AppError::Unexpected(err)) => panic!("Error prompting for command suggestions: {err:?}"),
                 };
-                state.commands.update_items(command_widgets);
+                state.commands.update_items(commands, true);
                 state.query.set_ai_loading(false);
             });
         }
@@ -671,14 +670,11 @@ impl SearchCommandsComponent {
 
         // Update the command list or display an error
         let mut state = self.state.write();
-        let command_widgets = match res {
+        let commands = match res {
             Ok((commands, alias_match)) => {
                 state.error.clear_message();
                 state.alias_match = alias_match;
                 commands
-                    .into_iter()
-                    .map(|c| CommandWidget::new(&self.theme, self.inline, c))
-                    .collect()
             }
             Err(AppError::UserFacing(err)) => {
                 tracing::warn!("{err}");
@@ -687,7 +683,7 @@ impl SearchCommandsComponent {
             }
             Err(AppError::Unexpected(err)) => return Err(err),
         };
-        state.commands.update_items(command_widgets);
+        state.commands.update_items(commands, true);
 
         Ok(())
     }
@@ -760,22 +756,16 @@ impl SearchCommandsComponent {
                     self.schedule_debounced_command_refresh();
                 } else {
                     tracing::trace!("Found {} tags", tags.len());
-                    let tag_widgets = tags
-                        .into_iter()
-                        .map(|(tag, _, _)| TagWidget::new(&self.theme, tag))
-                        .collect();
+                    let tags = tags.into_iter().map(|(tag, _, _)| CommentString::from(tag)).collect();
                     let tags_list = if let Some(ref mut list) = state.tags {
                         list
                     } else {
                         tracing::debug!("Entering tag mode");
-                        state.tags.insert(
-                            CustomList::new(self.theme.primary, self.inline, Vec::new())
-                                .highlight_symbol(self.theme.highlight_symbol.clone())
-                                .highlight_symbol_mode(HighlightSymbolMode::Last)
-                                .highlight_symbol_style(self.theme.highlight_primary_full().into()),
-                        )
+                        state
+                            .tags
+                            .insert(CustomList::new(self.theme.clone(), self.inline, Vec::new()))
                     };
-                    tags_list.update_items(tag_widgets);
+                    tags_list.update_items(tags, true);
                     state.commands.set_focus(false);
                 }
 
@@ -838,8 +828,8 @@ impl SearchCommandsComponent {
                 .map_err(AppError::into_report)?;
         }
         // Determine if the command has some variables
-        let dynamic = DynamicCommand::parse(&command.cmd, false);
-        if dynamic.has_pending_variable() {
+        let template = CommandTemplate::parse(&command.cmd, false);
+        if template.has_pending_variable() {
             // If it does, switch to the variable replacement component
             Ok(Action::SwitchComponent(Box::new(VariableReplacementComponent::new(
                 self.service.clone(),
@@ -847,7 +837,7 @@ impl SearchCommandsComponent {
                 self.inline,
                 execute,
                 false,
-                dynamic,
+                template,
             ))))
         } else if execute {
             // If it doesn't and execute is true, execute the command

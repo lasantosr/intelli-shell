@@ -1,27 +1,26 @@
-use std::sync::LazyLock;
+use std::{fmt::Write, sync::LazyLock};
 
 use futures_util::{Stream, stream};
+use itertools::Itertools;
 use regex::{Captures, Regex};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tracing::instrument;
 
-use super::{IntelliShellService, import_export::add_tags_to_description};
+use super::IntelliShellService;
 use crate::{
     ai::CommandFix,
-    errors::{Result, UserFacingError},
-    model::{CATEGORY_USER, Command, SOURCE_AI},
+    errors::{AppError, Result, UserFacingError},
+    model::{CATEGORY_USER, Command, SOURCE_AI, SearchMode},
     utils::{
-        execute_shell_command_capture, generate_working_dir_tree, get_executable_version, get_os_info, get_shell_info,
+        add_tags_to_description, execute_shell_command_capture, generate_working_dir_tree, get_executable_version,
+        get_os_info, get_shell_info,
     },
 };
 
 /// Maximum depth level to include in the working directory tree
 const WD_MAX_DEPTH: usize = 5;
-/// Maximum number ofentries displayed on the working directory tree
+/// Maximum number of entries displayed on the working directory tree
 const WD_ENTRY_LIMIT: usize = 30;
-
-// Regex to find placeholders like ##VAR_NAME##
-static PROMPT_PLACEHOLDER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"##([A-Z_]+)##").unwrap());
 
 /// Progress events for AI fix command
 #[derive(Debug)]
@@ -65,7 +64,7 @@ impl IntelliShellService {
 
         // If the command succeeded, return without fix
         if status.success() {
-            tracing::info!("The command to fix was succesfully executed, skipping fix");
+            tracing::info!("The command to fix was successfully executed, skipping fix");
             return Ok(None);
         }
 
@@ -117,6 +116,43 @@ impl IntelliShellService {
             .into_iter()
             .map(|s| Command::new(CATEGORY_USER, SOURCE_AI, s.command).with_description(Some(s.description)))
             .collect())
+    }
+
+    /// Suggest a command template from a command and description using an AI model
+    #[instrument(skip_all)]
+    pub async fn suggest_command(&self, cmd: impl AsRef<str>, description: impl AsRef<str>) -> Result<Option<Command>> {
+        // Check if ai is enabled
+        if !self.ai.enabled {
+            return Err(UserFacingError::AiRequired.into());
+        }
+
+        let cmd = Some(cmd.as_ref().trim()).filter(|c| !c.is_empty());
+        let description = Some(description.as_ref().trim()).filter(|d| !d.is_empty());
+
+        // Prepare prompts and call the AI provider
+        let intro = "Output a single suggestion, with just one command template.";
+        let sys_prompt = replace_prompt_placeholders(&self.ai.prompts.suggest, None, None);
+        let user_prompt = match (cmd, description) {
+            (Some(cmd), Some(desc)) => format!("{intro}\nGoal: {desc}\nYou can use this as the base: {cmd}"),
+            (Some(prompt), None) | (None, Some(prompt)) => format!("{intro}\nGoal: {prompt}"),
+            (None, None) => return Ok(None),
+        };
+
+        tracing::trace!("System Prompt:\n{sys_prompt}");
+        tracing::trace!("User Prompt:\n{user_prompt}");
+
+        // Call provider
+        let res = self
+            .ai
+            .suggest_client()?
+            .generate_command_suggestions(&sys_prompt, &user_prompt)
+            .await?;
+
+        Ok(res
+            .suggestions
+            .into_iter()
+            .next()
+            .map(|s| Command::new(CATEGORY_USER, SOURCE_AI, s.command).with_description(Some(s.description))))
     }
 
     /// Extracts command templates from a given content using an AI model
@@ -171,10 +207,91 @@ impl IntelliShellService {
                 .map(Ok),
         ))
     }
+
+    /// Suggest a command for a dynamic completion using an AI model
+    #[instrument(skip_all)]
+    pub async fn suggest_completion(
+        &self,
+        root_cmd: impl AsRef<str>,
+        variable: impl AsRef<str>,
+        description: impl AsRef<str>,
+    ) -> Result<String> {
+        // Check if ai is enabled
+        if !self.ai.enabled {
+            return Err(UserFacingError::AiRequired.into());
+        }
+
+        // Prepare variables
+        let root_cmd = Some(root_cmd.as_ref().trim()).filter(|c| !c.is_empty());
+        let variable = Some(variable.as_ref().trim()).filter(|v| !v.is_empty());
+        let description = Some(description.as_ref().trim()).filter(|d| !d.is_empty());
+        let Some(variable) = variable else {
+            return Err(UserFacingError::CompletionEmptyVariable.into());
+        };
+
+        // Build a regex to match commands that would use the required completion
+        let escaped_variable = regex::escape(variable);
+        let variable_pattern = format!(r"\{{\{{(?:[^}}]+[|:])?{escaped_variable}(?:[|:][^}}]+)?\}}\}}");
+        let cmd_regex = if let Some(root_cmd) = root_cmd {
+            let root_cmd = regex::escape(root_cmd);
+            format!(r"^{root_cmd}\s.*{variable_pattern}.*$")
+        } else {
+            format!(r"^.*{variable_pattern}.*$")
+        };
+
+        // Find those commands
+        let (commands, _) = self
+            .search_commands(SearchMode::Regex, false, &cmd_regex)
+            .await
+            .map_err(AppError::into_report)?;
+        let commands_str = commands.into_iter().map(|c| c.cmd).join("\n");
+
+        // Prepare prompts and call the AI provider
+        let sys_prompt = replace_prompt_placeholders(&self.ai.prompts.completion, None, None);
+        let mut user_prompt = String::new();
+        writeln!(
+            user_prompt,
+            "Write a shell command that generates completion suggestions for the `{variable}` variable."
+        )
+        .unwrap();
+        if let Some(rc) = root_cmd {
+            writeln!(
+                user_prompt,
+                "This completion will be used only for commands starting with `{rc}`."
+            )
+            .unwrap();
+        }
+        if !commands_str.is_empty() {
+            writeln!(
+                user_prompt,
+                "\nFor context, here are some existing command templates that use this \
+                 variable:\n---\n{commands_str}\n---"
+            )
+            .unwrap();
+        }
+        if let Some(d) = description {
+            writeln!(user_prompt, "\n{d}").unwrap();
+        }
+
+        tracing::trace!("System Prompt:\n{sys_prompt}");
+        tracing::trace!("User Prompt:\n{user_prompt}");
+
+        // Call provider
+        let res = self
+            .ai
+            .completion_client()?
+            .generate_completion_suggestion(&sys_prompt, &user_prompt)
+            .await?;
+
+        Ok(res.command)
+    }
 }
 
 /// Replace placeholders present on the prompt for its value
 fn replace_prompt_placeholders(prompt: &str, root_cmd: Option<&str>, history: Option<&str>) -> String {
+    // Regex to find placeholders like ##VAR_NAME##
+    static PROMPT_PLACEHOLDER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"##([A-Z_]+)##").unwrap());
+
     PROMPT_PLACEHOLDER_RE
         .replace_all(prompt, |caps: &Captures| match &caps[1] {
             "OS_SHELL_INFO" => {

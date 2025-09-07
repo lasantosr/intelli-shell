@@ -6,6 +6,9 @@ By default, this command performs a non-interactive search and prints matching c
 interactive search TUI (the behavior of the <kbd>Ctrl</kbd>+<kbd>Space</kbd> hotkey), you must use the `-i` or
 `--interactive` flag.
 
+>💡 **Tip**: Can't find what you're looking for? While in the interactive TUI, you can press <kbd>Ctrl</kbd>+<kbd>I</kbd>
+> or <kbd>Ctrl</kbd>+<kbd>X</kbd> with a natural language query to prompt AI for commands.
+
 ## Usage
 
 ```sh
@@ -14,9 +17,7 @@ intelli-shell search [OPTIONS] [QUERY]
 
 ## Arguments
 
-- **`QUERY`**
-  
-  The search query used to filter commands.
+- **`QUERY`** The search query used to filter commands.
   
   - When used with the `--ai` flag, this string is treated as a **natural language prompt** for the AI to generate a
     command.
@@ -24,6 +25,7 @@ intelli-shell search [OPTIONS] [QUERY]
 ## Options
 
 - `-m, --mode <MODE>`
+
   Specifies the search algorithm to use. See the "Advanced Search Syntax" section below for details on `auto` and `fuzzy`
   modes.
   - `auto`: Uses an internal algorithm to best match common search patterns

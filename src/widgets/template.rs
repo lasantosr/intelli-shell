@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Display, Formatter},
+    fmt,
     ops::{Deref, DerefMut},
 };
 
@@ -13,24 +13,24 @@ use ratatui::{
 
 use crate::{
     config::Theme,
-    model::{CommandPart, DynamicCommand},
+    model::{CommandTemplate, TemplatePart},
 };
 
 /// The widget for a command containing variables
 #[cfg_attr(debug_assertions, derive(Debug))]
 #[derive(Clone)]
-pub struct DynamicCommandWidget {
-    /// The dynamic command
-    pub command: DynamicCommand,
+pub struct CommandTemplateWidget {
+    /// The command template
+    pub template: CommandTemplate,
     // Internal fields
     block: Option<Block<'static>>,
     primary_style: Style,
     secondary_style: Style,
 }
 
-impl DynamicCommandWidget {
-    /// Creates a new widget for the dynamic command
-    pub fn new(theme: &Theme, inline: bool, command: DynamicCommand) -> Self {
+impl CommandTemplateWidget {
+    /// Creates a new widget for the command template
+    pub fn new(theme: &Theme, inline: bool, template: CommandTemplate) -> Self {
         let block = if !inline {
             Some(
                 Block::default()
@@ -42,7 +42,7 @@ impl DynamicCommandWidget {
             None
         };
         Self {
-            command,
+            template,
             block,
             primary_style: theme.primary.into(),
             secondary_style: theme.secondary.into(),
@@ -50,13 +50,13 @@ impl DynamicCommandWidget {
     }
 }
 
-impl Display for DynamicCommandWidget {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.command)
+impl fmt::Display for CommandTemplateWidget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.template)
     }
 }
 
-impl Widget for &DynamicCommandWidget {
+impl Widget for &CommandTemplateWidget {
     fn render(self, mut area: Rect, buf: &mut Buffer) {
         if let Some(block) = &self.block {
             block.render(area, buf);
@@ -64,32 +64,32 @@ impl Widget for &DynamicCommandWidget {
         }
 
         let mut first_variable_found = false;
-        Line::from_iter(self.command.parts.iter().map(|p| match p {
-            CommandPart::Text(t) | CommandPart::VariableValue(_, t) => Span::styled(t, self.secondary_style),
-            CommandPart::Variable(v) => {
+        Line::from_iter(self.template.parts.iter().map(|p| match p {
+            TemplatePart::Text(t) | TemplatePart::VariableValue(_, t) => Span::styled(t, self.secondary_style),
+            TemplatePart::Variable(v) => {
                 let style = if !first_variable_found {
                     first_variable_found = true;
                     self.primary_style
                 } else {
                     self.secondary_style
                 };
-                Span::styled(format!("{{{{{}}}}}", v.name), style)
+                Span::styled(format!("{{{{{}}}}}", v.display), style)
             }
         }))
         .render(area, buf);
     }
 }
 
-impl Deref for DynamicCommandWidget {
-    type Target = DynamicCommand;
+impl Deref for CommandTemplateWidget {
+    type Target = CommandTemplate;
 
     fn deref(&self) -> &Self::Target {
-        &self.command
+        &self.template
     }
 }
 
-impl DerefMut for DynamicCommandWidget {
+impl DerefMut for CommandTemplateWidget {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.command
+        &mut self.template
     }
 }

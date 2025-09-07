@@ -1,9 +1,7 @@
-use std::ops::{Deref, DerefMut};
-
 use ratatui::{
     buffer::Buffer,
     layout::{Rect, Size},
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span, Text},
     widgets::Widget,
 };
@@ -12,7 +10,6 @@ use crate::{
     config::Theme,
     model::Command,
     utils::{COMMAND_VARIABLE_REGEX, SplitCaptures, SplitItem, truncate_spans_with_ellipsis},
-    widgets::AsWidget,
 };
 
 const DEFAULT_STYLE: Style = Style::new();
@@ -22,101 +19,55 @@ const DESCRIPTION_WIDTH_PERCENT: f32 = 0.3;
 
 /// Widget to render a [`Command`]
 #[derive(Clone)]
-pub struct CommandWidget {
-    inline: bool,
-    primary_style: Style,
-    secondary_style: Style,
-    accent_style: Style,
-    comment_style: Style,
-    highlight_color: Option<Color>,
-    highlight_primary_style: Style,
-    highlight_secondary_style: Style,
-    highlight_accent_style: Style,
-    highlight_comment_style: Style,
-    inner: Command,
-    discarded: Option<bool>,
-}
-
-impl CommandWidget {
-    /// Creates a new [`CommandWidget`]
-    pub fn new(theme: &Theme, inline: bool, command: Command) -> Self {
-        Self {
-            inline,
-            primary_style: theme.primary.into(),
-            secondary_style: theme.secondary.into(),
-            accent_style: theme.accent.into(),
-            comment_style: theme.comment.into(),
-            highlight_color: theme.highlight.map(Into::into),
-            highlight_primary_style: theme.highlight_primary.into(),
-            highlight_secondary_style: theme.highlight_secondary.into(),
-            highlight_accent_style: theme.highlight_accent.into(),
-            highlight_comment_style: theme.highlight_comment.into(),
-            inner: command,
-            discarded: None,
-        }
-    }
-
-    /// Sets whether the command is discarded
-    pub fn discarded(mut self, discarded: bool) -> Self {
-        self.set_discarded(discarded);
-        self
-    }
-
-    /// Sets whether the command is discarded
-    /// This is used to visually indicate that the command is not selected
-    pub fn set_discarded(&mut self, discarded: bool) {
-        self.discarded = Some(discarded);
-    }
-}
-
-impl AsWidget for CommandWidget {
-    fn as_widget<'a>(&'a self, is_highlighted: bool) -> (impl Widget + 'a, Size) {
+pub struct CommandWidget<'a>(CommandWidgetInner<'a>, Size);
+impl<'a> CommandWidget<'a> {
+    /// Builds a new [`CommandWidget`]
+    pub fn new(
+        command: &'a Command,
+        theme: &Theme,
+        inline: bool,
+        is_highlighted: bool,
+        is_discarded: bool,
+        plain_style: bool,
+    ) -> Self {
         let mut line_style = DEFAULT_STYLE;
-        if is_highlighted && let Some(color) = self.highlight_color {
-            line_style = line_style.bg(color);
+        if is_highlighted && let Some(bg_color) = theme.highlight {
+            line_style = line_style.bg(bg_color.into());
         }
-        // Determine the right styles to use based on highligted and discarded status
-        let (primary_style, secondary_style, comment_style, accent_style) = match (self.discarded, is_highlighted) {
-            (Some(true), true) => (
-                self.highlight_secondary_style,
-                self.highlight_secondary_style,
-                self.highlight_secondary_style,
-                self.highlight_secondary_style,
-            ),
-            (Some(true), false) => (
-                self.secondary_style,
-                self.secondary_style,
-                self.secondary_style,
-                self.secondary_style,
-            ),
-            (Some(false), true) => (
-                self.highlight_primary_style,
-                self.highlight_primary_style,
-                self.highlight_comment_style,
-                self.highlight_accent_style,
-            ),
-            (Some(false), false) => (
-                self.primary_style,
-                self.primary_style,
-                self.comment_style,
-                self.accent_style,
-            ),
-            (None, true) => (
-                self.highlight_primary_style,
-                self.highlight_secondary_style,
-                self.highlight_comment_style,
-                self.highlight_accent_style,
-            ),
-            (None, false) => (
-                self.primary_style,
-                self.secondary_style,
-                self.comment_style,
-                self.accent_style,
-            ),
-        };
+        // Determine the right styles to use based on highlighted and discarded status
+        let (primary_style, secondary_style, comment_style, accent_style) =
+            match (plain_style, is_discarded, is_highlighted) {
+                // Discarded
+                (_, true, false) => (theme.secondary, theme.secondary, theme.secondary, theme.secondary),
+                // Discarded & highlighted
+                (_, true, true) => (
+                    theme.highlight_secondary,
+                    theme.highlight_secondary,
+                    theme.highlight_secondary,
+                    theme.highlight_secondary,
+                ),
+                // Plain style, regular
+                (true, false, false) => (theme.primary, theme.primary, theme.comment, theme.accent),
+                // Plain style, highlighted
+                (true, false, true) => (
+                    theme.highlight_primary,
+                    theme.highlight_primary,
+                    theme.highlight_comment,
+                    theme.highlight_accent,
+                ),
+                // Regular
+                (false, false, false) => (theme.primary, theme.secondary, theme.comment, theme.accent),
+                // Highlighted
+                (false, false, true) => (
+                    theme.highlight_primary,
+                    theme.highlight_secondary,
+                    theme.highlight_comment,
+                    theme.highlight_accent,
+                ),
+            };
 
         // Build command spans
-        let cmd_splitter = SplitCaptures::new(&COMMAND_VARIABLE_REGEX, &self.cmd);
+        let cmd_splitter = SplitCaptures::new(&COMMAND_VARIABLE_REGEX, &command.cmd);
         let cmd_spans = cmd_splitter
             .map(|e| match e {
                 SplitItem::Unmatched(t) => Span::styled(t, primary_style),
@@ -124,17 +75,17 @@ impl AsWidget for CommandWidget {
             })
             .collect::<Vec<_>>();
 
-        if self.inline {
+        if inline {
             // When inline, display a single line with the command, alias and the first line of the description
             let mut description_spans = Vec::new();
-            if self.description.is_some() || self.alias.is_some() {
+            if command.description.is_some() || command.alias.is_some() {
                 description_spans.push(Span::styled(" # ", comment_style));
-                if let Some(ref alias) = self.alias {
+                if let Some(ref alias) = command.alias {
                     description_spans.push(Span::styled("[", accent_style));
                     description_spans.push(Span::styled(alias, accent_style));
                     description_spans.push(Span::styled("] ", accent_style));
                 }
-                if let Some(ref description) = self.description
+                if let Some(ref description) = command.description
                     && let Some(line) = description.lines().next()
                 {
                     description_spans.push(Span::styled(line, comment_style));
@@ -150,14 +101,14 @@ impl AsWidget for CommandWidget {
                 description_spans,
                 line_style,
             };
-            (CommandRenderWidget::Inline(renderer), Size::new(total_width, 1))
+            Self(CommandWidgetInner::Inline(renderer), Size::new(total_width, 1))
         } else {
             // When not inline, display the full description including the alias followed by the command
             let mut lines = Vec::new();
-            if let Some(ref description) = self.description {
-                let mut alias_included = self.alias.is_none();
+            if let Some(ref description) = command.description {
+                let mut alias_included = command.alias.is_none();
                 for line in description.lines() {
-                    if !alias_included && let Some(ref alias) = self.alias {
+                    if !alias_included && let Some(ref alias) = command.alias {
                         let parts = vec![
                             Span::styled("# ", comment_style),
                             Span::styled("[", accent_style),
@@ -171,7 +122,7 @@ impl AsWidget for CommandWidget {
                         lines.push(Line::from(vec![Span::raw("# "), Span::raw(line)]).style(comment_style));
                     }
                 }
-            } else if let Some(ref alias) = self.alias {
+            } else if let Some(ref alias) = command.alias {
                 let parts = vec![
                     Span::styled("# ", comment_style),
                     Span::styled("[", accent_style),
@@ -188,56 +139,37 @@ impl AsWidget for CommandWidget {
             let width = text.width() as u16;
             let height = text.height() as u16;
 
-            (CommandRenderWidget::Block(text), Size::new(width, height))
+            Self(CommandWidgetInner::Block(text), Size::new(width, height))
         }
+    }
+
+    /// Retrieves the size of this widget
+    pub fn size(&self) -> Size {
+        self.1
     }
 }
 
-impl Widget for CommandWidget {
+impl<'a> Widget for CommandWidget<'a> {
     fn render(self, area: Rect, buf: &mut Buffer)
     where
         Self: Sized,
     {
-        self.as_widget(false).0.render(area, buf);
-    }
-}
-
-impl Deref for CommandWidget {
-    type Target = Command;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl DerefMut for CommandWidget {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
-}
-
-impl From<CommandWidget> for Command {
-    fn from(value: CommandWidget) -> Self {
-        value.inner
-    }
-}
-
-/// An enum to dispatch rendering to the correct widget implementation
-enum CommandRenderWidget<'a> {
-    Inline(InlineCommandRenderer<'a>),
-    Block(Text<'a>),
-}
-
-impl<'a> Widget for CommandRenderWidget<'a> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        match self {
-            Self::Inline(w) => w.render(area, buf),
-            Self::Block(w) => w.render(area, buf),
+        match self.0 {
+            CommandWidgetInner::Inline(w) => w.render(area, buf),
+            CommandWidgetInner::Block(w) => w.render(area, buf),
         }
     }
 }
 
+/// An enum to dispatch rendering to the correct widget implementation
+#[derive(Clone)]
+enum CommandWidgetInner<'a> {
+    Inline(InlineCommandRenderer<'a>),
+    Block(Text<'a>),
+}
+
 /// A widget to render a command in a single line, intelligently truncating parts
+#[derive(Clone)]
 struct InlineCommandRenderer<'a> {
     cmd_spans: Vec<Span<'a>>,
     description_spans: Vec<Span<'a>>,

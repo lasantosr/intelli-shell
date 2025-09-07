@@ -3,7 +3,7 @@ use crossterm::event::MouseEventKind;
 use tracing::instrument;
 
 use crate::{
-    cli::{CliProcess, Interactive, TldrProcess},
+    cli::{CliProcess, CompletionProcess, Interactive, TldrProcess},
     component::{Component, EmptyComponent},
     config::{Config, KeyBindingsConfig},
     errors::AppError,
@@ -55,7 +55,7 @@ impl App {
             CliProcess::Query(query_process) => {
                 tracing::info!("Running 'query' process");
                 tracing::debug!("Options: {:?}", query_process);
-                service.load_workspace_commands().await.map_err(AppError::into_report)?;
+                service.load_workspace_items().await.map_err(AppError::into_report)?;
                 self.run_non_interactive(query_process, config, service, extra_line)
                     .await
             }
@@ -69,12 +69,13 @@ impl App {
             CliProcess::Search(search_commands) => {
                 tracing::info!("Running 'search' process");
                 tracing::debug!("Options: {:?}", search_commands);
-                service.load_workspace_commands().await.map_err(AppError::into_report)?;
+                service.load_workspace_items().await.map_err(AppError::into_report)?;
                 self.run_interactive(search_commands, config, service, extra_line).await
             }
             CliProcess::Replace(variable_replace) => {
                 tracing::info!("Running 'replace' process");
                 tracing::debug!("Options: {:?}", variable_replace);
+                service.load_workspace_items().await.map_err(AppError::into_report)?;
                 self.run_interactive(variable_replace, config, service, extra_line)
                     .await
             }
@@ -102,6 +103,23 @@ impl App {
                 tracing::info!("Running tldr 'clear' process");
                 tracing::debug!("Options: {:?}", tldr_clear);
                 self.run_non_interactive(tldr_clear, config, service, extra_line).await
+            }
+            CliProcess::Completion(CompletionProcess::New(completion_new)) => {
+                tracing::info!("Running 'completion new' process");
+                tracing::debug!("Options: {:?}", completion_new);
+                self.run_interactive(completion_new, config, service, extra_line).await
+            }
+            CliProcess::Completion(CompletionProcess::Delete(completion_delete)) => {
+                tracing::info!("Running 'completion delete' process");
+                tracing::debug!("Options: {:?}", completion_delete);
+                self.run_non_interactive(completion_delete, config, service, extra_line)
+                    .await
+            }
+            CliProcess::Completion(CompletionProcess::List(completion_list)) => {
+                tracing::info!("Running 'completion list' process");
+                tracing::debug!("Options: {:?}", completion_list);
+                service.load_workspace_items().await.map_err(AppError::into_report)?;
+                self.run_interactive(completion_list, config, service, extra_line).await
             }
         }
     }

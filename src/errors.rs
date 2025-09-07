@@ -136,6 +136,24 @@ pub enum UserFacingError {
     /// The user tried to save a variable value that already exists
     #[strum(to_string = "Value already exists")]
     VariableValueAlreadyExists,
+    /// The user tried to save a completion that already exists
+    #[strum(to_string = "Variable completion already exists")]
+    CompletionAlreadyExists,
+    /// An attempt was made to save a completion with an invalid command
+    #[strum(to_string = "Completion command can contain only alphanumeric characters or hyphen")]
+    CompletionInvalidCommand,
+    /// An attempt was made to save a completion with an empty variable
+    #[strum(to_string = "Completion variable cannot be empty")]
+    CompletionEmptyVariable,
+    /// An attempt was made to save a completion with an invalid variable
+    #[strum(to_string = "Completion variable can't contain pipe, colon or braces")]
+    CompletionInvalidVariable,
+    /// An attempt was made to save a completion with an empty provider
+    #[strum(to_string = "Completion provider cannot be empty")]
+    CompletionEmptySuggestionsProvider,
+    /// A completion was not properly formatted when importing
+    #[strum(to_string = "Invalid completion format: {0}")]
+    ImportCompletionInvalidFormat(String),
     /// The path for an import operation points to a directory or symlink, not a regular file
     #[strum(to_string = "Import path must be a file; directories and symlinks are not supported")]
     ImportLocationNotAFile,
@@ -202,6 +220,9 @@ pub enum UserFacingError {
     /// The request to the AI provider timed out while waiting for a response
     #[strum(to_string = "Request to AI provider timed out")]
     AiRequestTimeout,
+    /// Service unavailable when calling AI provider
+    #[strum(to_string = "AI provider responded with status 503 Service Unavailable")]
+    AiUnavailable,
     /// A generic error occurred while making a request to the AI provider's API
     #[strum(to_string = "AI request failed: {0}")]
     AiRequestFailed(String),
@@ -248,12 +269,12 @@ macro_rules! trace_dbg {
         }
     };
     (level: $level:expr, $ex:expr) => {
-        trace_dbg!(target: module_path!(), level: $level, $ex)
+        $crate::trace_dbg!(target: module_path!(), level: $level, $ex)
     };
     (target: $target:expr, $ex:expr) => {
-        trace_dbg!(target: $target, level: tracing::Level::DEBUG, $ex)
+        $crate::trace_dbg!(target: $target, level: tracing::Level::DEBUG, $ex)
     };
     ($ex:expr) => {
-        trace_dbg!(level: tracing::Level::DEBUG, $ex)
+        $crate::trace_dbg!(level: tracing::Level::DEBUG, $ex)
     };
 }

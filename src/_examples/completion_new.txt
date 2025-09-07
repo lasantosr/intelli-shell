@@ -1,0 +1,9 @@
+Examples:
+  # Opens the interactive interface to add a new dynamic variable completion
+  intelli-shell completion new -i
+
+  # Adds a dynamic completion for any variable called {{branch}} on 'git' commands
+  intelli-shell completion new --command git branch "git branch --format='%(refname:short)'"
+
+  # Open the interactive interface, using ai to suggest a provider for {{container}} variable globally
+  intelli-shell completion new -i --ai container

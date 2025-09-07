@@ -28,7 +28,7 @@ pub enum EditCommandComponentMode {
     /// The component is used to create a new command
     New { ai: bool },
     /// The component is used to edit an existing command
-    /// It holds the parent component to switch back to after editing is complete.
+    /// It holds the parent component to switch back to after editing is complete
     Edit { parent: Box<dyn Component> },
     /// The component is used to edit a command in memory.
     /// It holds the parent component to switch back to after editing is complete and a callback to run.
@@ -441,45 +441,42 @@ impl Component for EditCommandComponent {
             return Ok(Action::NoOp);
         }
 
-        let cmd = Some(state.cmd.lines_as_string()).filter(|c| !c.trim().is_empty());
-        let description = Some(state.description.lines_as_string()).filter(|d| !d.trim().is_empty());
-        let prompt = match (&cmd, &description) {
-            (Some(cmd), Some(desc)) => format!("Write a command for: {desc} (cmd: {cmd})"),
-            (Some(cmd), None) => format!("Write a command for: {cmd}"),
-            (None, Some(desc)) => format!("Write a command for: {desc}"),
-            (None, None) => return Ok(Action::NoOp),
-        };
+        let cmd = state.cmd.lines_as_string();
+        let description = state.description.lines_as_string();
+
+        if cmd.trim().is_empty() && description.trim().is_empty() {
+            return Ok(Action::NoOp);
+        }
 
         state.active_input().set_ai_loading(true);
         let cloned_service = self.service.clone();
         let cloned_state = self.state.clone();
         tokio::spawn(async move {
-            let res = cloned_service.suggest_commands(&prompt).await;
+            let res = cloned_service.suggest_command(&cmd, &description).await;
             let mut state = cloned_state.write();
             match res {
-                Ok(suggestions) => {
-                    if let Some(suggestion) = suggestions.first() {
-                        state.cmd.set_focus(true);
-                        state.cmd.set_ai_loading(false);
-                        if cmd.is_some() {
-                            state.cmd.select_all();
-                            state.cmd.cut();
-                        }
-                        state.cmd.insert_str(&suggestion.cmd);
-                        if let Some(suggested_description) = suggestion.description.as_deref() {
-                            state.description.set_focus(true);
-                            state.description.set_ai_loading(false);
-                            if description.is_some() {
-                                state.description.select_all();
-                                state.description.cut();
-                            }
-                            state.description.insert_str(suggested_description);
-                        }
-                    } else {
-                        state
-                            .error
-                            .set_temp_message("AI did not return any suggestion".to_string());
+                Ok(Some(suggestion)) => {
+                    state.cmd.set_focus(true);
+                    state.cmd.set_ai_loading(false);
+                    if !cmd.is_empty() {
+                        state.cmd.select_all();
+                        state.cmd.cut();
                     }
+                    state.cmd.insert_str(&suggestion.cmd);
+                    if let Some(suggested_description) = suggestion.description.as_deref() {
+                        state.description.set_focus(true);
+                        state.description.set_ai_loading(false);
+                        if !description.is_empty() {
+                            state.description.select_all();
+                            state.description.cut();
+                        }
+                        state.description.insert_str(suggested_description);
+                    }
+                }
+                Ok(None) => {
+                    state
+                        .error
+                        .set_temp_message("AI did not return any suggestion".to_string());
                 }
                 Err(AppError::UserFacing(err)) => {
                     tracing::warn!("{err}");

@@ -30,7 +30,7 @@ intelli-shell fix <COMMAND>
 
 ## Arguments
 
-- **`<COMMAND>`**: The full command string to execute and potentially fix. This argument is **required**.
+- **`<COMMAND>`**: The full command string to execute and potentially fix.
 
 ## Example
 
