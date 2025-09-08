@@ -1,4 +1,8 @@
-use std::{cmp::Ordering, collections::HashSet, sync::Arc};
+use std::{
+    cmp::Ordering,
+    collections::HashSet,
+    sync::{Arc, Mutex},
+};
 
 use async_trait::async_trait;
 use color_eyre::Result;
@@ -28,6 +32,7 @@ use crate::{
 };
 
 /// A component for replacing the variables of a command
+#[derive(Clone)]
 pub struct VariableReplacementComponent {
     /// Visual theme for styling the component
     theme: Theme,
@@ -42,7 +47,7 @@ pub struct VariableReplacementComponent {
     /// Whether this component is part of the replace process (or maybe rendered after another process)
     replace_process: bool,
     /// Cancellation token for the background completions task
-    cancellation_token: CancellationToken,
+    cancellation_token: Arc<Mutex<Option<CancellationToken>>>,
     /// The state of the component
     state: Arc<RwLock<VariableReplacementComponentState<'static>>>,
 }
@@ -59,6 +64,8 @@ struct VariableReplacementComponentState<'a> {
     error: ErrorPopup<'a>,
     /// A spinner to indicate that completions are being fetched
     loading: Option<LoadingSpinner<'a>>,
+    /// The last value that was unset via undo, to be used by redo
+    last_unset_value: Option<String>,
 }
 
 impl VariableReplacementComponent {
@@ -90,7 +97,7 @@ impl VariableReplacementComponent {
             layout,
             execute_mode,
             replace_process,
-            cancellation_token: CancellationToken::new(),
+            cancellation_token: Arc::new(Mutex::new(None)),
             state: Arc::new(RwLock::new(VariableReplacementComponentState {
                 template: command,
                 flat_variable_name: String::new(),
@@ -98,6 +105,7 @@ impl VariableReplacementComponent {
                 suggestions,
                 error,
                 loading: None,
+                last_unset_value: None,
             })),
         }
     }
@@ -169,7 +177,12 @@ impl Component for VariableReplacementComponent {
     }
 
     fn exit(&mut self) -> Result<Action> {
-        self.cancellation_token.cancel();
+        {
+            let mut token_guard = self.cancellation_token.lock().unwrap();
+            if let Some(token) = token_guard.take() {
+                token.cancel();
+            }
+        }
         let mut state = self.state.write();
         if let Some(VariableSuggestionItem::Existing { editing, .. }) = state.suggestions.selected_mut()
             && editing.is_some()
@@ -290,7 +303,12 @@ impl Component for VariableReplacementComponent {
             Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
                 ta.undo();
             }
-            _ => (),
+            _ => {
+                if let Some(unset_value) = state.template.unset_last_variable() {
+                    state.last_unset_value = Some(unset_value);
+                    self.debounced_update_variable_context();
+                }
+            }
         }
         Ok(Action::NoOp)
     }
@@ -310,7 +328,12 @@ impl Component for VariableReplacementComponent {
             Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
                 ta.redo();
             }
-            _ => (),
+            _ => {
+                if let Some(value_to_set) = state.last_unset_value.take() {
+                    state.template.set_next_variable(value_to_set);
+                    self.debounced_update_variable_context();
+                }
+            }
         }
         Ok(Action::NoOp)
     }
@@ -466,7 +489,12 @@ impl Component for VariableReplacementComponent {
     }
 
     async fn selection_confirm(&mut self) -> Result<Action> {
-        self.cancellation_token.cancel();
+        {
+            let mut token_guard = self.cancellation_token.lock().unwrap();
+            if let Some(token) = token_guard.take() {
+                token.cancel();
+            }
+        }
 
         // Helper enum to hold the data extracted from the lock
         enum NextAction {
@@ -563,11 +591,28 @@ impl<'a> VariableReplacementComponentState<'a> {
 }
 
 impl VariableReplacementComponent {
+    /// Immediately starts a debounced task to update the variable context
+    fn debounced_update_variable_context(&self) {
+        let this = self.clone();
+        tokio::spawn(async move {
+            if let Err(err) = this.update_variable_context(false).await {
+                tracing::error!("Error updating variable context: {err:?}");
+            }
+        });
+    }
+
     /// Updates the variable context and the suggestions widget, or returns an acton
-    async fn update_variable_context(&mut self, peek: bool) -> Result<Action> {
-        // Cancels previous completion task
-        self.cancellation_token.cancel();
-        self.cancellation_token = CancellationToken::new();
+    async fn update_variable_context(&self, peek: bool) -> Result<Action> {
+        // Cancels previous completion task and issue a new one
+        let cancellation_token = {
+            let mut token_guard = self.cancellation_token.lock().unwrap();
+            if let Some(token) = token_guard.take() {
+                token.cancel();
+            }
+            let new_token = CancellationToken::new();
+            *token_guard = Some(new_token.clone());
+            new_token
+        };
 
         // Retrieves the current variable and its context
         let (flat_root_cmd, current_variable, context) = {
@@ -620,7 +665,7 @@ impl VariableReplacementComponent {
 
         // If there's some completions stream
         if let Some(mut stream) = completion_stream {
-            let token = self.cancellation_token.clone();
+            let token = cancellation_token.clone();
             let state_clone = self.state.clone();
 
             // Show the loading spinner

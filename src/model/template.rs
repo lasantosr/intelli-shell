@@ -95,6 +95,26 @@ impl CommandTemplate {
         }
     }
 
+    /// Reverts the last set variable back to its pending state, returning the unset value
+    pub fn unset_last_variable(&mut self) -> Option<String> {
+        // Find the last part in the command that is a filled variable
+        if let Some(part) = self
+            .parts
+            .iter_mut()
+            .rfind(|p| matches!(p, TemplatePart::VariableValue(_, _)))
+        {
+            // Replace it with the unfilled variable, returning its value
+            if let TemplatePart::VariableValue(v, value) = mem::take(part) {
+                *part = TemplatePart::Variable(v);
+                Some(value)
+            } else {
+                unreachable!();
+            }
+        } else {
+            None
+        }
+    }
+
     /// Creates a [VariableValue] for this command with the given flat variable name and value
     pub fn new_variable_value_for(
         &self,
@@ -443,6 +463,39 @@ mod tests {
         cmd.set_next_variable("value2");
         let var2 = Variable::parse("var2");
         assert_eq!(cmd.parts[3], TemplatePart::VariableValue(var2, "value2".into()));
+    }
+
+    #[test]
+    fn test_unset_last_variable() {
+        let mut cmd = CommandTemplate::parse("cmd {{var1}} {{var2}}", false);
+
+        // Set both variables to check the initial state
+        cmd.set_next_variable("value1");
+        cmd.set_next_variable("value2");
+        assert!(!cmd.has_pending_variable());
+        let var1 = Variable::parse("var1");
+        let var2 = Variable::parse("var2");
+        assert_eq!(cmd.parts[1], TemplatePart::VariableValue(var1.clone(), "value1".into()));
+        assert_eq!(cmd.parts[3], TemplatePart::VariableValue(var2.clone(), "value2".into()));
+
+        // Unset the last variable (var2) and check the returned value
+        let unset_value2 = cmd.unset_last_variable();
+        assert_eq!(unset_value2, Some("value2".to_string()));
+        assert!(cmd.has_pending_variable());
+        assert_eq!(cmd.current_variable().unwrap(), &var2);
+        assert_eq!(cmd.parts[1], TemplatePart::VariableValue(var1.clone(), "value1".into()));
+        assert_eq!(cmd.parts[3], TemplatePart::Variable(var2));
+
+        // Unset the last variable again (var1) and check the returned value
+        let unset_value1 = cmd.unset_last_variable();
+        assert_eq!(unset_value1, Some("value1".to_string()));
+        assert!(cmd.has_pending_variable());
+        assert_eq!(cmd.current_variable().unwrap(), &var1);
+        assert_eq!(cmd.parts[1], TemplatePart::Variable(var1));
+
+        // Unset again when no variables are set, should return None
+        let no_unset_value = cmd.unset_last_variable();
+        assert_eq!(no_unset_value, None);
     }
 
     #[test]
