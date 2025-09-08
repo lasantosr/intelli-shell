@@ -1,25 +1,28 @@
 FROM tsl0922/ttyd:alpine AS ttyd
 FROM rust
 
-# Install clippy and nightly rustfmt
-RUN rustup component add clippy
-RUN rustup toolchain install nightly
-RUN rustup component add rustfmt --toolchain nightly-x86_64-unknown-linux-gnu
-
-# Install some cargo utilities
-RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-RUN cargo binstall --no-confirm --no-symlinks cargo-audit cargo-nextest mdbook
-
 # Add vhs repo
 RUN mkdir -p /etc/apt/keyrings
 RUN curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --dearmor -o /etc/apt/keyrings/charm.gpg
 RUN echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | tee /etc/apt/sources.list.d/charm.list
 
+# Update apt-get first
+RUN apt-get update
+
+# Install clippy and nightly rustfmt
+RUN rustup component add clippy
+RUN rustup toolchain install nightly
+RUN rustup component add rustfmt --toolchain nightly-x86_64-unknown-linux-gnu
+
 # Install latest ttyd
 COPY --from=ttyd /usr/bin/ttyd /usr/bin/ttyd
 
 # Install zsh, fish and required packages
-RUN apt-get update && apt-get install -y zsh fish gnupg2 bc ffmpeg chromium vhs
+RUN apt-get install -y zsh fish gnupg2 bat bc ffmpeg chromium vhs
+
+# Install some cargo utilities
+RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+RUN cargo binstall --no-confirm --no-symlinks cargo-audit cargo-nextest mdbook
 
 # Create default non-root user
 ARG USERNAME=rust

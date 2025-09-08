@@ -1,0 +1,7 @@
+2025-09-08T15:43:10.123Z  INFO my_app::server: Server listening on 0.0.0.0:8080
+2025-09-08T15:43:15.456Z  INFO my_app::graphql: Received GraphQL request
+2025-09-08T15:43:15.459Z TRACE my_app::db: Executing query plan for user lookup
+2025-09-08T15:43:15.465Z  INFO my_app::db: Database query successful latency_ms=6
+2025-09-08T15:43:15.466Z  WARN my_app::graphql::resolver: Deprecated field 'fullName' was requested
+2025-09-08T15:43:20.812Z ERROR my_app::db: Failed to connect to PostgreSQL error="connection timeout"
+
