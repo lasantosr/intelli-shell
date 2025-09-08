@@ -387,13 +387,19 @@ impl IntelliShellService {
                     content: format!(
                         r"# IntelliShell Commands
 
-These commands have been exported using [intelli-shell]({}), a command-line tool to bookmark and search commands.
+This Gist contains a collection of command templates and dynamic completions exported from [intelli-shell]({}), a smart command-line assistant designed to boost your productivity by creating a searchable and reusable library of your shell commands.
 
-You can easily import all the commands by running:
+You can easily import all the commands and completions by running:
 
 ```sh
-intelli-shell import --gist {gist_id}
-```",
+intelli-shell import -i --gist {gist_id}
+```
+
+This will open an interactive menu where you can review, edit, and select the commands and completions you want to import.
+- Use <kbd>Space</kbd> to discard an item, and <kbd>Ctrl</kbd>+<kbd>Space</kbd> to toggle all
+- Press <kbd>F2</kbd> to edit a command or its description before importing
+- Hit <kbd>Enter</kbd> to import all non-discarded items into your library
+",
                         env!("CARGO_PKG_REPOSITORY")
                     ),
                 },
