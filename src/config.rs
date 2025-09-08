@@ -787,7 +787,7 @@ impl Default for Theme {
             accent,
             comment,
             error,
-            highlight: Some(Color::AnsiValue(249)),
+            highlight: Some(Color::DarkGrey),
             highlight_symbol: String::from("» "),
             highlight_primary,
             highlight_secondary,

@@ -19,5 +19,5 @@ intelli-shell query {{debug/query.sql}}
 ./release.sh {{patch|minor|major}}
 
 ## -- Completions -- 
-$ (vhs) name: find vhs/tapes -type f -name "*.tape" -printf "%P\n" | sort
+$ (vhs) name: find vhs/tapes -type f -name "*.tape" -printf "%P\n" | sort | sed 's/\.tape$//'
 $ (intelli-shell) debug/query.sql: find . -type f -name "*.sql" -printf "%P\n" | sort
