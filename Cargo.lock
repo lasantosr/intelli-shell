@@ -1200,7 +1200,7 @@ dependencies = [
 
 [[package]]
 name = "intelli-shell"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "async-stream",
  "async-trait",
