@@ -94,13 +94,15 @@ fn resolve_suggestions_provider(suggestions_provider: &str, context: Option<&BTr
 
             // Check if all variables required by this block are in the context
             if let Some(context) = context
-                && required_vars.iter().all(|var| context.contains_key(var))
+                && required_vars
+                    .iter()
+                    .all(|(_, flat_name)| context.contains_key(flat_name))
             {
                 // If so, replace the variables within the block and return it
                 let mut resolved_block = block_content.to_string();
-                for var_name in required_vars {
-                    if let Some(value) = context.get(&var_name) {
-                        resolved_block = resolved_block.replace(&format!("{{{{{}}}}}", var_name), value);
+                for (variable, flat_name) in required_vars {
+                    if let Some(value) = context.get(&flat_name) {
+                        resolved_block = resolved_block.replace(&format!("{{{{{}}}}}", variable), value);
                     }
                 }
                 resolved_block
@@ -112,11 +114,11 @@ fn resolve_suggestions_provider(suggestions_provider: &str, context: Option<&BTr
         .to_string()
 }
 
-/// Extracts all variable names from a string segment
-fn find_variables_in_block(block_content: &str) -> Vec<String> {
+/// Extracts all variable names from a string segment, returning both the variable and the flattened variable name
+fn find_variables_in_block(block_content: &str) -> Vec<(String, String)> {
     COMMAND_VARIABLE_REGEX
         .captures_iter(block_content)
-        .map(|cap| flatten_variable_name(&cap[1]))
+        .map(|cap| (cap[1].to_string(), flatten_variable_name(&cap[1])))
         .collect()
 }
 
