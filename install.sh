@@ -153,8 +153,9 @@ echo "Successfully installed IntelliShell at: $INTELLI_HOME"
 
 if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
 
-  # Use a string to keep track of modified files
+  # Use strings to keep track of modified and skipped files
   updated_files=""
+  skipped_files=""
 
   # Function to add IntelliShell config to a given profile file if not already present
   update_rc() {
@@ -224,6 +225,9 @@ if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
         printf 'export PATH="$INTELLI_HOME/bin:$PATH"\n' >> "$profile_file"
         printf 'eval "$(intelli-shell init %s)"\n' "$shell_type" >> "$profile_file"
       fi
+    else
+      # If the file is already configured, add it to the skipped list
+      skipped_files=$(printf '%s\n%s' "$skipped_files" "$profile_file")
     fi
   }
 
@@ -273,27 +277,50 @@ if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
     update_rc "$HOME/.config/fish/config.fish" "fish"
   fi
 
-  # Trim leading newline that might exist from the printf construction
+  # Trim leading newlines that might exist from the printf construction
   updated_files=$(echo "$updated_files" | sed '/^$/d')
+  skipped_files=$(echo "$skipped_files" | sed '/^$/d')
 
-  # Check if the updated_files string is non-empty
-  if [ -n "$updated_files" ]; then
+  # Check if any action was taken (either update or skip)
+  if [ -n "$updated_files" ] || [ -n "$skipped_files" ]; then
     echo ""
-    echo "Configuration successfully added to the following files:"
-    old_ifs="$IFS"
-    IFS='
+
+    # Report skipped files, if any
+    if [ -n "$skipped_files" ]; then
+      echo "The following files already contain IntelliShell configuration and were skipped:"
+      old_ifs="$IFS"
+      IFS='
 '
-    for file in $updated_files; do
-      if [ -n "$file" ]; then
-        echo "  - $file"
-      fi
-    done
-    IFS="$old_ifs"
-    echo ""
-    echo "Please restart your terminal for the changes to take effect."
+      for file in $skipped_files; do
+        if [ -n "$file" ]; then
+          echo "  - $file"
+        fi
+      done
+      IFS="$old_ifs"
+      
+      echo ""
+    fi
+
+    # Report successfully updated files, if any
+    if [ -n "$updated_files" ]; then
+      echo "Configuration successfully added to the following files:"
+      old_ifs="$IFS"
+      IFS='
+'
+      for file in $updated_files; do
+        if [ -n "$file" ]; then
+          echo "  - $file"
+        fi
+      done
+      IFS="$old_ifs"
+
+      echo ""
+      echo "Please restart your terminal for the changes to take effect."
+    fi
+
     echo "If you use a shell that wasn't listed above, you will need to configure it manually."
   else
-    # This block runs if no config files were updated
+    # This block now only runs if no config files were found at all
     echo ""
     echo "Could not find a shell profile to update automatically."
     echo "To complete the setup, please add the following lines to your shell's configuration file:"
