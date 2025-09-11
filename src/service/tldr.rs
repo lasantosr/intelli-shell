@@ -4,7 +4,7 @@ use color_eyre::{
 };
 use futures_util::{StreamExt, TryStreamExt, stream};
 use git2::{
-    FetchOptions, Repository,
+    FetchOptions, ProxyOptions, Repository,
     build::{CheckoutBuilder, RepoBuilder},
 };
 use tokio::{fs::File, sync::mpsc};
@@ -205,10 +205,18 @@ impl IntelliShellService {
         let tldr_repo_path = self.tldr_repo_path.clone();
 
         tokio::task::spawn_blocking(move || {
+            // Helper to send progress to the channel
             let send_progress = |status| {
                 // Use blocking_send as we are in a sync context
                 progress.blocking_send(TldrFetchProgress::Repository(status)).ok();
             };
+            // Setup git fetch options for a swallow copy with auto proxy config
+            let mut proxy_opts = ProxyOptions::new();
+            proxy_opts.auto();
+            let mut fetch_options = FetchOptions::new();
+            fetch_options.proxy_options(proxy_opts);
+            fetch_options.depth(1);
+            // Fetch latest repo changes or clone it if it doesn't exist yet
             if tldr_repo_path.exists() {
                 tracing::info!("Fetching latest tldr changes ...");
                 send_progress(RepoStatus::Fetching);
@@ -218,10 +226,6 @@ impl IntelliShellService {
 
                 // Get the 'origin' remote
                 let mut remote = repo.find_remote("origin")?;
-
-                // Configure fetch options for a shallow fetch
-                let mut fetch_options = FetchOptions::new();
-                fetch_options.depth(1);
 
                 // Fetch the latest changes from the remote 'main' branch
                 let refspec = format!("refs/heads/{BRANCH}:refs/remotes/origin/{BRANCH}");
@@ -269,10 +273,6 @@ impl IntelliShellService {
             } else {
                 tracing::info!("Performing a shallow clone of '{REPO_URL}' ...");
                 send_progress(RepoStatus::Cloning);
-
-                // Configure fetch options for a shallow fetch
-                let mut fetch_options = FetchOptions::new();
-                fetch_options.depth(1);
 
                 // Clone the repository
                 RepoBuilder::new()
