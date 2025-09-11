@@ -118,31 +118,37 @@ impl SqliteStorage {
         let mut query_alias = None;
         if let Some(ref term) = cleaned_filter.search_term {
             // Try to find a command matching the alias exactly
-            if workspace_tables_loaded {
-                query_alias = Some((
+            let (query, params) = if workspace_tables_loaded {
+                (
                     format!(
-                        r#"SELECT * 
-                        FROM (
-                            SELECT rowid, * FROM workspace_command
+                        r#"WITH commands_unified AS (
+                            SELECT rowid, *, 0 AS is_workspace FROM command
                             UNION ALL
-                            SELECT rowid, * FROM command
-                        ) c 
-                        WHERE c.alias IS NOT NULL AND c.alias = ?1 
+                            SELECT rowid, *, 1 AS is_workspace FROM workspace_command
+                        ),
+                        commands_ranked AS (
+                            SELECT *, ROW_NUMBER() OVER (PARTITION BY alias ORDER BY is_workspace ASC) as _rank
+                            FROM commands_unified
+                        )
+                        SELECT *
+                        FROM commands_ranked
+                        WHERE alias IS NOT NULL AND alias = ?1 AND _rank = 1
                         LIMIT {QUERY_LIMIT}"#
                     ),
                     (term.clone(),),
-                ));
+                )
             } else {
-                query_alias = Some((
+                (
                     format!(
-                        r#"SELECT c.rowid, c.* 
-                        FROM command c 
-                        WHERE c.alias IS NOT NULL AND c.alias = ?1 
+                        r#"SELECT c.rowid, c.*
+                        FROM command c
+                        WHERE c.alias IS NOT NULL AND c.alias = ?1
                         LIMIT {QUERY_LIMIT}"#
                     ),
                     (term.clone(),),
-                ));
-            }
+                )
+            };
+            query_alias = Some((query, params));
         }
 
         // Build the commands query when no alias is matched
