@@ -25,6 +25,7 @@ Here is a summary of all available commands, with each one detailed on its own p
 | [`export`](./export.md)                   | Exports stored user commands to a file, URL, Gist, or stdout                 |
 | [`tldr`](./tldr.md)                       | Manages integration with tldr pages, allowing you to fetch or clear examples |
 | [`completion`](./completion.md)           | Manages dynamic variable completions                                         |
+| [`update`](./update.md)                   | Updates intelli-shell to the latest version                                  |
 
 ## Global Flags for Interactive Mode
 

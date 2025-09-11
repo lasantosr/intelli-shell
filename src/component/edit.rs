@@ -195,7 +195,7 @@ impl Component for EditCommandComponent {
         frame.render_widget(&state.description, description_area);
 
         // Render the new version banner and error message as an overlay
-        if let Some(new_version) = self.service.check_new_version() {
+        if let Some(new_version) = self.service.poll_new_version() {
             NewVersionBanner::new(&self.theme, new_version).render_in(frame, area);
         }
         state.error.render_in(frame, area);

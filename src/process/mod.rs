@@ -13,6 +13,7 @@ pub mod replace;
 pub mod search;
 pub mod tldr_clear;
 pub mod tldr_fetch;
+pub mod update;
 
 #[cfg(debug_assertions)]
 pub mod query;

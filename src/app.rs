@@ -121,6 +121,11 @@ impl App {
                 service.load_workspace_items().await.map_err(AppError::into_report)?;
                 self.run_interactive(completion_list, config, service, extra_line).await
             }
+            CliProcess::Update(update) => {
+                tracing::info!("Running 'update' process");
+                tracing::debug!("Options: {:?}", update);
+                self.run_non_interactive(update, config, service, extra_line).await
+            }
         }
     }
 

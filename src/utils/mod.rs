@@ -52,4 +52,5 @@ using! {
     pub history,
     pub completion,
     pub import_export,
+    pub installation,
 }

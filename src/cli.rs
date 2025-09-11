@@ -109,6 +109,9 @@ pub enum CliProcess {
     /// Manages dynamic completions for variables
     #[command(subcommand)]
     Completion(CompletionProcess),
+
+    /// Updates intelli-shell to the latest version if possible, or shows update instructions
+    Update(UpdateProcess),
 }
 
 #[derive(Subcommand)]
@@ -453,6 +456,9 @@ pub struct CompletionListProcess {
     /// The root command to filter the list of completions by
     pub command: Option<String>,
 }
+
+#[derive(Args, Debug)]
+pub struct UpdateProcess {}
 
 impl Cli {
     /// Parses the [Cli] command, with any runtime extension required

@@ -162,7 +162,7 @@ impl SqliteStorage {
                 // Order elements by the original vec order
                 let mut order_by_clause = "ORDER BY CASE flat_variable ".to_string();
                 for (index, var_name) in flat_variable_names.iter().enumerate() {
-                    order_by_clause.push_str(&format!("WHEN ? THEN {} ", index));
+                    order_by_clause.push_str(&format!("WHEN ? THEN {index} "));
                     params.push(var_name);
                 }
                 order_by_clause.push_str("END");

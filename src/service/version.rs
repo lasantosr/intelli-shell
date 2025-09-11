@@ -25,13 +25,13 @@ pub(super) enum VersionCheckState {
 }
 
 impl IntelliShellService {
-    /// Checks if there's a new version available. This method returns immediately.
+    /// Polls for a new version in a non-blocking manner.
     ///
-    /// On the first call, it spawns a background task to check for a new version.
-    /// Subsequent calls will return `None` until the check is complete.
-    /// Once finished, it will always return the cached result.
+    /// This method returns immediately. On the first call, it spawns a background task to fetch the latest version.
+    /// Subsequent calls will return `None` while the check is in progress. Once the check is finished, this method
+    /// will consistently return the cached result.
     #[instrument(skip_all)]
-    pub fn check_new_version(&self) -> Option<Version> {
+    pub fn poll_new_version(&self) -> Option<Version> {
         // Lock the state to check the current status of the version check
         let mut state = self.version_check_state.lock().expect("poisoned lock");
 
@@ -60,7 +60,7 @@ impl IntelliShellService {
                 let state_clone = self.version_check_state.clone();
                 tokio::spawn(
                     async move {
-                        let result = perform_version_check(storage).await;
+                        let result = fetch_latest_version(&storage).await;
 
                         // Once the check is done, lock the state and update it with the result
                         let mut state = state_clone.lock().expect("poisoned lock");
@@ -86,10 +86,26 @@ impl IntelliShellService {
             }
         }
     }
+
+    /// Checks for a new version, performing a network request if necessary.
+    ///
+    /// This method performs the version check immediately, blocking the caller.
+    ///
+    /// For a non-blocking alternative that spawns a background task, see [`poll_new_version`](Self::poll_new_version).
+    #[instrument(skip_all)]
+    pub async fn check_new_version(&self) -> Result<Option<Version>> {
+        fetch_latest_version(&self.storage).await
+    }
 }
 
-/// Performs the actual version check against the remote source
-async fn perform_version_check(storage: SqliteStorage) -> Result<Option<Version>> {
+/// Fetches the latest version from the remote source, respecting a time-based cache.
+///
+/// It first consults the local database to see if a check was performed within the last hours.
+/// If not, it proceeds to fetch the latest release from the GitHub API, updates the database with the new version and
+/// timestamp, and returns the result.
+///
+/// It will return `None` if the latest version is not newer than the actual one.
+async fn fetch_latest_version(storage: &SqliteStorage) -> Result<Option<Version>> {
     // Get the current version and the last checked version
     let now = Utc::now();
     let current = Version::parse(env!("CARGO_PKG_VERSION")).wrap_err("Failed to parse current version")?;

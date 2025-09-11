@@ -102,7 +102,7 @@ fn resolve_suggestions_provider(suggestions_provider: &str, context: Option<&BTr
                 let mut resolved_block = block_content.to_string();
                 for (variable, flat_name) in required_vars {
                     if let Some(value) = context.get(&flat_name) {
-                        resolved_block = resolved_block.replace(&format!("{{{{{}}}}}", variable), value);
+                        resolved_block = resolved_block.replace(&format!("{{{{{variable}}}}}"), value);
                     }
                 }
                 resolved_block
