@@ -179,8 +179,7 @@ if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
 
     # If not already sourced, add the necessary lines
     if [ -z "$is_sourced" ]; then
-      echo "Updating $profile_file ..."
-      updated_files="$updated_files $profile_file"
+      updated_files=$(printf '%s\n%s' "$updated_files" "$profile_file")
 
       if [ "$shell_type" = "fish" ]; then
         printf '\n# IntelliShell\n' >> "$profile_file"
@@ -247,7 +246,7 @@ if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
         }
       ' "$INTELLI_HOME_WIN")
       if ! powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$pwsh_command"; then
-          echo "Warning: You may need to add $INTELLI_HOME_WIN\bin to your Windows PATH manually" >&2
+        echo "Warning: You may need to add $INTELLI_HOME_WIN\bin to your Windows PATH manually" >&2
       fi
       pwsh_profile_win_path=$(powershell.exe -NoProfile -Command '$PROFILE.CurrentUserCurrentHost')
       if [ -n "$pwsh_profile_win_path" ]; then
@@ -266,33 +265,75 @@ if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
     update_rc "$HOME/.bashrc" "bash"
   fi
   # Check if zsh likely exists before updating .zshrc
-  if [ -x "/bin/zsh" ] || [ -x "/usr/bin/zsh" ]; then
+  if command -v zsh >/dev/null 2>&1; then
     update_rc "$HOME/.zshrc" "zsh"
   fi
   # Check if fish likely exists before updating fish config
-  if [ -x "/bin/fish" ] || [ -x "/usr/bin/fish" ] || [ -x "/usr/local/bin/fish" ]; then
+  if command -v fish >/dev/null 2>&1; then
     update_rc "$HOME/.config/fish/config.fish" "fish"
   fi
 
+  # Trim leading newline that might exist from the printf construction
+  updated_files=$(echo "$updated_files" | sed '/^$/d')
+
   # Check if the updated_files string is non-empty
   if [ -n "$updated_files" ]; then
-    echo "The following files were updated, you can customize them:$updated_files"
-    echo "Please restart your terminal or source the updated files (e.g., 'source ~/.bashrc')."
+    echo ""
+    echo "Configuration successfully added to the following files:"
+    old_ifs="$IFS"
+    IFS='
+'
+    for file in $updated_files; do
+      if [ -n "$file" ]; then
+        echo "  - $file"
+      fi
+    done
+    IFS="$old_ifs"
+    echo ""
+    echo "Please restart your terminal for the changes to take effect."
+    echo "If you use a shell that wasn't listed above, you will need to configure it manually."
+  else
+    # This block runs if no config files were updated
+    echo ""
+    echo "Could not find a shell profile to update automatically."
+    echo "To complete the setup, please add the following lines to your shell's configuration file:"
+    
+    echo ""
+    echo "--- For bash or zsh (in ~/.bashrc or ~/.zshrc) ---"
+    printf 'export INTELLI_HOME="%s"\n' "$INTELLI_HOME"
+    printf 'export PATH="$INTELLI_HOME/bin:$PATH"\n'
+    printf 'eval "$(intelli-shell init bash)" # Or "zsh"\n'
+    
+    echo ""
+    echo "--- For Fish shell (in ~/.config/fish/config.fish) ---"
+    printf 'set -gx INTELLI_HOME="%s"\n' "$INTELLI_HOME"
+    printf 'fish_add_path "$INTELLI_HOME/bin"\n'
+    printf 'intelli-shell init fish | source\n'
+    
+    echo ""
+    echo "After saving the file, please restart your terminal."
   fi
 
 else
 
   # If profile update was skipped, show manual instructions
-  echo "Skipped automatic profile updates."
-  echo "You may need to add the following lines to your shell profile (e.g., ~/.bashrc):"
-  printf '\nexport INTELLI_HOME="%s"\n' "$INTELLI_HOME"
+  echo "Skipped automatic profile update as requested."
+  echo "To complete the setup, please add the following lines to your shell's configuration file:"
+
+  echo ""
+  echo "--- For bash or zsh (in ~/.bashrc or ~/.zshrc) ---"
+  printf 'export INTELLI_HOME="%s"\n' "$INTELLI_HOME"
   printf 'export PATH="$INTELLI_HOME/bin:$PATH"\n'
-  printf 'eval "$(intelli-shell init bash)"\n\n'
-  echo "For Fish shell (e.g., ~/.config/fish/config.fish):"
-  printf '\nset -gx INTELLI_HOME "%s"\n' "$INTELLI_HOME"
+  printf 'eval "$(intelli-shell init bash)" # Or "zsh"\n'
+  
+  echo ""
+  echo "--- For Fish shell (in ~/.config/fish/config.fish) ---"
+  printf 'set -gx INTELLI_HOME="%s"\n' "$INTELLI_HOME"
   printf 'fish_add_path "$INTELLI_HOME/bin"\n'
-  printf 'intelli-shell init fish | source\n\n'
-  echo "And then restart your terminal or source the updated files"
+  printf 'intelli-shell init fish | source\n'
+  
+  echo ""
+  echo "After saving the file, please restart your terminal."
 
 fi
 
