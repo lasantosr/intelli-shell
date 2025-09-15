@@ -21,6 +21,7 @@ const EDIT_VARIABLE_TITLE: &str = "(edit)";
 #[derive(PartialEq, Eq)]
 pub enum VariableSuggestionItemIdentifier {
     New,
+    Previous(String),
     Environment(String),
     Existing(Option<i32>, String),
     Completion(String),
@@ -35,10 +36,16 @@ pub enum VariableSuggestionItem<'a> {
         is_secret: bool,
         textarea: CustomTextArea<'a>,
     },
+    Previous {
+        sort_index: u8,
+        value: String,
+        score: f64,
+    },
     Environment {
         sort_index: u8,
         content: String,
         is_value: bool,
+        score: f64,
     },
     Existing {
         sort_index: u8,
@@ -63,6 +70,7 @@ impl<'a> VariableSuggestionItem<'a> {
     pub fn identifier(&self) -> VariableSuggestionItemIdentifier {
         match self {
             VariableSuggestionItem::New { .. } => VariableSuggestionItemIdentifier::New,
+            VariableSuggestionItem::Previous { value, .. } => VariableSuggestionItemIdentifier::Previous(value.clone()),
             VariableSuggestionItem::Environment { content, .. } => {
                 VariableSuggestionItemIdentifier::Environment(content.clone())
             }
@@ -92,6 +100,7 @@ impl<'a> VariableSuggestionItem<'a> {
     pub fn sort_index(&self) -> u8 {
         match self {
             VariableSuggestionItem::New { sort_index, .. }
+            | VariableSuggestionItem::Previous { sort_index, .. }
             | VariableSuggestionItem::Environment { sort_index, .. }
             | VariableSuggestionItem::Existing { sort_index, .. }
             | VariableSuggestionItem::Completion { sort_index, .. }
@@ -101,7 +110,10 @@ impl<'a> VariableSuggestionItem<'a> {
 
     pub fn score(&self) -> f64 {
         match self {
-            VariableSuggestionItem::Existing { score, .. } | VariableSuggestionItem::Completion { score, .. } => *score,
+            VariableSuggestionItem::Previous { score, .. }
+            | VariableSuggestionItem::Environment { score, .. }
+            | VariableSuggestionItem::Existing { score, .. }
+            | VariableSuggestionItem::Completion { score, .. } => *score,
             _ => 0.0,
         }
     }
@@ -124,18 +136,25 @@ impl<'a> From<(u8, VariableSuggestion, f64)> for VariableSuggestionItem<'a> {
                     .title(NEW_VARIABLE_TITLE)
                     .focused(),
             },
+            VariableSuggestion::Previous(value) => Self::Previous {
+                sort_index,
+                value,
+                score,
+            },
             VariableSuggestion::Environment { env_var_name, value } => {
                 if let Some(value) = value {
                     Self::Environment {
                         sort_index,
                         content: value,
                         is_value: true,
+                        score,
                     }
                 } else {
                     Self::Environment {
                         sort_index,
                         content: format_env_var(env_var_name),
                         is_value: false,
+                        score,
                     }
                 }
             }
@@ -194,6 +213,7 @@ impl<'i> CustomListItem for VariableSuggestionItem<'i> {
                 value: VariableValue { value: text, .. },
                 ..
             }
+            | VariableSuggestionItem::Previous { value: text, .. }
             | VariableSuggestionItem::Environment { content: text, .. }
             | VariableSuggestionItem::Completion { value: text, .. }
             | VariableSuggestionItem::Derived { value: text, .. } => {

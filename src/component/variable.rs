@@ -2,6 +2,7 @@ use std::{
     cmp::Ordering,
     collections::HashSet,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use async_trait::async_trait;
@@ -31,6 +32,9 @@ use crate::{
     },
 };
 
+// If there's a completion stream, process fast completions before showing the list
+const INITIAL_COMPLETION_WAIT: Duration = Duration::from_millis(250);
+
 /// A component for replacing the variables of a command
 #[derive(Clone)]
 pub struct VariableReplacementComponent {
@@ -54,8 +58,8 @@ pub struct VariableReplacementComponent {
 struct VariableReplacementComponentState<'a> {
     /// The command with variables to be replaced
     template: CommandTemplateWidget,
-    /// Flat name of the current variable being set
-    flat_variable_name: String,
+    /// Flat name of the current variable being set and if it's secret
+    current_variable_ctx: (String, bool),
     /// Full list of suggestions for the current variable
     variable_suggestions: Vec<VariableSuggestionItem<'static>>,
     /// Widget list of filtered suggestions for the variable value
@@ -100,7 +104,7 @@ impl VariableReplacementComponent {
             cancellation_token: Arc::new(Mutex::new(None)),
             state: Arc::new(RwLock::new(VariableReplacementComponentState {
                 template: command,
-                flat_variable_name: String::new(),
+                current_variable_ctx: (String::new(), true),
                 variable_suggestions: Vec::new(),
                 suggestions,
                 error,
@@ -291,14 +295,10 @@ impl Component for VariableReplacementComponent {
     fn undo(&mut self) -> Result<Action> {
         let mut state = self.state.write();
         match state.suggestions.selected_mut() {
-            Some(VariableSuggestionItem::New {
-                textarea, is_secret, ..
-            }) => {
+            Some(VariableSuggestionItem::New { textarea, .. }) => {
                 textarea.undo();
-                if !*is_secret {
-                    let query = textarea.lines_as_string();
-                    state.filter_suggestions(&query);
-                }
+                let query = textarea.lines_as_string();
+                state.filter_suggestions(&query);
             }
             Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
                 ta.undo();
@@ -316,14 +316,10 @@ impl Component for VariableReplacementComponent {
     fn redo(&mut self) -> Result<Action> {
         let mut state = self.state.write();
         match state.suggestions.selected_mut() {
-            Some(VariableSuggestionItem::New {
-                textarea, is_secret, ..
-            }) => {
+            Some(VariableSuggestionItem::New { textarea, .. }) => {
                 textarea.redo();
-                if !*is_secret {
-                    let query = textarea.lines_as_string();
-                    state.filter_suggestions(&query);
-                }
+                let query = textarea.lines_as_string();
+                state.filter_suggestions(&query);
             }
             Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
                 ta.redo();
@@ -344,14 +340,10 @@ impl Component for VariableReplacementComponent {
             text = variable.apply_functions_to(text);
         }
         match state.suggestions.selected_mut() {
-            Some(VariableSuggestionItem::New {
-                textarea, is_secret, ..
-            }) => {
+            Some(VariableSuggestionItem::New { textarea, .. }) => {
                 textarea.insert_str(text);
-                if !*is_secret {
-                    let query = textarea.lines_as_string();
-                    state.filter_suggestions(&query);
-                }
+                let query = textarea.lines_as_string();
+                state.filter_suggestions(&query);
             }
             Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
                 ta.insert_str(text);
@@ -375,14 +367,10 @@ impl Component for VariableReplacementComponent {
             }
         };
         match state.suggestions.selected_mut() {
-            Some(VariableSuggestionItem::New {
-                textarea, is_secret, ..
-            }) => {
+            Some(VariableSuggestionItem::New { textarea, .. }) => {
                 insert_content(textarea);
-                if !*is_secret {
-                    let query = textarea.lines_as_string();
-                    state.filter_suggestions(&query);
-                }
+                let query = textarea.lines_as_string();
+                state.filter_suggestions(&query);
             }
             Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
                 insert_content(ta);
@@ -390,15 +378,10 @@ impl Component for VariableReplacementComponent {
             _ => {
                 if let Some(VariableSuggestionItem::New { .. }) = state.suggestions.items().iter().next() {
                     state.suggestions.select_first();
-                    if let Some(VariableSuggestionItem::New {
-                        textarea, is_secret, ..
-                    }) = state.suggestions.selected_mut()
-                    {
+                    if let Some(VariableSuggestionItem::New { textarea, .. }) = state.suggestions.selected_mut() {
                         insert_content(textarea);
-                        if !*is_secret {
-                            let query = textarea.lines_as_string();
-                            state.filter_suggestions(&query);
-                        }
+                        let query = textarea.lines_as_string();
+                        state.filter_suggestions(&query);
                     }
                 }
             }
@@ -409,14 +392,10 @@ impl Component for VariableReplacementComponent {
     fn delete(&mut self, backspace: bool, word: bool) -> Result<Action> {
         let mut state = self.state.write();
         match state.suggestions.selected_mut() {
-            Some(VariableSuggestionItem::New {
-                textarea, is_secret, ..
-            }) => {
+            Some(VariableSuggestionItem::New { textarea, .. }) => {
                 textarea.delete(backspace, word);
-                if !*is_secret {
-                    let query = textarea.lines_as_string();
-                    state.filter_suggestions(&query);
-                }
+                let query = textarea.lines_as_string();
+                state.filter_suggestions(&query);
             }
             Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
                 ta.delete(backspace, word);
@@ -508,6 +487,7 @@ impl Component for VariableReplacementComponent {
 
         let next_action = {
             let mut state = self.state.write();
+            let (_, is_secret) = state.current_variable_ctx;
             match state.suggestions.selected_mut() {
                 None => NextAction::NoOp,
                 Some(VariableSuggestionItem::New {
@@ -534,9 +514,10 @@ impl Component for VariableReplacementComponent {
                     is_value: true,
                     ..
                 })
+                | Some(VariableSuggestionItem::Previous { value, .. })
                 | Some(VariableSuggestionItem::Completion { value, .. })
                 | Some(VariableSuggestionItem::Derived { value, .. }) => {
-                    NextAction::ConfirmLiteral(value.clone(), true)
+                    NextAction::ConfirmLiteral(value.clone(), !is_secret)
                 }
             }
         };
@@ -564,10 +545,11 @@ impl<'a> VariableReplacementComponentState<'a> {
         let mut filtered_suggestions = self.variable_suggestions.clone();
         filtered_suggestions.retain(|s| match s {
             VariableSuggestionItem::New { .. } => false,
-            VariableSuggestionItem::Existing { value, .. } => value.value.contains(query),
-            VariableSuggestionItem::Environment { content: value, .. }
+            VariableSuggestionItem::Existing { value, .. } => value_matches_filter_query(&value.value, query),
+            VariableSuggestionItem::Previous { value, .. }
+            | VariableSuggestionItem::Environment { content: value, .. }
             | VariableSuggestionItem::Completion { value, .. }
-            | VariableSuggestionItem::Derived { value, .. } => value.contains(query),
+            | VariableSuggestionItem::Derived { value, .. } => value_matches_filter_query(value, query),
         });
 
         // Find and insert the new row, which contains the query
@@ -587,6 +569,103 @@ impl<'a> VariableReplacementComponentState<'a> {
         if let Some(selected_id) = selected_id {
             self.suggestions.select_matching(|i| i.identifier() == selected_id);
         }
+    }
+
+    /// Merges a new set of completion suggestions into the master list, re-sorts, and re-filters
+    fn merge_completions(&mut self, score_boost: f64, completion_suggestions: Vec<String>) {
+        // Retrieve the current set of suggestions
+        let master_suggestions = &mut self.variable_suggestions;
+
+        // Remove all `Derived` items that are about to be added as a `Completion`
+        let completion_set = completion_suggestions.iter().collect::<HashSet<_>>();
+        master_suggestions.retain_mut(|item| {
+            !matches!(
+                item,
+                VariableSuggestionItem::Derived { value, .. }
+                    if completion_set.contains(value)
+            )
+        });
+
+        // For each new suggestion given by the completion
+        for suggestion in completion_suggestions {
+            // Check if there's already a suggestion for the same value
+            let mut skip_completion = false;
+            for item in master_suggestions.iter_mut() {
+                match item {
+                    // `New` items don't affect completions
+                    VariableSuggestionItem::New { .. } => (),
+                    // `Derived` are already handled above
+                    VariableSuggestionItem::Derived { .. } => (),
+                    // If already a previous value, skip completion
+                    VariableSuggestionItem::Previous { value, .. } => {
+                        if value == &suggestion {
+                            skip_completion = true;
+                            break;
+                        }
+                    }
+                    // If already an environment value, skip completion
+                    VariableSuggestionItem::Environment { content, is_value, .. } => {
+                        if *is_value && content == &suggestion {
+                            skip_completion = true;
+                            break;
+                        }
+                    }
+                    // If already an existing value, boost its score and skip completion
+                    VariableSuggestionItem::Existing {
+                        value,
+                        score,
+                        completion_merged,
+                        ..
+                    } => {
+                        if value.value == suggestion {
+                            if !*completion_merged {
+                                *score += score_boost;
+                                *completion_merged = true;
+                            }
+                            skip_completion = true;
+                            break;
+                        }
+                    }
+                    // If already a completion, keep the maximum score and skip this one
+                    VariableSuggestionItem::Completion { value, score, .. } => {
+                        if value == &suggestion {
+                            *score = score.max(score_boost);
+                            skip_completion = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if skip_completion {
+                continue;
+            }
+
+            // Add the new suggestion
+            master_suggestions.push(VariableSuggestionItem::Completion {
+                sort_index: 3,
+                value: suggestion,
+                score: score_boost,
+            });
+        }
+
+        // Re-sort suggestions
+        master_suggestions.sort_by(|a, b| {
+            a.sort_index()
+                .cmp(&b.sort_index())
+                .then_with(|| b.score().partial_cmp(&a.score()).unwrap_or(Ordering::Equal))
+        });
+
+        // After sorting, filter suggestions based on the current query in the "new" item textarea
+        let query = self
+            .suggestions
+            .items()
+            .iter()
+            .find_map(|s| match s {
+                VariableSuggestionItem::New { textarea, .. } => Some(textarea.lines_as_string()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        self.filter_suggestions(&query);
     }
 }
 
@@ -615,11 +694,12 @@ impl VariableReplacementComponent {
         };
 
         // Retrieves the current variable and its context
-        let (flat_root_cmd, current_variable, context) = {
+        let (flat_root_cmd, previous_values, current_variable, context) = {
             let state = self.state.read();
             match state.template.current_variable().cloned() {
                 Some(variable) => (
                     state.template.flat_root_cmd.clone(),
+                    state.template.previous_values_for(&variable.flat_name),
                     variable,
                     state.template.current_variable_context(),
                 ),
@@ -637,39 +717,90 @@ impl VariableReplacementComponent {
         // Search for the variable suggestions
         let (initial_suggestions, completion_stream) = self
             .service
-            .search_variable_suggestions(&flat_root_cmd, &current_variable, context)
+            .search_variable_suggestions(&flat_root_cmd, &current_variable, previous_values, context)
             .await
             .map_err(AppError::into_report)?;
 
-        // Update the context
-        let mut state = self.state.write();
-        let suggestions = initial_suggestions
-            .into_iter()
-            .map(VariableSuggestionItem::from)
-            .collect::<Vec<_>>();
-        state.flat_variable_name = current_variable.flat_name.clone();
-        state.variable_suggestions = suggestions.clone();
-
-        // And the displayed items
-        state.suggestions.update_items(suggestions, false);
-
-        // Pre-select the first non-derived suggestion
-        if let Some(idx) = state.suggestions.items().iter().position(|s| {
-            !matches!(
-                s,
-                VariableSuggestionItem::New { .. } | VariableSuggestionItem::Derived { .. }
-            )
-        }) {
-            state.suggestions.select(idx);
+        // Update the context with initial suggestions
+        {
+            let mut state = self.state.write();
+            let suggestions = initial_suggestions
+                .into_iter()
+                .map(VariableSuggestionItem::from)
+                .collect::<Vec<_>>();
+            state.current_variable_ctx = (current_variable.flat_name.clone(), current_variable.secret);
+            state.variable_suggestions = suggestions.clone();
+            state.suggestions.update_items(suggestions, false);
         }
 
-        // If there's some completions stream
-        if let Some(mut stream) = completion_stream {
+        // If there's a completion stream, process fast completions before showing the list
+        let remaining_stream = if let Some(mut stream) = completion_stream {
+            let sleep = tokio::time::sleep(INITIAL_COMPLETION_WAIT);
+            tokio::pin!(sleep);
+
+            let mut has_more_items = true;
+
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = &mut sleep => {
+                        tracing::debug!(
+                            "There are pending completions after initial {}ms wait, spawning a background task",
+                            INITIAL_COMPLETION_WAIT.as_millis()
+                        );
+                        break;
+                    }
+                    item = stream.next() => {
+                        if let Some((score_boost, result)) = item {
+                            match result {
+                                // If an error happens while resolving the completion, display the first line
+                                Err(err) => {
+                                    if let Some(line) = err.lines().next() {
+                                        self.state.write().error.set_temp_message(line.to_string());
+                                    }
+                                }
+                                // Otherwise, merge suggestions
+                                Ok(completion_suggestions) => {
+                                    self.state.write().merge_completions(score_boost, completion_suggestions);
+                                }
+                            }
+                        } else {
+                            // Stream finished before timeout
+                            tracing::debug!(
+                                "All completions were resolved on the initial {}ms window",
+                                INITIAL_COMPLETION_WAIT.as_millis()
+                            );
+                            has_more_items = false;
+                            break;
+                        }
+                    }
+                }
+            }
+            if has_more_items { Some(stream) } else { None }
+        } else {
+            None
+        };
+
+        // Pre-select the first non-derived suggestion
+        {
+            let mut state = self.state.write();
+            if let Some(idx) = state.suggestions.items().iter().position(|s| {
+                !matches!(
+                    s,
+                    VariableSuggestionItem::New { .. } | VariableSuggestionItem::Derived { .. }
+                )
+            }) {
+                state.suggestions.select(idx);
+            }
+        }
+
+        // If there are still pending completions, spawn a background task for them
+        if let Some(mut stream) = remaining_stream {
             let token = cancellation_token.clone();
             let state_clone = self.state.clone();
 
             // Show the loading spinner
-            state.loading = Some(LoadingSpinner::new(&self.theme));
+            self.state.write().loading = Some(LoadingSpinner::new(&self.theme));
 
             // Spawn a background task to wait for them
             tokio::spawn(async move {
@@ -681,105 +812,15 @@ impl VariableReplacementComponent {
                     match result {
                         // If an error happens while resolving the completion, display the first line
                         Err(err) => {
-                            let mut state = state_clone.write();
                             if let Some(line) = err.lines().next() {
-                                state.error.set_temp_message(line.to_string());
+                                state_clone.write().error.set_temp_message(line.to_string());
                             }
                         }
                         // Otherwise, merge suggestions
                         Ok(completion_suggestions) => {
-                            let mut state = state_clone.write();
-
-                            // Retrieve the current set of suggestions
-                            let master_suggestions = &mut state.variable_suggestions;
-
-                            // Remove all `Derived` items that are about to be added as a `Completion`
-                            let completion_set = completion_suggestions.iter().collect::<HashSet<_>>();
-                            master_suggestions.retain_mut(|item| {
-                                !matches!(
-                                    item,
-                                    VariableSuggestionItem::Derived { value, .. }
-                                        if completion_set.contains(value)
-                                )
-                            });
-
-                            // For each new suggestion given by the completion
-                            for suggestion in completion_suggestions {
-                                // Check if there's already a suggestion for the same value
-                                let mut skip_completion = false;
-                                for item in master_suggestions.iter_mut() {
-                                    match item {
-                                        // `New` items doesn't affect
-                                        VariableSuggestionItem::New { .. } => (),
-                                        // `Derived` are already handled above
-                                        VariableSuggestionItem::Derived { .. } => (),
-                                        // If already an environment, just skip completion
-                                        VariableSuggestionItem::Environment { content, is_value, .. } => {
-                                            if *is_value && content == &suggestion {
-                                                skip_completion = true;
-                                                break;
-                                            }
-                                        }
-                                        // If already an existing, boost its score and skip completion
-                                        VariableSuggestionItem::Existing {
-                                            value,
-                                            score,
-                                            completion_merged,
-                                            ..
-                                        } => {
-                                            if value.value == suggestion {
-                                                if !*completion_merged {
-                                                    *score += score_boost;
-                                                    *completion_merged = true;
-                                                }
-                                                skip_completion = true;
-                                                break;
-                                            }
-                                        }
-                                        // If already a completion, keep the maximum score and skip this one
-                                        VariableSuggestionItem::Completion { value, score, .. } => {
-                                            if value == &suggestion {
-                                                *score += score_boost.max(*score);
-                                                skip_completion = true;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                                if skip_completion {
-                                    continue;
-                                }
-
-                                // Add the new suggestion
-                                master_suggestions.push(VariableSuggestionItem::Completion {
-                                    sort_index: 3,
-                                    value: suggestion,
-                                    score: score_boost,
-                                });
-                            }
-
-                            // Re-sort suggestions
-                            master_suggestions.sort_by(|a, b| {
-                                a.sort_index()
-                                    .cmp(&b.sort_index())
-                                    .then_with(|| b.score().partial_cmp(&a.score()).unwrap_or(Ordering::Equal))
-                            });
-
-                            // After sorting, filter suggestions
-                            let query = state
-                                .suggestions
-                                .items()
-                                .iter()
-                                .find_map(|s| match s {
-                                    VariableSuggestionItem::New {
-                                        textarea,
-                                        is_secret: false,
-                                        ..
-                                    } => Some(textarea.lines_as_string()),
-                                    _ => None,
-                                })
-                                .unwrap_or_default();
-                            state.filter_suggestions(&query);
+                            state_clone
+                                .write()
+                                .merge_completions(score_boost, completion_suggestions);
                         }
                     }
                 }
@@ -802,7 +843,8 @@ impl VariableReplacementComponent {
         if !value.trim().is_empty() {
             let variable_value = {
                 let state = self.state.read();
-                state.template.new_variable_value_for(&state.flat_variable_name, &value)
+                let (flat_variable_name, _) = &state.current_variable_ctx;
+                state.template.new_variable_value_for(flat_variable_name, &value)
             };
             match self.service.insert_variable_value(variable_value).await {
                 Ok(v) => {
@@ -879,7 +921,8 @@ impl VariableReplacementComponent {
         if store && !value.trim().is_empty() {
             let variable_value = {
                 let state = self.state.read();
-                state.template.new_variable_value_for(&state.flat_variable_name, &value)
+                let (flat_variable_name, _) = &state.current_variable_ctx;
+                state.template.new_variable_value_for(flat_variable_name, &value)
             };
             match self.service.insert_variable_value(variable_value).await {
                 Ok(v) => {
@@ -915,4 +958,33 @@ impl VariableReplacementComponent {
             Ok(Action::Quit(ProcessOutput::success().stdout(&cmd).fileout(cmd)))
         }
     }
+}
+
+/// Checks if `value` contains all space-separated words from `query` in the same order.
+///
+/// This is a case-sensitive search.
+///
+/// ### Arguments
+///
+/// * `value`: The string to search within.
+/// * `query`: A string of space-separated words to find in `value`.
+///
+/// ### Returns
+///
+/// `true` if all words in `query` are found in `value` in the correct order,
+/// `false` otherwise.
+fn value_matches_filter_query(value: &str, query: &str) -> bool {
+    // This offset tracks our position in the `value` string
+    let mut search_offset = 0;
+    query.split_whitespace().all(|word| {
+        // We search for the current `word` only in the slice of `value` that starts from our current `search_offset`
+        if let Some(relative_pos) = value[search_offset..].find(word) {
+            // If the word is found, we update the offset for the next search
+            search_offset += relative_pos + 1;
+            true
+        } else {
+            // If the word isn't found, return `false` immediately
+            false
+        }
+    })
 }

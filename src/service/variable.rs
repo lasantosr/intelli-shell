@@ -90,6 +90,7 @@ impl IntelliShellService {
         &self,
         flat_root_cmd: &str,
         variable: &Variable,
+        previous_values: Option<Vec<String>>,
         context: BTreeMap<String, String>,
     ) -> Result<(
         Vec<(u8, VariableSuggestion, f64)>,
@@ -101,11 +102,15 @@ impl IntelliShellService {
         );
 
         let mut suggestions = Vec::new();
-        let mut completion_stream = None;
-
         if variable.secret {
             // If the variable is a secret, suggest a new secret value
             suggestions.push((0, VariableSuggestion::Secret, 0.0));
+            // Check if the user already selected any value for the same variable, to be suggested again
+            if let Some(values) = previous_values {
+                for (ix, value) in values.into_iter().enumerate() {
+                    suggestions.push((1, VariableSuggestion::Previous(value), ix as f64));
+                }
+            }
             // And check if there's any env var that matches the variable to include it as a suggestion
             let env_var_names = variable.env_var_names(true);
             let env_var_len = env_var_names.len();
@@ -142,14 +147,19 @@ impl IntelliShellService {
                 )
                 .await?;
 
-            // If there's a suggestion for a value previously selected for the same variable
-            let previous_value = context.get(&variable.flat_name).cloned();
-            if let Some(previous_value) = previous_value
-                && let Some(index) = existing_values.iter().position(|(s, _)| s.value == previous_value)
-            {
-                // Include it first, ignoring its relevance ordering
-                let (existing, _) = existing_values.remove(index);
-                suggestions.push((1, VariableSuggestion::Existing(existing), 0.0));
+            // Check if the user already selected some value for the same variable
+            if let Some(values) = previous_values {
+                for (ix, value) in values.into_iter().enumerate() {
+                    // If there's an existing suggestion for a value previously selected
+                    if let Some(index) = existing_values.iter().position(|(s, _)| s.value == value) {
+                        // Include it first, ignoring its relevance ordering
+                        let (existing, _) = existing_values.remove(index);
+                        suggestions.push((1, VariableSuggestion::Existing(existing), ix as f64));
+                    } else {
+                        // If there's no stored value (previous value was secret), suggest it
+                        suggestions.push((1, VariableSuggestion::Previous(value), ix as f64));
+                    }
+                }
             }
 
             // Check if there's any env var that matches the variable to include it as a suggestion
@@ -205,19 +215,20 @@ impl IntelliShellService {
                 .map(|o| (4, VariableSuggestion::Derived(o.to_owned()), 0.0))
                 .collect::<Vec<_>>();
             suggestions.extend(options);
-
-            // Find and stream completions for the variable, which might be slow for network related completions
-            let completions = self
-                .storage
-                .get_completions_for(flat_root_cmd, variable.flat_names.clone())
-                .await?;
-            if !completions.is_empty() {
-                let completion_points = self.tuning.variables.completion.points as f64;
-                let stream = resolve_completions(completions, context.clone()).await;
-                completion_stream =
-                    Some(stream.map(move |(score_boost, result)| (completion_points + score_boost, result)));
-            }
         }
+
+        // Find and stream completions for the variable, which might be slow for network related completions
+        let completions = self
+            .storage
+            .get_completions_for(flat_root_cmd, variable.flat_names.clone())
+            .await?;
+        let completion_stream = if !completions.is_empty() {
+            let completion_points = self.tuning.variables.completion.points as f64;
+            let stream = resolve_completions(completions, context.clone()).await;
+            Some(stream.map(move |(score_boost, result)| (completion_points + score_boost, result)))
+        } else {
+            None
+        };
 
         Ok((suggestions, completion_stream))
     }

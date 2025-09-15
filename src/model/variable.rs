@@ -35,6 +35,8 @@ pub enum VariableSuggestion {
     Secret,
     /// A new value, if the user enters it, it must be then stored
     New,
+    /// A value previously selected on the same command for this variable
+    Previous(String),
     /// Suggestion from the environment variables
     Environment {
         env_var_name: String,

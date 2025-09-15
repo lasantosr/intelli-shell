@@ -54,6 +54,27 @@ impl CommandTemplate {
         self.parts.iter().any(|part| matches!(part, TemplatePart::Variable(_)))
     }
 
+    /// Retrieves the previously selected values for the given flat variable name
+    pub fn previous_values_for(&self, flat_variable_name: &str) -> Option<Vec<String>> {
+        // Find all filled variables that match the flat name, collecting their unique values
+        let values = self
+            .parts
+            .iter()
+            .filter_map(|part| {
+                if let TemplatePart::VariableValue(v, value) = part
+                    && v.flat_name == flat_variable_name
+                {
+                    Some(value.clone())
+                } else {
+                    None
+                }
+            })
+            .unique()
+            .collect::<Vec<_>>();
+
+        if values.is_empty() { None } else { Some(values) }
+    }
+
     /// Retrieves the first variable without value in the command
     pub fn current_variable(&self) -> Option<&Variable> {
         self.parts.iter().find_map(|part| {
