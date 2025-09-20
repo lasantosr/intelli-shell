@@ -7,6 +7,7 @@ use std::{
 use color_eyre::eyre::Context;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use super::{Process, ProcessOutput};
 use crate::{
@@ -19,7 +20,12 @@ use crate::{
 };
 
 impl Process for TldrFetchProcess {
-    async fn execute(self, config: Config, service: IntelliShellService) -> color_eyre::Result<ProcessOutput> {
+    async fn execute(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        cancellation_token: CancellationToken,
+    ) -> color_eyre::Result<ProcessOutput> {
         let mut commands = self.commands;
         if let Some(filter_commands) = self.filter_commands {
             let content = filter_commands
@@ -37,8 +43,11 @@ impl Process for TldrFetchProcess {
 
         let (tx, mut rx) = mpsc::channel(32);
 
-        let service_handle =
-            tokio::spawn(async move { service.fetch_tldr_commands(self.category, commands, tx).await });
+        let service_handle = tokio::spawn(async move {
+            service
+                .fetch_tldr_commands(self.category, commands, tx, cancellation_token)
+                .await
+        });
 
         let m = MultiProgress::new();
         let pb1 = m.add(ProgressBar::new_spinner());

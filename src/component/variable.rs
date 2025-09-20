@@ -50,6 +50,8 @@ pub struct VariableReplacementComponent {
     execute_mode: bool,
     /// Whether this component is part of the replace process (or maybe rendered after another process)
     replace_process: bool,
+    /// Global cancellation token
+    global_cancellation_token: CancellationToken,
     /// Cancellation token for the background completions task
     cancellation_token: Arc<Mutex<Option<CancellationToken>>>,
     /// The state of the component
@@ -81,6 +83,7 @@ impl VariableReplacementComponent {
         execute_mode: bool,
         replace_process: bool,
         command: CommandTemplate,
+        cancellation_token: CancellationToken,
     ) -> Self {
         let command = CommandTemplateWidget::new(&theme, inline, command);
 
@@ -102,6 +105,7 @@ impl VariableReplacementComponent {
             execute_mode,
             replace_process,
             cancellation_token: Arc::new(Mutex::new(None)),
+            global_cancellation_token: cancellation_token,
             state: Arc::new(RwLock::new(VariableReplacementComponentState {
                 template: command,
                 current_variable_ctx: (String::new(), true),
@@ -797,6 +801,7 @@ impl VariableReplacementComponent {
         // If there are still pending completions, spawn a background task for them
         if let Some(mut stream) = remaining_stream {
             let token = cancellation_token.clone();
+            let global_token = self.global_cancellation_token.clone();
             let state_clone = self.state.clone();
 
             // Show the loading spinner
@@ -807,6 +812,7 @@ impl VariableReplacementComponent {
                 while let Some((score_boost, result)) = tokio::select! {
                     biased;
                     _ = token.cancelled() => None,
+                    _ = global_token.cancelled() => None,
                     item = stream.next() => item,
                 } {
                     match result {

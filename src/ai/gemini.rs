@@ -135,6 +135,7 @@ struct GeminiPart {
 
 #[cfg(test)]
 mod tests {
+    use tokio_util::sync::CancellationToken;
     use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
     use super::*;
@@ -156,6 +157,7 @@ mod tests {
             .generate_command_suggestions(
                 "you're a cli expert, that will proide command suggestions based on what the user want to do",
                 "undo last n amount of commits",
+                CancellationToken::new(),
             )
             .await?;
         tracing::info!("Suggestions:");

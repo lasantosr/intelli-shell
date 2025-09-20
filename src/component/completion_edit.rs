@@ -10,6 +10,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use super::Component;
@@ -55,6 +56,8 @@ pub struct EditCompletionComponent {
     layout: Layout,
     /// The operational mode
     mode: EditCompletionComponentMode,
+    /// Global cancellation token
+    global_cancellation_token: CancellationToken,
     /// The state of the component
     state: Arc<RwLock<EditCompletionComponentState<'static>>>,
 }
@@ -93,6 +96,7 @@ impl EditCompletionComponent {
         inline: bool,
         completion: VariableCompletion,
         mode: EditCompletionComponentMode,
+        cancellation_token: CancellationToken,
     ) -> Self {
         let mut root_cmd = CustomTextArea::new(theme.secondary, inline, false, "")
             .title(if inline { "Command:" } else { " Command " })
@@ -156,6 +160,7 @@ impl EditCompletionComponent {
             service,
             layout,
             mode,
+            global_cancellation_token: cancellation_token,
             state: Arc::new(RwLock::new(EditCompletionComponentState {
                 completion,
                 active_field,
@@ -516,9 +521,10 @@ impl Component for EditCompletionComponent {
         state.suggestions_provider.set_ai_loading(true);
         let cloned_service = self.service.clone();
         let cloned_state = self.state.clone();
+        let cloned_token = self.global_cancellation_token.clone();
         tokio::spawn(async move {
             let res = cloned_service
-                .suggest_completion(&root_cmd, &variable, &suggestions_provider)
+                .suggest_completion(&root_cmd, &variable, &suggestions_provider, cloned_token)
                 .await;
             let mut state = cloned_state.write();
             state.suggestions_provider.set_ai_loading(false);

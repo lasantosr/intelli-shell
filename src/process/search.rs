@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use super::{InteractiveProcess, Process, ProcessOutput};
@@ -17,7 +18,12 @@ use crate::{
 
 impl Process for SearchCommandsProcess {
     #[instrument(skip_all)]
-    async fn execute(self, config: Config, service: IntelliShellService) -> color_eyre::Result<ProcessOutput> {
+    async fn execute(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        cancellation_token: CancellationToken,
+    ) -> color_eyre::Result<ProcessOutput> {
         // Different behaviors based on ai flag
         if self.ai {
             // Validate we've a query
@@ -41,7 +47,7 @@ impl Process for SearchCommandsProcess {
             pb.set_message("Thinking ...");
 
             // Suggest commands using AI
-            let res = service.suggest_commands(prompt).await;
+            let res = service.suggest_commands(prompt, cancellation_token).await;
 
             // Clear the spinner
             pb.finish_and_clear();
@@ -82,11 +88,17 @@ impl InteractiveProcess for SearchCommandsProcess {
         config: Config,
         service: IntelliShellService,
         inline: bool,
+        cancellation_token: CancellationToken,
     ) -> color_eyre::Result<Box<dyn Component>> {
         let ai = self.ai;
         let (config, query) = merge_config(self, config);
         Ok(Box::new(SearchCommandsComponent::new(
-            service, config, inline, query, ai,
+            service,
+            config,
+            inline,
+            query,
+            ai,
+            cancellation_token,
         )))
     }
 }

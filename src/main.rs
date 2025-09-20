@@ -18,6 +18,7 @@ use intelli_shell::{
     storage::SqliteStorage,
     utils::execute_shell_command_inherit,
 };
+use tokio_util::sync::CancellationToken;
 
 const EXECUTE_PREFIX: &str = "____execute____";
 const EXECUTED_OUTPUT: &str = "####EXECUTED####";
@@ -36,6 +37,16 @@ async fn main() -> Result<()> {
     let logs_path = logging::init(&config)?;
 
     tracing::info!("intelli-shell v{}", env!("CARGO_PKG_VERSION"));
+
+    // Create a cancellation token
+    let cancellation_token = CancellationToken::new();
+    let ctrl_c_token = cancellation_token.clone();
+
+    // Link the cancellation token with the ctrl+c signal
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.ok();
+        ctrl_c_token.cancel();
+    });
 
     // Initialize error handling
     errors::init(
@@ -77,11 +88,16 @@ async fn main() -> Result<()> {
             );
 
             // Run the app
-            let output = App::new()?.run(config, service, args.process, args.extra_line).await?;
+            let app_cancellation_token = cancellation_token.clone();
+            let output = App::new(app_cancellation_token)?
+                .run(config, service, args.process, args.extra_line)
+                .await?;
 
             // Process the output
             match output {
-                ProcessOutput::Execute { cmd } => execute_command(cmd, args.file_output, args.skip_execution).await?,
+                ProcessOutput::Execute { cmd } => {
+                    execute_command(cmd, args.file_output, args.skip_execution, cancellation_token).await?
+                }
                 ProcessOutput::Output(info) => process_output(info, args.file_output)?,
             }
 
@@ -92,7 +108,12 @@ async fn main() -> Result<()> {
 }
 
 /// Executes the given command
-async fn execute_command(command: String, file_output_path: Option<String>, skip_execution: bool) -> Result<()> {
+async fn execute_command(
+    command: String,
+    file_output_path: Option<String>,
+    skip_execution: bool,
+    cancellation_token: CancellationToken,
+) -> Result<()> {
     // If skip_execution is true, we only write the command to the file output path
     // and do not execute it. This is useful for shell integrations that can handle the command
     // execution themselves.
@@ -125,7 +146,7 @@ async fn execute_command(command: String, file_output_path: Option<String>, skip
     }
 
     // Execute the command
-    let status = execute_shell_command_inherit(&command, !is_file_out).await?;
+    let status = execute_shell_command_inherit(&command, !is_file_out, cancellation_token).await?;
 
     // Check if the command was successful or not
     if !status.success() {

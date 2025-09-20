@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use color_eyre::Result;
 use indicatif::{ProgressBar, ProgressStyle};
+use tokio_util::sync::CancellationToken;
 
 use super::{InteractiveProcess, Process, ProcessOutput};
 use crate::{
@@ -19,7 +20,12 @@ use crate::{
 };
 
 impl Process for CompletionNewProcess {
-    async fn execute(self, config: Config, service: IntelliShellService) -> Result<ProcessOutput> {
+    async fn execute(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        cancellation_token: CancellationToken,
+    ) -> Result<ProcessOutput> {
         let root_cmd = self.command.unwrap_or_default();
         let suggestions_provider = self.provider.unwrap_or_default();
         let Some(variable_name) = self.variable.filter(|v| !v.trim().is_empty()) else {
@@ -50,6 +56,7 @@ impl Process for CompletionNewProcess {
                     &completion.root_cmd,
                     &completion.variable,
                     &completion.suggestions_provider,
+                    cancellation_token,
                 )
                 .await;
 
@@ -94,7 +101,13 @@ impl Process for CompletionNewProcess {
 }
 
 impl InteractiveProcess for CompletionNewProcess {
-    fn into_component(self, config: Config, service: IntelliShellService, inline: bool) -> Result<Box<dyn Component>> {
+    fn into_component(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        inline: bool,
+        cancellation_token: CancellationToken,
+    ) -> Result<Box<dyn Component>> {
         let root_cmd = self.command.unwrap_or_default();
         let suggestions_provider = self.provider.unwrap_or_default();
         let variable_name = self.variable.unwrap_or_default();
@@ -107,6 +120,7 @@ impl InteractiveProcess for CompletionNewProcess {
             inline,
             completion,
             EditCompletionComponentMode::New { ai: self.ai },
+            cancellation_token,
         );
         Ok(Box::new(component))
     }

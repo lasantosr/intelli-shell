@@ -7,6 +7,7 @@ use reqwest::{
 };
 use schemars::{JsonSchema, Schema, schema_for};
 use serde::{Deserialize, de::DeserializeOwned};
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use crate::{
@@ -95,14 +96,20 @@ impl<'a> AiClient<'a> {
         &self,
         sys_prompt: &str,
         user_prompt: &str,
+        cancellation_token: CancellationToken,
     ) -> Result<CommandSuggestions> {
-        self.generate_content(sys_prompt, user_prompt).await
+        self.generate_content(sys_prompt, user_prompt, cancellation_token).await
     }
 
     /// Generate a command fix based on the given prompt
     #[instrument(skip_all)]
-    pub async fn generate_command_fix(&self, sys_prompt: &str, user_prompt: &str) -> Result<CommandFix> {
-        self.generate_content(sys_prompt, user_prompt).await
+    pub async fn generate_command_fix(
+        &self,
+        sys_prompt: &str,
+        user_prompt: &str,
+        cancellation_token: CancellationToken,
+    ) -> Result<CommandFix> {
+        self.generate_content(sys_prompt, user_prompt, cancellation_token).await
     }
 
     /// Generate a command for a dynamic variable completion
@@ -111,19 +118,27 @@ impl<'a> AiClient<'a> {
         &self,
         sys_prompt: &str,
         user_prompt: &str,
+        cancellation_token: CancellationToken,
     ) -> Result<VariableCompletionSuggestion> {
-        self.generate_content(sys_prompt, user_prompt).await
+        self.generate_content(sys_prompt, user_prompt, cancellation_token).await
     }
 
     /// The inner logic to generate content from a prompt with an AI provider.
     ///
     /// It attempts the primary model first, and uses the fallback model if the primary is rate-limited.
-    async fn generate_content<T>(&self, sys_prompt: &str, user_prompt: &str) -> Result<T>
+    async fn generate_content<T>(
+        &self,
+        sys_prompt: &str,
+        user_prompt: &str,
+        cancellation_token: CancellationToken,
+    ) -> Result<T>
     where
         T: DeserializeOwned + JsonSchema + Debug,
     {
         // First, try with the primary model
-        let primary_result = self.execute_request(self.primary, sys_prompt, user_prompt).await;
+        let primary_result = self
+            .execute_request(self.primary, sys_prompt, user_prompt, cancellation_token.clone())
+            .await;
 
         // Check if the primary attempt failed with a rate limit error
         if let Err(AppError::UserFacing(UserFacingError::AiRateLimit)) = &primary_result {
@@ -134,7 +149,9 @@ impl<'a> AiClient<'a> {
                     self.primary_alias,
                     self.fallback_alias
                 );
-                return self.execute_request(fallback, sys_prompt, user_prompt).await;
+                return self
+                    .execute_request(fallback, sys_prompt, user_prompt, cancellation_token)
+                    .await;
             }
         }
 
@@ -147,7 +164,9 @@ impl<'a> AiClient<'a> {
                     self.primary_alias,
                     self.fallback_alias
                 );
-                return self.execute_request(fallback, sys_prompt, user_prompt).await;
+                return self
+                    .execute_request(fallback, sys_prompt, user_prompt, cancellation_token)
+                    .await;
             }
         }
 
@@ -157,7 +176,13 @@ impl<'a> AiClient<'a> {
 
     /// Executes a single AI content generation request against a specific model configuration
     #[instrument(skip_all, fields(provider = config.provider().provider_name()))]
-    async fn execute_request<T>(&self, config: &AiModelConfig, sys_prompt: &str, user_prompt: &str) -> Result<T>
+    async fn execute_request<T>(
+        &self,
+        config: &AiModelConfig,
+        sys_prompt: &str,
+        user_prompt: &str,
+        cancellation_token: CancellationToken,
+    ) -> Result<T>
     where
         T: DeserializeOwned + JsonSchema + Debug,
     {
@@ -184,18 +209,26 @@ impl<'a> AiClient<'a> {
 
         // Call the API
         tracing::debug!("Calling {} API: {}", provider.provider_name(), req.url());
-        let res = self.inner.execute(req).await.map_err(|err| {
-            if err.is_timeout() {
-                tracing::error!("Request timeout: {err:?}");
-                UserFacingError::AiRequestTimeout
-            } else if err.is_connect() {
-                tracing::error!("Couldn't connect to the API: {err:?}");
-                UserFacingError::AiRequestFailed(String::from("error connecting to the provider"))
-            } else {
-                tracing::error!("Couldn't perform the request: {err:?}");
-                UserFacingError::AiRequestFailed(err.to_string())
+        let res = tokio::select! {
+            biased;
+            _ = cancellation_token.cancelled() => {
+                return Err(UserFacingError::Cancelled.into());
             }
-        })?;
+            res = self.inner.execute(req) => {
+                res.map_err(|err| {
+                    if err.is_timeout() {
+                        tracing::error!("Request timeout: {err:?}");
+                        UserFacingError::AiRequestTimeout
+                    } else if err.is_connect() {
+                        tracing::error!("Couldn't connect to the API: {err:?}");
+                        UserFacingError::AiRequestFailed(String::from("error connecting to the provider"))
+                    } else {
+                        tracing::error!("Couldn't perform the request: {err:?}");
+                        UserFacingError::AiRequestFailed(err.to_string())
+                    }
+                })?
+            }
+        };
 
         // Check the response status
         if !res.status().is_success() {

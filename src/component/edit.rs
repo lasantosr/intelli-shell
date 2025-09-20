@@ -8,6 +8,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
 };
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use super::Component;
@@ -50,6 +51,8 @@ pub struct EditCommandComponent {
     layout: Layout,
     /// The operational mode
     mode: EditCommandComponentMode,
+    /// Global cancellation token
+    global_cancellation_token: CancellationToken,
     /// The state of the component
     state: Arc<RwLock<EditCommandComponentState<'static>>>,
 }
@@ -84,6 +87,7 @@ impl EditCommandComponent {
         inline: bool,
         command: Command,
         mode: EditCommandComponentMode,
+        cancellation_token: CancellationToken,
     ) -> Self {
         let alias = CustomTextArea::new(
             theme.secondary,
@@ -129,6 +133,7 @@ impl EditCommandComponent {
             service,
             layout,
             mode,
+            global_cancellation_token: cancellation_token,
             state: Arc::new(RwLock::new(EditCommandComponentState {
                 command,
                 active_field,
@@ -451,8 +456,9 @@ impl Component for EditCommandComponent {
         state.active_input().set_ai_loading(true);
         let cloned_service = self.service.clone();
         let cloned_state = self.state.clone();
+        let cloned_token = self.global_cancellation_token.clone();
         tokio::spawn(async move {
-            let res = cloned_service.suggest_command(&cmd, &description).await;
+            let res = cloned_service.suggest_command(&cmd, &description, cloned_token).await;
             let mut state = cloned_state.write();
             match res {
                 Ok(Some(suggestion)) => {

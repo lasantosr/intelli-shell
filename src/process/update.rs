@@ -1,4 +1,5 @@
 use crossterm::style::Stylize;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     cli::UpdateProcess,
@@ -11,7 +12,12 @@ use crate::{
 };
 
 impl Process for UpdateProcess {
-    async fn execute(self, config: Config, service: IntelliShellService) -> color_eyre::Result<ProcessOutput> {
+    async fn execute(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        _cancellation_token: CancellationToken,
+    ) -> color_eyre::Result<ProcessOutput> {
         let current_version_str = env!("CARGO_PKG_VERSION");
         let current_version_tag = format!("v{current_version_str}");
         let latest_version = match service.check_new_version().await {

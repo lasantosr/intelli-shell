@@ -2,18 +2,19 @@ use color_eyre::{
     Report,
     eyre::{Context, OptionExt, eyre},
 };
-use futures_util::{StreamExt, TryStreamExt, stream};
+use futures_util::{FutureExt, StreamExt, TryStreamExt, stream};
 use git2::{
-    FetchOptions, ProxyOptions, Repository,
+    FetchOptions, ProxyOptions, RemoteCallbacks, Repository,
     build::{CheckoutBuilder, RepoBuilder},
 };
 use tokio::{fs::File, sync::mpsc};
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 use walkdir::WalkDir;
 
 use super::{IntelliShellService, import::parse_import_items};
 use crate::{
-    errors::Result,
+    errors::{Result, UserFacingError},
     model::{ImportStats, SOURCE_TLDR},
 };
 
@@ -67,9 +68,17 @@ impl IntelliShellService {
         category: Option<String>,
         commands: Vec<String>,
         progress: mpsc::Sender<TldrFetchProgress>,
+        cancellation_token: CancellationToken,
     ) -> Result<ImportStats> {
+        // Check for cancellation at the beginning
+        if cancellation_token.is_cancelled() {
+            tracing::info!("TLDR fetch cancelled before starting");
+            return Err(UserFacingError::Cancelled.into());
+        }
+
         // Setup repository
-        self.setup_tldr_repo(progress.clone()).await?;
+        self.setup_tldr_repo(progress.clone(), cancellation_token.clone())
+            .await?;
 
         // Determine which categories to import
         let categories = if let Some(cat) = category {
@@ -110,6 +119,12 @@ impl IntelliShellService {
         let mut command_files = Vec::new();
         let mut iter = WalkDir::new(&pages_path).max_depth(2).into_iter();
         while let Some(result) = iter.next() {
+            // Check for cancellation within the file discovery loop
+            if cancellation_token.is_cancelled() {
+                tracing::info!("TLDR fetch cancelled during file discovery");
+                return Err(UserFacingError::Cancelled.into());
+            }
+
             let entry = result.wrap_err("Couldn't read tldr repository files")?;
             let path = entry.path();
 
@@ -193,12 +208,31 @@ impl IntelliShellService {
             .buffered(5)
             .try_flatten();
 
-        // Import the commands
-        self.storage.import_items(items_stream, true, false).await
+        // Import items while the token is not cancelled
+        let stats = self
+            .storage
+            .import_items(
+                items_stream.take_until(cancellation_token.clone().cancelled_owned().fuse()),
+                true,
+                false,
+            )
+            .await?;
+
+        // After processing, check if cancellation was the reason the stream ended
+        if cancellation_token.is_cancelled() {
+            tracing::info!("TLDR fetch cancelled during command processing");
+            return Err(UserFacingError::Cancelled.into());
+        }
+
+        Ok(stats)
     }
 
     #[instrument(skip_all)]
-    async fn setup_tldr_repo(&self, progress: mpsc::Sender<TldrFetchProgress>) -> Result<bool> {
+    async fn setup_tldr_repo(
+        &self,
+        progress: mpsc::Sender<TldrFetchProgress>,
+        cancellation_token: CancellationToken,
+    ) -> Result<bool> {
         const BRANCH: &str = "main";
         const REPO_URL: &str = "https://github.com/tldr-pages/tldr.git";
 
@@ -210,11 +244,15 @@ impl IntelliShellService {
                 // Use blocking_send as we are in a sync context
                 progress.blocking_send(TldrFetchProgress::Repository(status)).ok();
             };
+            // Setup git callbacks to enable cancellation
+            let mut callbacks = RemoteCallbacks::new();
+            callbacks.transfer_progress(move |_| !cancellation_token.is_cancelled());
             // Setup git fetch options for a swallow copy with auto proxy config
             let mut proxy_opts = ProxyOptions::new();
             proxy_opts.auto();
             let mut fetch_options = FetchOptions::new();
             fetch_options.proxy_options(proxy_opts);
+            fetch_options.remote_callbacks(callbacks);
             fetch_options.depth(1);
             // Fetch latest repo changes or clone it if it doesn't exist yet
             if tldr_repo_path.exists() {
@@ -229,9 +267,13 @@ impl IntelliShellService {
 
                 // Fetch the latest changes from the remote 'main' branch
                 let refspec = format!("refs/heads/{BRANCH}:refs/remotes/origin/{BRANCH}");
-                remote
-                    .fetch(&[refspec], Some(&mut fetch_options), None)
-                    .wrap_err("Failed to fetch from tldr remote")?;
+                if let Err(err) = remote.fetch(&[refspec], Some(&mut fetch_options), None) {
+                    // Check if the error was a user-initiated cancellation
+                    if err.code() == git2::ErrorCode::User && err.class() == git2::ErrorClass::Callback {
+                        return Err(UserFacingError::Cancelled.into());
+                    }
+                    return Err(Report::from(err).wrap_err("Failed to fetch from tldr remote").into());
+                }
 
                 // Get the commit OID from the fetched data (FETCH_HEAD)
                 let fetch_head = repo.find_reference("FETCH_HEAD")?;
@@ -275,11 +317,16 @@ impl IntelliShellService {
                 send_progress(RepoStatus::Cloning);
 
                 // Clone the repository
-                RepoBuilder::new()
+                if let Err(err) = RepoBuilder::new()
                     .branch(BRANCH)
                     .fetch_options(fetch_options)
                     .clone(REPO_URL, &tldr_repo_path)
-                    .wrap_err("Failed to clone tldr repository")?;
+                {
+                    if err.code() == git2::ErrorCode::User && err.class() == git2::ErrorClass::Callback {
+                        return Err(UserFacingError::Cancelled.into());
+                    }
+                    return Err(Report::from(err).wrap_err("Failed to clone tldr repository").into());
+                }
 
                 tracing::info!("Repository successfully cloned");
                 send_progress(RepoStatus::DoneCloning);

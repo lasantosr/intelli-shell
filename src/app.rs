@@ -1,5 +1,6 @@
 use color_eyre::Result;
 use crossterm::event::MouseEventKind;
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use crate::{
@@ -26,12 +27,14 @@ pub enum Action {
 
 /// The main application struct, holding configuration and managing the application flow
 pub struct App {
+    cancellation_token: CancellationToken,
     active_component: Box<dyn Component>,
 }
 impl App {
     /// Creates a new instance of the application
-    pub fn new() -> Result<Self> {
+    pub fn new(cancellation_token: CancellationToken) -> Result<Self> {
         Ok(Self {
+            cancellation_token,
             active_component: Box::new(EmptyComponent),
         })
     }
@@ -142,7 +145,7 @@ impl App {
         if extra_line {
             println!();
         }
-        process.execute(config, service).await
+        process.execute(config, service, self.cancellation_token).await
     }
 
     /// Executes a process that might require an interactive TUI
@@ -161,7 +164,9 @@ impl App {
         // Converts the process into the renderable component and initializes it
         let inline = it.opts.inline || (!it.opts.full_screen && config.inline);
         let keybindings = config.keybindings.clone();
-        self.active_component = it.process.into_component(config, service, inline)?;
+        self.active_component = it
+            .process
+            .into_component(config, service, inline, self.cancellation_token.clone())?;
 
         // Initialize and peek into the component, in case we can give a straight result
         let peek_action = self.active_component.init_and_peek().await?;
@@ -171,7 +176,7 @@ impl App {
         }
 
         // Enter the TUI (inline or fullscreen)
-        let mut tui = Tui::new()?.paste(true).mouse(true);
+        let mut tui = Tui::new(self.cancellation_token.clone())?.paste(true).mouse(true);
         if inline {
             tracing::debug!("Displaying inline {} interactively", self.active_component.name());
             tui.enter_inline(extra_line, self.active_component.min_inline_height())?;
@@ -182,17 +187,27 @@ impl App {
 
         // Main loop
         loop {
-            // Wait for the next event to come in
-            let Some(tui_event) = tui.next_event().await else {
-                tracing::error!("TUI closed unexpectedly, no event received");
-                break;
-            };
-            // Handle the event
-            let action = self.handle_tui_event(tui_event, &mut tui, &keybindings).await?;
-            // Process the action
-            if let Some(output) = self.process_action(action).await? {
-                // If the action generated an output, exit the loop by returning it
-                return Ok(output);
+            tokio::select! {
+                biased;
+                // If the token is cancelled, close the main loop and return
+                _ = self.cancellation_token.cancelled() => {
+                    tracing::info!("Cancellation token received, exiting TUI loop");
+                    return Ok(ProcessOutput::fail());
+                }
+                // Otherwise, wait for the next event to come in
+                maybe_event = tui.next_event() => {
+                    let Some(tui_event) = maybe_event else {
+                        tracing::error!("TUI closed unexpectedly, no event received");
+                        break;
+                    };
+                    // Handle the event
+                    let action = self.handle_tui_event(tui_event, &mut tui, &keybindings).await?;
+                    // Process the action
+                    if let Some(output) = self.process_action(action).await? {
+                        // If the action generated an output, exit the loop by returning it
+                        return Ok(output);
+                    }
+                }
             }
         }
 

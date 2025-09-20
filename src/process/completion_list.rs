@@ -1,5 +1,6 @@
 use color_eyre::Result;
 use itertools::Itertools;
+use tokio_util::sync::CancellationToken;
 
 use super::{Process, ProcessOutput};
 use crate::{
@@ -13,7 +14,12 @@ use crate::{
 };
 
 impl Process for CompletionListProcess {
-    async fn execute(self, config: Config, service: IntelliShellService) -> Result<ProcessOutput> {
+    async fn execute(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        _cancellation_token: CancellationToken,
+    ) -> Result<ProcessOutput> {
         match service.list_variable_completions(self.command.as_deref()).await {
             Ok(completions) => {
                 Ok(ProcessOutput::success().stdout(completions.into_iter().map(|c| c.to_string()).join("\n")))
@@ -25,12 +31,19 @@ impl Process for CompletionListProcess {
 }
 
 impl InteractiveProcess for CompletionListProcess {
-    fn into_component(self, config: Config, service: IntelliShellService, inline: bool) -> Result<Box<dyn Component>> {
+    fn into_component(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        inline: bool,
+        cancellation_token: CancellationToken,
+    ) -> Result<Box<dyn Component>> {
         Ok(Box::new(CompletionListComponent::new(
             service,
             config,
             inline,
             self.command,
+            cancellation_token,
         )))
     }
 }

@@ -3,6 +3,7 @@ use std::time::Duration;
 use color_eyre::Result;
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
+use tokio_util::sync::CancellationToken;
 
 use super::{Process, ProcessOutput};
 use crate::{
@@ -20,7 +21,12 @@ use crate::{
 };
 
 impl Process for ImportItemsProcess {
-    async fn execute(self, config: Config, service: IntelliShellService) -> color_eyre::Result<ProcessOutput> {
+    async fn execute(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        cancellation_token: CancellationToken,
+    ) -> color_eyre::Result<ProcessOutput> {
         let dry_run = self.dry_run;
 
         // If AI is enabled
@@ -36,7 +42,9 @@ impl Process for ImportItemsProcess {
             pb.set_message("Thinking ...");
 
             // Retrieve items using AI
-            let res = service.get_items_from_location(self, config.gist).await;
+            let res = service
+                .get_items_from_location(self, config.gist, cancellation_token)
+                .await;
 
             // Clear the spinner
             pb.finish_and_clear();
@@ -44,7 +52,9 @@ impl Process for ImportItemsProcess {
             res
         } else {
             // If no AI, it's fast enough to not require a spinner
-            service.get_items_from_location(self, config.gist).await
+            service
+                .get_items_from_location(self, config.gist, cancellation_token)
+                .await
         };
 
         // Check retrieval result
@@ -82,12 +92,19 @@ impl Process for ImportItemsProcess {
 }
 
 impl InteractiveProcess for ImportItemsProcess {
-    fn into_component(self, config: Config, service: IntelliShellService, inline: bool) -> Result<Box<dyn Component>> {
+    fn into_component(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        inline: bool,
+        cancellation_token: CancellationToken,
+    ) -> Result<Box<dyn Component>> {
         Ok(Box::new(ImportExportPickerComponent::new(
             service,
             config,
             inline,
             ImportExportPickerComponentMode::Import { input: self },
+            cancellation_token,
         )))
     }
 }

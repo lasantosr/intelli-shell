@@ -1,4 +1,5 @@
 use color_eyre::Result;
+use tokio_util::sync::CancellationToken;
 
 use super::{Process, ProcessOutput};
 use crate::{
@@ -15,7 +16,12 @@ use crate::{
 };
 
 impl Process for ExportItemsProcess {
-    async fn execute(self, config: Config, service: IntelliShellService) -> color_eyre::Result<ProcessOutput> {
+    async fn execute(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        _cancellation_token: CancellationToken,
+    ) -> color_eyre::Result<ProcessOutput> {
         let items = match service.prepare_items_export(self.filter.clone()).await {
             Ok(s) => s,
             Err(AppError::UserFacing(err)) => {
@@ -31,12 +37,19 @@ impl Process for ExportItemsProcess {
     }
 }
 impl InteractiveProcess for ExportItemsProcess {
-    fn into_component(self, config: Config, service: IntelliShellService, inline: bool) -> Result<Box<dyn Component>> {
+    fn into_component(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        inline: bool,
+        cancellation_token: CancellationToken,
+    ) -> Result<Box<dyn Component>> {
         Ok(Box::new(ImportExportPickerComponent::new(
             service,
             config,
             inline,
             ImportExportPickerComponentMode::Export { input: self },
+            cancellation_token,
         )))
     }
 }

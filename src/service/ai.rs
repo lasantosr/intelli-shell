@@ -4,6 +4,7 @@ use futures_util::{Stream, stream};
 use itertools::Itertools;
 use regex::{Captures, Regex};
 use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use super::IntelliShellService;
@@ -39,6 +40,7 @@ impl IntelliShellService {
         command: &str,
         history: Option<&str>,
         mut on_progress: F,
+        cancellation_token: CancellationToken,
     ) -> Result<Option<CommandFix>>
     where
         F: FnMut(AiFixProgress),
@@ -54,7 +56,8 @@ impl IntelliShellService {
         }
 
         // Execute the command and capture its output
-        let (status, output, terminated_by_ctrl_c) = execute_shell_command_capture(command, true).await?;
+        let (status, output, terminated_by_ctrl_c) =
+            execute_shell_command_capture(command, true, cancellation_token.clone()).await?;
 
         // If the command was interrupted by Ctrl+C, skip the fix
         if terminated_by_ctrl_c {
@@ -85,7 +88,7 @@ impl IntelliShellService {
         let fix = self
             .ai
             .fix_client()?
-            .generate_command_fix(&sys_prompt, &user_prompt)
+            .generate_command_fix(&sys_prompt, &user_prompt, cancellation_token)
             .await?;
 
         Ok(Some(fix))
@@ -93,7 +96,7 @@ impl IntelliShellService {
 
     /// Suggest command templates from an user prompt using an AI model
     #[instrument(skip_all)]
-    pub async fn suggest_commands(&self, prompt: &str) -> Result<Vec<Command>> {
+    pub async fn suggest_commands(&self, prompt: &str, cancellation_token: CancellationToken) -> Result<Vec<Command>> {
         // Check if ai is enabled
         if !self.ai.enabled {
             return Err(UserFacingError::AiRequired.into());
@@ -108,7 +111,7 @@ impl IntelliShellService {
         let res = self
             .ai
             .suggest_client()?
-            .generate_command_suggestions(&sys_prompt, prompt)
+            .generate_command_suggestions(&sys_prompt, prompt, cancellation_token)
             .await?;
 
         Ok(res
@@ -120,7 +123,12 @@ impl IntelliShellService {
 
     /// Suggest a command template from a command and description using an AI model
     #[instrument(skip_all)]
-    pub async fn suggest_command(&self, cmd: impl AsRef<str>, description: impl AsRef<str>) -> Result<Option<Command>> {
+    pub async fn suggest_command(
+        &self,
+        cmd: impl AsRef<str>,
+        description: impl AsRef<str>,
+        cancellation_token: CancellationToken,
+    ) -> Result<Option<Command>> {
         // Check if ai is enabled
         if !self.ai.enabled {
             return Err(UserFacingError::AiRequired.into());
@@ -145,7 +153,7 @@ impl IntelliShellService {
         let res = self
             .ai
             .suggest_client()?
-            .generate_command_suggestions(&sys_prompt, &user_prompt)
+            .generate_command_suggestions(&sys_prompt, &user_prompt, cancellation_token)
             .await?;
 
         Ok(res
@@ -163,6 +171,7 @@ impl IntelliShellService {
         tags: Vec<String>,
         category: impl Into<String>,
         source: impl Into<String>,
+        cancellation_token: CancellationToken,
     ) -> Result<impl Stream<Item = Result<Command>> + Send + 'static> {
         // Check if ai is enabled
         if !self.ai.enabled {
@@ -185,7 +194,7 @@ impl IntelliShellService {
             let res = self
                 .ai
                 .suggest_client()?
-                .generate_command_suggestions(&sys_prompt, &prompt)
+                .generate_command_suggestions(&sys_prompt, &prompt, cancellation_token)
                 .await?;
 
             res.suggestions
@@ -215,6 +224,7 @@ impl IntelliShellService {
         root_cmd: impl AsRef<str>,
         variable: impl AsRef<str>,
         description: impl AsRef<str>,
+        cancellation_token: CancellationToken,
     ) -> Result<String> {
         // Check if ai is enabled
         if !self.ai.enabled {
@@ -280,7 +290,7 @@ impl IntelliShellService {
         let res = self
             .ai
             .completion_client()?
-            .generate_completion_suggestion(&sys_prompt, &user_prompt)
+            .generate_completion_suggestion(&sys_prompt, &user_prompt, cancellation_token)
             .await?;
 
         Ok(res.command)

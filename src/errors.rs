@@ -121,6 +121,9 @@ fn print_panic_msg(err: impl AsRef<str>, panic_section: String) {
 /// Represents all possible errors that are meant to be displayed to the end-user
 #[derive(Debug, strum::Display)]
 pub enum UserFacingError {
+    /// The operation was cancelled by the user
+    #[strum(to_string = "Operation cancelled by user")]
+    Cancelled,
     /// The regex pattern provided for a search is invalid
     #[strum(to_string = "Invalid regex pattern")]
     InvalidRegex,

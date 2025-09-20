@@ -16,6 +16,7 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncRead, BufReader, Lines},
 };
 use tokio_stream::Stream;
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use super::IntelliShellService;
@@ -44,6 +45,7 @@ impl IntelliShellService {
         &self,
         args: ImportItemsProcess,
         gist_config: GistConfig,
+        cancellation_token: CancellationToken,
     ) -> Result<ImportExportStream> {
         let ImportItemsProcess {
             location,
@@ -76,30 +78,37 @@ impl IntelliShellService {
 
         // Retrieve the commands from the location
         let commands = if let Some(history) = history {
-            self.get_history_items(history, filter, tags, ai).await?
+            self.get_history_items(history, filter, tags, ai, cancellation_token)
+                .await?
         } else if file {
             if location == "-" {
-                self.get_stdin_items(filter, tags, ai).await?
+                self.get_stdin_items(filter, tags, ai, cancellation_token).await?
             } else {
-                self.get_file_items(location, filter, tags, ai).await?
+                self.get_file_items(location, filter, tags, ai, cancellation_token)
+                    .await?
             }
         } else if http {
-            self.get_http_items(location, headers, method, filter, tags, ai).await?
+            self.get_http_items(location, headers, method, filter, tags, ai, cancellation_token)
+                .await?
         } else if gist {
-            self.get_gist_items(location, gist_config, filter, tags, ai).await?
+            self.get_gist_items(location, gist_config, filter, tags, ai, cancellation_token)
+                .await?
         } else {
             // Determine which mode based on the location
             if location == "gist"
                 || location.starts_with("https://gist.github.com")
                 || location.starts_with("https://api.github.com/gists")
             {
-                self.get_gist_items(location, gist_config, filter, tags, ai).await?
+                self.get_gist_items(location, gist_config, filter, tags, ai, cancellation_token)
+                    .await?
             } else if location.starts_with("http://") || location.starts_with("https://") {
-                self.get_http_items(location, headers, method, filter, tags, ai).await?
+                self.get_http_items(location, headers, method, filter, tags, ai, cancellation_token)
+                    .await?
             } else if location == "-" {
-                self.get_stdin_items(filter, tags, ai).await?
+                self.get_stdin_items(filter, tags, ai, cancellation_token).await?
             } else {
-                self.get_file_items(location, filter, tags, ai).await?
+                self.get_file_items(location, filter, tags, ai, cancellation_token)
+                    .await?
             }
         };
 
@@ -113,6 +122,7 @@ impl IntelliShellService {
         filter: Option<Regex>,
         tags: Vec<String>,
         ai: bool,
+        cancellation_token: CancellationToken,
     ) -> Result<ImportExportStream> {
         if let Some(ref filter) = filter {
             tracing::info!(ai, "Importing commands matching `{filter}` from {history:?} history");
@@ -120,18 +130,26 @@ impl IntelliShellService {
             tracing::info!(ai, "Importing commands from {history:?} history");
         }
         let content = Cursor::new(read_history(history)?);
-        self.extract_and_filter_items(content, filter, tags, ai).await
+        self.extract_and_filter_items(content, filter, tags, ai, cancellation_token)
+            .await
     }
 
     #[instrument(skip_all)]
-    async fn get_stdin_items(&self, filter: Option<Regex>, tags: Vec<String>, ai: bool) -> Result<ImportExportStream> {
+    async fn get_stdin_items(
+        &self,
+        filter: Option<Regex>,
+        tags: Vec<String>,
+        ai: bool,
+        cancellation_token: CancellationToken,
+    ) -> Result<ImportExportStream> {
         if let Some(ref filter) = filter {
             tracing::info!(ai, "Importing commands matching `{filter}` from stdin");
         } else {
             tracing::info!(ai, "Importing commands from stdin");
         }
         let content = tokio::io::stdin();
-        self.extract_and_filter_items(content, filter, tags, ai).await
+        self.extract_and_filter_items(content, filter, tags, ai, cancellation_token)
+            .await
     }
 
     #[instrument(skip_all)]
@@ -141,6 +159,7 @@ impl IntelliShellService {
         filter: Option<Regex>,
         tags: Vec<String>,
         ai: bool,
+        cancellation_token: CancellationToken,
     ) -> Result<ImportExportStream> {
         // Otherwise, check the path to import the file
         match fs::metadata(&path).await {
@@ -158,7 +177,8 @@ impl IntelliShellService {
             tracing::info!(ai, "Importing commands from file: {path}");
         }
         let content = File::open(path).await.wrap_err("Couldn't open the file")?;
-        self.extract_and_filter_items(content, filter, tags, ai).await
+        self.extract_and_filter_items(content, filter, tags, ai, cancellation_token)
+            .await
     }
 
     #[instrument(skip_all)]
@@ -170,6 +190,7 @@ impl IntelliShellService {
         filter: Option<Regex>,
         tags: Vec<String>,
         ai: bool,
+        cancellation_token: CancellationToken,
     ) -> Result<ImportExportStream> {
         // If the URL is the stdin placeholder, read a line from it
         if url == "-" {
@@ -268,7 +289,8 @@ impl IntelliShellService {
                 tracing::error!("Couldn't read api response: {err}");
                 UserFacingError::HttpRequestFailed(String::from("couldn't read api response"))
             })?);
-            self.extract_and_filter_items(content, filter, tags, ai).await
+            self.extract_and_filter_items(content, filter, tags, ai, cancellation_token)
+                .await
         }
     }
 
@@ -280,6 +302,7 @@ impl IntelliShellService {
         filter: Option<Regex>,
         tags: Vec<String>,
         ai: bool,
+        cancellation_token: CancellationToken,
     ) -> Result<ImportExportStream> {
         // If the gist is the stdin placeholder, read a line from it
         if gist == "-" {
@@ -292,7 +315,7 @@ impl IntelliShellService {
         // For raw gists, import as regular http requests
         if gist.starts_with("https://gist.githubusercontent.com") {
             return self
-                .get_http_items(gist, Vec::new(), HttpMethod::GET, filter, tags, ai)
+                .get_http_items(gist, Vec::new(), HttpMethod::GET, filter, tags, ai, cancellation_token)
                 .await;
         }
 
@@ -371,7 +394,8 @@ impl IntelliShellService {
         };
 
         let content = Cursor::new(full_content);
-        self.extract_and_filter_items(content, filter, tags, ai).await
+        self.extract_and_filter_items(content, filter, tags, ai, cancellation_token)
+            .await
     }
 
     /// Extract the commands from the given content, prompting ai or parsing it, and then filters them
@@ -381,10 +405,11 @@ impl IntelliShellService {
         filter: Option<Regex>,
         tags: Vec<String>,
         ai: bool,
+        cancellation_token: CancellationToken,
     ) -> Result<ImportExportStream> {
         let stream: ImportExportStream = if ai {
             let commands = self
-                .prompt_commands_import(content, tags, CATEGORY_USER, SOURCE_IMPORT)
+                .prompt_commands_import(content, tags, CATEGORY_USER, SOURCE_IMPORT, cancellation_token)
                 .await?;
             Box::pin(commands.map_ok(ImportExportItem::Command))
         } else {

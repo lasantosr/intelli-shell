@@ -53,6 +53,8 @@ pub struct SearchCommandsComponent {
     search_delay: Duration,
     /// Cancellation token for the current refresh task
     refresh_token: Arc<Mutex<Option<CancellationToken>>>,
+    /// Global cancellation token
+    global_cancellation_token: CancellationToken,
     /// The state of the component
     state: Arc<RwLock<SearchCommandsComponentState<'static>>>,
 }
@@ -85,6 +87,7 @@ impl SearchCommandsComponent {
         inline: bool,
         query: impl Into<String>,
         initialize_with_ai: bool,
+        cancellation_token: CancellationToken,
     ) -> Self {
         let query = CustomTextArea::new(config.theme.primary, inline, false, query.into()).focused();
 
@@ -113,6 +116,7 @@ impl SearchCommandsComponent {
             layout,
             search_delay: Duration::from_millis(delay),
             refresh_token: Arc::new(Mutex::new(None)),
+            global_cancellation_token: cancellation_token,
             state: Arc::new(RwLock::new(SearchCommandsComponentState {
                 initialize_with_ai,
                 mode,
@@ -514,6 +518,7 @@ impl Component for SearchCommandsComponent {
                     EditCommandComponentMode::Edit {
                         parent: Box::new(self.clone()),
                     },
+                    self.global_cancellation_token.clone(),
                 ))))
             } else {
                 self.state
@@ -584,7 +589,10 @@ impl Component for SearchCommandsComponent {
             self.update_config(None, None, Some(true));
             let this = self.clone();
             tokio::spawn(async move {
-                let res = this.service.suggest_commands(&query).await;
+                let res = this
+                    .service
+                    .suggest_commands(&query, this.global_cancellation_token.clone())
+                    .await;
                 let mut state = this.state.write();
                 let commands = match res {
                     Ok(suggestions) => {
@@ -838,6 +846,7 @@ impl SearchCommandsComponent {
                 execute,
                 false,
                 template,
+                self.global_cancellation_token.clone(),
             ))))
         } else if execute {
             // If it doesn't and execute is true, execute the command

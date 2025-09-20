@@ -15,10 +15,8 @@ use color_eyre::eyre::Context;
 use ignore::WalkBuilder;
 use os_info::Info;
 use sysinfo::{Pid, System};
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    signal,
-};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio_util::sync::CancellationToken;
 use wait_timeout::ChildExt;
 
 #[derive(Debug)]
@@ -366,7 +364,11 @@ fn build_tree_from_map(
 }
 
 /// Executes a shell command, inheriting the parent's `stdout` and `stderr`
-pub async fn execute_shell_command_inherit(command: &str, include_prompt: bool) -> color_eyre::Result<ExitStatus> {
+pub async fn execute_shell_command_inherit(
+    command: &str,
+    include_prompt: bool,
+    cancellation_token: CancellationToken,
+) -> color_eyre::Result<ExitStatus> {
     let mut cmd = prepare_command_execution(command, true, include_prompt)?;
 
     // Spawn the child process to get a handle to it
@@ -374,13 +376,13 @@ pub async fn execute_shell_command_inherit(command: &str, include_prompt: bool) 
         .spawn()
         .with_context(|| format!("Failed to spawn command: `{command}`"))?;
 
-    // Race the child process against a Ctrl+C signal
+    // Race the child process against the cancellation token
     let status = tokio::select! {
-        // Prioritize Ctrl+C handler
+        // Prioritize cancellation token
         biased;
-        // User presses Ctrl+C
-        _ = signal::ctrl_c() => {
-            tracing::info!("Received Ctrl+C, terminating child process...");
+        // Task is cancelled
+        _ = cancellation_token.cancelled() => {
+            tracing::info!("Received cancellation signal, terminating child process...");
             // Send a kill signal to the child process
             child.kill().await.with_context(|| format!("Failed to kill child process for command: `{command}`"))?;
             // Wait for the process to exit and get its status
@@ -401,6 +403,7 @@ pub async fn execute_shell_command_inherit(command: &str, include_prompt: bool) 
 pub async fn execute_shell_command_capture(
     command: &str,
     include_prompt: bool,
+    cancellation_token: CancellationToken,
 ) -> color_eyre::Result<(ExitStatus, String, bool)> {
     let mut cmd = prepare_command_execution(command, true, include_prompt)?;
 
@@ -418,8 +421,8 @@ pub async fn execute_shell_command_capture(
 
     let mut output_capture = String::new();
 
-    // Flag to track if the process was terminated by our signal handler
-    let mut terminated_by_signal = false;
+    // Flag to track if the process was terminated by the cancellation token
+    let mut terminated_by_token = false;
 
     // Use boolean flags to track when each stream is finished
     let mut stdout_done = false;
@@ -428,15 +431,15 @@ pub async fn execute_shell_command_capture(
     // Loop until both stdout and stderr streams have been completely read
     while !stdout_done || !stderr_done {
         tokio::select! {
-            // Prioritize Ctrl+C handler
+            // Prioritize cancellation token
             biased;
-            // User presses Ctrl+C
-            _ = signal::ctrl_c() => {
-                tracing::info!("Received Ctrl+C, terminating child process...");
+            // Task is cancelled
+            _ = cancellation_token.cancelled() => {
+                tracing::info!("Received cancellation signal, terminating child process...");
                 // Kill the child process, this will also cause the stdout/stderr streams to close
                 child.kill().await.with_context(|| format!("Failed to kill child process for command: `{command}`"))?;
                 // Set the flag to true since we handled the signal
-                terminated_by_signal = true;
+                terminated_by_token = true;
                 // Break the loop to proceed to the final `child.wait()`
                 break;
             },
@@ -470,7 +473,7 @@ pub async fn execute_shell_command_capture(
     // Wait for the process to fully exit to get its final status
     let status = child.wait().await.wrap_err("Failed to wait for command")?;
 
-    Ok((status, output_capture, terminated_by_signal))
+    Ok((status, output_capture, terminated_by_token))
 }
 
 /// Builds a base `Command` object for executing a command string via the OS shell

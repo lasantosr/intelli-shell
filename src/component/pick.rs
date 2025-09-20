@@ -9,6 +9,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
 };
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use super::Component;
@@ -52,6 +53,8 @@ pub struct ImportExportPickerComponent {
     mode: ImportExportPickerComponentMode,
     /// Whether the component has been initialized
     initialized: bool,
+    /// Global cancellation token
+    global_cancellation_token: CancellationToken,
     /// The state of the component
     state: Arc<RwLock<ImportExportPickerComponentState<'static>>>,
 }
@@ -75,6 +78,7 @@ impl ImportExportPickerComponent {
         config: Config,
         inline: bool,
         mode: ImportExportPickerComponentMode,
+        cancellation_token: CancellationToken,
     ) -> Self {
         let title = match &mode {
             ImportExportPickerComponentMode::Import { .. } => " Import (Space to discard, Enter to continue) ",
@@ -98,6 +102,7 @@ impl ImportExportPickerComponent {
             layout,
             mode,
             initialized: false,
+            global_cancellation_token: cancellation_token,
             state: Arc::new(RwLock::new(ImportExportPickerComponentState {
                 items,
                 error,
@@ -139,7 +144,11 @@ impl Component for ImportExportPickerComponent {
                     // Fetch items from the given import location
                     let items: Result<Vec<ImportExportItem>, AppError> = match this
                         .service
-                        .get_items_from_location(input, this.config.gist.clone())
+                        .get_items_from_location(
+                            input,
+                            this.config.gist.clone(),
+                            this.global_cancellation_token.clone(),
+                        )
                         .await
                     {
                         Ok(c) => c.try_collect().await,
@@ -365,6 +374,7 @@ impl Component for ImportExportPickerComponent {
                             parent: parent_component,
                             callback,
                         },
+                        self.global_cancellation_token.clone(),
                     ))))
                 }
                 ImportExportItem::Completion(completion) => {
@@ -390,6 +400,7 @@ impl Component for ImportExportPickerComponent {
                             parent: parent_component,
                             callback,
                         },
+                        self.global_cancellation_token.clone(),
                     ))))
                 }
             }

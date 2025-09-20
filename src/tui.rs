@@ -9,7 +9,10 @@ use std::{
 use color_eyre::Result;
 use crossterm::{
     cursor,
-    event::{self, Event as CrosstermEvent, EventStream, KeyEvent, KeyEventKind, KeyboardEnhancementFlags, MouseEvent},
+    event::{
+        self, Event as CrosstermEvent, EventStream, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+        KeyboardEnhancementFlags, MouseEvent,
+    },
     style,
     terminal::{self, ClearType, supports_keyboard_enhancement},
 };
@@ -50,7 +53,8 @@ pub struct Tui {
     stdout: Stdout,
     terminal: Terminal<Backend<Stdout>>,
     task: JoinHandle<()>,
-    cancellation_token: CancellationToken,
+    loop_cancellation_token: CancellationToken,
+    global_cancellation_token: CancellationToken,
     event_rx: UnboundedReceiver<Event>,
     event_tx: UnboundedSender<Event>,
     frame_rate: f64,
@@ -78,13 +82,14 @@ struct InlineTuiContext {
 #[allow(dead_code, reason = "provide a useful interface, even if not required yet")]
 impl Tui {
     /// Constructs a new terminal ui with default settings
-    pub fn new() -> Result<Self> {
+    pub fn new(cancellation_token: CancellationToken) -> Result<Self> {
         let (event_tx, event_rx) = mpsc::unbounded_channel();
         Ok(Self {
             stdout: stdout(),
             terminal: Terminal::new(Backend::new(stdout()))?,
             task: tokio::spawn(async {}),
-            cancellation_token: CancellationToken::new(),
+            loop_cancellation_token: CancellationToken::new(),
+            global_cancellation_token: cancellation_token,
             event_rx,
             event_tx,
             frame_rate: 60.0,
@@ -322,7 +327,7 @@ impl Tui {
 
     fn start(&mut self) {
         self.cancel();
-        self.cancellation_token = CancellationToken::new();
+        self.loop_cancellation_token = CancellationToken::new();
 
         tracing::trace!(
             tick_rate = self.tick_rate,
@@ -332,7 +337,8 @@ impl Tui {
 
         self.task = tokio::spawn(Self::event_loop(
             self.event_tx.clone(),
-            self.cancellation_token.clone(),
+            self.loop_cancellation_token.clone(),
+            self.global_cancellation_token.clone(),
             self.tick_rate,
             self.frame_rate,
         ));
@@ -341,7 +347,8 @@ impl Tui {
     #[instrument(skip_all)]
     async fn event_loop(
         event_tx: UnboundedSender<Event>,
-        cancellation_token: CancellationToken,
+        loop_cancellation_token: CancellationToken,
+        global_cancellation_token: CancellationToken,
         tick_rate: f64,
         frame_rate: f64,
     ) {
@@ -354,14 +361,27 @@ impl Tui {
                 // Ensure signals are checked in order (cancellation first)
                 biased;
 
-                // Exit the loop if cancellation is requested
-                _ = cancellation_token.cancelled() => {
+                // Exit the loop if any cancellation is requested
+                _ = loop_cancellation_token.cancelled() => {
+                    break;
+                }
+                _ = global_cancellation_token.cancelled() => {
                     break;
                 }
 
                 // Crossterm events
                 crossterm_event = event_stream.next().fuse() => match crossterm_event {
                     Some(Ok(event)) => match event {
+                        // On raw mode, SIGINT is no longer received and we should handle it manually
+                        CrosstermEvent::Key(KeyEvent {
+                            code: KeyCode::Char('c'),
+                            modifiers: KeyModifiers::CONTROL,
+                            ..
+                        }) => {
+                            tracing::debug!("Ctrl+C key event received in TUI, cancelling token");
+                            global_cancellation_token.cancel();
+                            continue;
+                        }
                         // Process only key press events to avoid duplicate events for release/repeat
                         CrosstermEvent::Key(key) if key.kind == KeyEventKind::Press => Event::Key(key),
                         CrosstermEvent::Mouse(mouse) => Event::Mouse(mouse),
@@ -392,7 +412,7 @@ impl Tui {
 
         // Ensure the token is cancelled if the loop exits for reasons other than direct cancellation
         // (e.g. event_stream ending or send error).
-        cancellation_token.cancel();
+        loop_cancellation_token.cancel();
     }
 
     fn stop(&self) {
@@ -418,7 +438,7 @@ impl Tui {
     }
 
     fn cancel(&self) {
-        self.cancellation_token.cancel();
+        self.loop_cancellation_token.cancel();
     }
 }
 

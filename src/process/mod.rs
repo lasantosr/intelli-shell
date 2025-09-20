@@ -1,4 +1,5 @@
 use clap::{Args, FromArgMatches};
+use tokio_util::sync::CancellationToken;
 
 use crate::{component::Component, config::Config, service::IntelliShellService};
 
@@ -124,7 +125,12 @@ impl ProcessOutput {
 #[trait_variant::make(Send)]
 pub trait Process {
     /// Executes the process non-interactively and returns the output
-    async fn execute(self, config: Config, service: IntelliShellService) -> color_eyre::Result<ProcessOutput>;
+    async fn execute(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        cancellation_token: CancellationToken,
+    ) -> color_eyre::Result<ProcessOutput>;
 }
 
 /// Trait for interactive processes
@@ -135,5 +141,6 @@ pub trait InteractiveProcess: Process + FromArgMatches + Args {
         config: Config,
         service: IntelliShellService,
         inline: bool,
+        cancellation_token: CancellationToken,
     ) -> color_eyre::Result<Box<dyn Component>>;
 }

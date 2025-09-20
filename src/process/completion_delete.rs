@@ -1,4 +1,5 @@
 use color_eyre::Result;
+use tokio_util::sync::CancellationToken;
 
 use super::{Process, ProcessOutput};
 use crate::{
@@ -7,7 +8,12 @@ use crate::{
 };
 
 impl Process for CompletionDeleteProcess {
-    async fn execute(self, config: Config, service: IntelliShellService) -> Result<ProcessOutput> {
+    async fn execute(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        _cancellation_token: CancellationToken,
+    ) -> Result<ProcessOutput> {
         let root_cmd = self.command.as_deref().unwrap_or_default();
         let variable_name = &self.variable;
         match service.delete_variable_completion_by_key(root_cmd, variable_name).await {

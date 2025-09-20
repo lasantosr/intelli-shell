@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use indicatif::{ProgressBar, ProgressStyle};
+use tokio_util::sync::CancellationToken;
 
 use super::{Process, ProcessOutput};
 use crate::{
@@ -14,7 +15,12 @@ use crate::{
 };
 
 impl Process for CommandFixProcess {
-    async fn execute(self, config: Config, service: IntelliShellService) -> color_eyre::Result<ProcessOutput> {
+    async fn execute(
+        self,
+        config: Config,
+        service: IntelliShellService,
+        cancellation_token: CancellationToken,
+    ) -> color_eyre::Result<ProcessOutput> {
         // Setup the progress bar
         let pb = ProgressBar::new_spinner();
         pb.set_style(
@@ -37,7 +43,7 @@ impl Process for CommandFixProcess {
 
         // Call the service to fix the command
         let res = service
-            .fix_command(&self.command, self.history.as_deref(), on_progress)
+            .fix_command(&self.command, self.history.as_deref(), on_progress, cancellation_token)
             .await;
 
         // Clear the spinner

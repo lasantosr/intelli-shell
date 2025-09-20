@@ -10,6 +10,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use super::{
@@ -42,6 +43,8 @@ pub struct CompletionListComponent {
     service: IntelliShellService,
     /// The component layout
     layout: Layout,
+    /// Global cancellation token
+    global_cancellation_token: CancellationToken,
     /// The state of the component
     state: Arc<RwLock<CompletionListComponentState<'static>>>,
 }
@@ -69,7 +72,13 @@ enum ActiveList {
 
 impl CompletionListComponent {
     /// Creates a new [`CompletionListComponent`]
-    pub fn new(service: IntelliShellService, config: Config, inline: bool, root_cmd: Option<String>) -> Self {
+    pub fn new(
+        service: IntelliShellService,
+        config: Config,
+        inline: bool,
+        root_cmd: Option<String>,
+        cancellation_token: CancellationToken,
+    ) -> Self {
         let root_cmds = CustomList::new(config.theme.clone(), inline, Vec::new()).title(" Commands ");
         let completions = CustomList::new(config.theme.clone(), inline, Vec::new()).title(" Completions ");
 
@@ -96,6 +105,7 @@ impl CompletionListComponent {
             inline,
             service,
             layout,
+            global_cancellation_token: cancellation_token,
             state: Arc::new(RwLock::new(state)),
         }
     }
@@ -307,6 +317,7 @@ impl Component for CompletionListComponent {
                     EditCompletionComponentMode::Edit {
                         parent: Box::new(self.clone()),
                     },
+                    self.global_cancellation_token.clone(),
                 ))))
             } else {
                 self.state
