@@ -230,15 +230,15 @@ enabled = false
 # Assign models to tasks by their alias (which must be defined in the Model Catalog below)
 [ai.models]
 # The alias of the model to use for generating command templates from natural language
-suggest = "gemini"
+suggest = "main"
 # The alias of the model used to fix or explain a failing command
-fix = "gemini"
+fix = "main"
 # The alias of the model to use when importing commands
-import = "gemini"
+import = "main"
 # The alias of the model to use when generating a command for a dynamic variable completion
-completion = "gemini"
+completion = "main"
 # The alias of a model to use as a fallback if the primary model fails due to rate limits
-fallback = "gemini-fallback"
+fallback = "fallback"
 
 # --- Model Catalog ---
 # This is where you define the specific configuration for each AI model alias used above.
@@ -249,11 +249,11 @@ fallback = "gemini-fallback"
 # - "anthropic": ANTHROPIC_API_KEY
 # - "ollama":    OLLAMA_API_KEY (often not required for local instances)
 
-[ai.catalog.gemini]
+[ai.catalog.main]
 provider = "gemini"
 model = "gemini-2.5-flash"
 
-[ai.catalog.gemini-fallback]
+[ai.catalog.fallback]
 provider = "gemini"
 model = "gemini-2.0-flash-lite"
 

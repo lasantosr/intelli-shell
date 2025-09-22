@@ -65,13 +65,10 @@ environment variables associated with each one:
 
 #### Configuration Examples
 
-Here are some examples of how to configure different models in your catalog.
-Each model you define must be under `ai.catalog.<your-alias-name>`.
+Below are several examples for configuring different models within your `[ai.catalog]`.
 
-> ⚠️ **IMPORTANT**
->
-> When you add your first model to `[ai.catalog]`, it replaces the _entire_ default catalog. Therefore, you must ensure
-> the model aliases you create match the ones assigned in the `[ai.models]` section above.
+> **💡 Shortcut**: You can also just overwrite the default `main` and `fallback` aliases directly in your catalog. This
+> changes the model used without needing to edit `[ai.models]`.
 
 - **OpenAI**
 

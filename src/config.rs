@@ -299,6 +299,7 @@ pub struct AiConfig {
     ///
     /// Each entry maps a custom alias (e.g., `fast-model`, `smart-model`) to its specific provider settings. These
     /// aliases are then referenced by the `suggest`, `fix`, `import`, and `fallback` fields.
+    #[serde(deserialize_with = "deserialize_catalog_with_defaults")]
     pub catalog: BTreeMap<String, AiModelConfig>,
 }
 
@@ -842,41 +843,44 @@ impl Default for SearchVariableContextTuning {
         Self { points: 700 }
     }
 }
+fn default_ai_catalog() -> BTreeMap<String, AiModelConfig> {
+    BTreeMap::from([
+        (
+            "main".to_string(),
+            AiModelConfig::Gemini(GeminiModelConfig {
+                model: "gemini-2.5-flash".to_string(),
+                url: default_gemini_url(),
+                api_key_env: default_gemini_api_key_env(),
+            }),
+        ),
+        (
+            "fallback".to_string(),
+            AiModelConfig::Gemini(GeminiModelConfig {
+                model: "gemini-2.0-flash-lite".to_string(),
+                url: default_gemini_url(),
+                api_key_env: default_gemini_api_key_env(),
+            }),
+        ),
+    ])
+}
 impl Default for AiConfig {
     fn default() -> Self {
         Self {
             enabled: false,
             models: AiModelsConfig::default(),
             prompts: AiPromptsConfig::default(),
-            catalog: BTreeMap::from([
-                (
-                    "gemini".to_string(),
-                    AiModelConfig::Gemini(GeminiModelConfig {
-                        model: "gemini-2.5-flash".to_string(),
-                        url: default_gemini_url(),
-                        api_key_env: default_gemini_api_key_env(),
-                    }),
-                ),
-                (
-                    "gemini-fallback".to_string(),
-                    AiModelConfig::Gemini(GeminiModelConfig {
-                        model: "gemini-2.0-flash-lite".to_string(),
-                        url: default_gemini_url(),
-                        api_key_env: default_gemini_api_key_env(),
-                    }),
-                ),
-            ]),
+            catalog: default_ai_catalog(),
         }
     }
 }
 impl Default for AiModelsConfig {
     fn default() -> Self {
         Self {
-            suggest: "gemini".to_string(),
-            fix: "gemini".to_string(),
-            import: "gemini".to_string(),
-            completion: "gemini".to_string(),
-            fallback: "gemini-fallback".to_string(),
+            suggest: "main".to_string(),
+            fix: "main".to_string(),
+            import: "main".to_string(),
+            completion: "main".to_string(),
+            fallback: "fallback".to_string(),
         }
     }
 }
@@ -1330,6 +1334,27 @@ fn parse_color_inner(raw: &str) -> Result<Color, String> {
             }
         }
     })
+}
+
+/// Custom deserialization for the AI model catalog that merges user-defined models with default models.
+///
+/// User-defined models in the configuration file will override any defaults with the same name.
+/// Any default models not defined by the user will be added to the final catalog.
+fn deserialize_catalog_with_defaults<'de, D>(deserializer: D) -> Result<BTreeMap<String, AiModelConfig>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[allow(unused_mut)]
+    // Deserialize the map as provided in the user's config
+    let mut user_catalog = BTreeMap::<String, AiModelConfig>::deserialize(deserializer)?;
+
+    // Get the default catalog and merge it in
+    #[cfg(not(test))]
+    for (key, default_model) in default_ai_catalog() {
+        user_catalog.entry(key).or_insert(default_model);
+    }
+
+    Ok(user_catalog)
 }
 
 #[cfg(test)]
