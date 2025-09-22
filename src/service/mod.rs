@@ -21,12 +21,15 @@ mod command;
 mod completion;
 mod export;
 mod import;
-mod tldr;
 mod variable;
 mod version;
 
+#[cfg(feature = "tldr")]
+mod tldr;
+
 pub use ai::AiFixProgress;
 pub use completion::{FORBIDDEN_COMPLETION_ROOT_CMD_CHARS, FORBIDDEN_COMPLETION_VARIABLE_CHARS};
+#[cfg(feature = "tldr")]
 pub use tldr::{RepoStatus, TldrFetchProgress};
 
 /// Service for managing user commands in IntelliShell
@@ -36,6 +39,7 @@ pub struct IntelliShellService {
     storage: SqliteStorage,
     tuning: SearchTuning,
     ai: AiConfig,
+    #[cfg(feature = "tldr")]
     tldr_repo_path: PathBuf,
     version_check_state: Arc<Mutex<version::VersionCheckState>>,
 }
@@ -54,6 +58,7 @@ impl IntelliShellService {
             storage,
             tuning,
             ai,
+            #[cfg(feature = "tldr")]
             tldr_repo_path: data_dir.as_ref().join("tldr"),
             version_check_state: Arc::new(Mutex::new(version::VersionCheckState::NotStarted)),
         }

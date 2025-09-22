@@ -70,7 +70,8 @@ impl Process for UpdateProcess {
                 match status {
                     Ok(self_update::Status::UpToDate(_)) => unreachable!(),
                     Ok(self_update::Status::Updated(_)) => Ok(ProcessOutput::success().stdout(format!(
-                        "✅ Update complete! You are now on intelli-shell {}.",
+                        "✅ Update complete! You are now on intelli-shell {}.\n\n💡 Some updates refine shell \
+                         integration; a terminal restart might be required if you experience any issues.",
                         latest_version_tag.cyan()
                     ))),
                     Err(e) => Ok(ProcessOutput::fail().stderr(format!(

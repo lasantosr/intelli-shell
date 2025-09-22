@@ -15,6 +15,9 @@ vhs/generate_all_tapes.sh {{--merge-only}}
 # [alias:isq] Executes an sql query to debug it
 intelli-shell query {{debug/query.sql}}
 
+# Check that the project builds with all feature combinations
+cargo hack check --feature-powerset
+
 # [alias:release] Create a new release
 ./release.sh {{patch|minor|major}}
 

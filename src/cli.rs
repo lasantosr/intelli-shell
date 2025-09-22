@@ -102,6 +102,7 @@ pub enum CliProcess {
     #[command(after_long_help = include_str!("_examples/import.txt"))]
     Import(Interactive<ImportItemsProcess>),
 
+    #[cfg(feature = "tldr")]
     /// Manages tldr integration
     #[command(name = "tldr", subcommand)]
     Tldr(TldrProcess),
@@ -110,10 +111,12 @@ pub enum CliProcess {
     #[command(subcommand)]
     Completion(CompletionProcess),
 
+    #[cfg(feature = "self-update")]
     /// Updates intelli-shell to the latest version if possible, or shows update instructions
     Update(UpdateProcess),
 }
 
+#[cfg(feature = "tldr")]
 #[derive(Subcommand)]
 #[cfg_attr(debug_assertions, derive(Debug))]
 pub enum TldrProcess {
@@ -392,6 +395,7 @@ impl From<HttpMethod> for Method {
     }
 }
 
+#[cfg(feature = "tldr")]
 /// Fetches command examples from tldr pages and imports them
 #[derive(Args, Debug)]
 pub struct TldrFetchProcess {
@@ -414,6 +418,7 @@ pub struct TldrFetchProcess {
     pub filter_commands: Option<FileOrStdin>,
 }
 
+#[cfg(feature = "tldr")]
 /// Clear command examples from tldr pages
 #[derive(Args, Debug)]
 pub struct TldrClearProcess {
@@ -457,6 +462,7 @@ pub struct CompletionListProcess {
     pub command: Option<String>,
 }
 
+#[cfg(feature = "self-update")]
 #[derive(Args, Debug)]
 pub struct UpdateProcess {}
 

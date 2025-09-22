@@ -15,6 +15,11 @@ name = "intelli-shell"
 path = "src/main.rs"
 required-features = []
 
+[features]
+default = ["tldr", "self-update"]
+tldr = ["dep:git2"]
+self-update = ["dep:self_update"]
+
 [dependencies]
 async-stream       = "0.3"
 async-trait        = "0.1"
@@ -27,7 +32,6 @@ crossterm          = { version = "0.28.1", features = ["serde", "event-stream", 
 directories        = "6"
 enum_cycling       = { version = "0.2", features = ["derive"] }
 futures-util       = "0.3"
-git2               = { version = "0.20", default-features = false, features = ["https", "vendored-openssl", "vendored-libgit2"] }
 heck               = "0.5"
 ignore             = "0.4"
 indicatif          = "0.18"
@@ -68,9 +72,16 @@ uuid               = { version = "1", features = ["serde", "v7"] }
 wait-timeout       = "0.2"
 walkdir            = "2"
 
+[dependencies.git2]
+default-features = false
+features         = ["https", "vendored-openssl", "vendored-libgit2"]
+optional         = true
+version          = "0.20"
+
 [dependencies.self_update]
 default-features = false
 features         = ["rustls", "archive-zip", "compression-zip-deflate", "archive-tar", "compression-flate2"]
+optional         = true
 version          = "0.42"
 
 [dev-dependencies]

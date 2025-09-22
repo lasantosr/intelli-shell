@@ -12,8 +12,12 @@ pub mod import;
 pub mod new;
 pub mod replace;
 pub mod search;
+
+#[cfg(feature = "tldr")]
 pub mod tldr_clear;
+#[cfg(feature = "tldr")]
 pub mod tldr_fetch;
+#[cfg(feature = "self-update")]
 pub mod update;
 
 #[cfg(debug_assertions)]

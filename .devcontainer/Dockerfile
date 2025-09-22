@@ -22,7 +22,7 @@ RUN apt-get install -y zsh fish gnupg2 bat bc ffmpeg chromium vhs
 
 # Install some cargo utilities
 RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-RUN cargo binstall --no-confirm --no-symlinks cargo-audit cargo-nextest mdbook
+RUN cargo binstall --no-confirm --no-symlinks cargo-audit cargo-nextest cargo-hack mdbook
 
 # Create default non-root user
 ARG USERNAME=rust

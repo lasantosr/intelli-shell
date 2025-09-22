@@ -4,7 +4,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use crate::{
-    cli::{CliProcess, CompletionProcess, Interactive, TldrProcess},
+    cli::{CliProcess, CompletionProcess, Interactive},
     component::{Component, EmptyComponent},
     config::{Config, KeyBindingsConfig},
     errors::AppError,
@@ -97,12 +97,14 @@ impl App {
                 tracing::debug!("Options: {:?}", import_commands);
                 self.run_interactive(import_commands, config, service, extra_line).await
             }
-            CliProcess::Tldr(TldrProcess::Fetch(tldr_fetch)) => {
+            #[cfg(feature = "tldr")]
+            CliProcess::Tldr(crate::cli::TldrProcess::Fetch(tldr_fetch)) => {
                 tracing::info!("Running tldr 'fetch' process");
                 tracing::debug!("Options: {:?}", tldr_fetch);
                 self.run_non_interactive(tldr_fetch, config, service, extra_line).await
             }
-            CliProcess::Tldr(TldrProcess::Clear(tldr_clear)) => {
+            #[cfg(feature = "tldr")]
+            CliProcess::Tldr(crate::cli::TldrProcess::Clear(tldr_clear)) => {
                 tracing::info!("Running tldr 'clear' process");
                 tracing::debug!("Options: {:?}", tldr_clear);
                 self.run_non_interactive(tldr_clear, config, service, extra_line).await
@@ -124,6 +126,7 @@ impl App {
                 service.load_workspace_items().await.map_err(AppError::into_report)?;
                 self.run_interactive(completion_list, config, service, extra_line).await
             }
+            #[cfg(feature = "self-update")]
             CliProcess::Update(update) => {
                 tracing::info!("Running 'update' process");
                 tracing::debug!("Options: {:?}", update);
