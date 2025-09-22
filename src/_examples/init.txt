@@ -9,4 +9,4 @@ Examples:
   intelli-shell init fish | source
 
   # Add the following to your PowerShell profile:
-  iex ((intelli-shell init powershell) -join "`n")
+  iex (intelli-shell init powershell | Out-String)

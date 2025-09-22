@@ -9,41 +9,63 @@ intelli_fix_key="${INTELLI_FIX_HOTKEY:-\C-x}"
 
 # Helper function to execute intelli-shell and update the Readline buffer
 function _intelli_exec {
-  local output
-  local exit_status
   local temp_result_file=$(mktemp)
-  local executed_output="####EXECUTED####"
   
-  # Print the last line of PS1 (readline clears it)
+  # In Bash, readline clears the prompt when an external command is run from a binding.
+  # We print the last line of the prompt here so the user sees it while the TUI is active.
+  # This printed line will be cleared later before readline redraws the real prompt.
   echo -n "${PS1@P}" | tail -n 1
 
-  intelli-shell --extra-line --file-output "$temp_result_file" "$@" 
-  exit_status=$?
+  # Run intelli-shell
+  intelli-shell --extra-line --file-output "$temp_result_file" "$@"
+  local exit_status=$?
 
-  # Read output from temp file if it exists and remove it
-  if [[ -f "$temp_result_file" ]]; then
-    output=$(cat "$temp_result_file")
-  fi
-  rm -f "$temp_result_file" 2>/dev/null
-
-  # Check if the command failed
-  if [[ $exit_status -ne 0 ]]; then
-    # Print every line of PS1 except the last one (readline will draw it)
+  # If the output file is missing or empty, there's nothing to process (likely a crash)
+  if [[ ! -s "$temp_result_file" ]]; then
+    # Panic report was likely printed, we must start a new prompt line
     echo -n "${PS1@P}" | head -n -1
+    rm -f "$temp_result_file" 2>/dev/null
     return $exit_status
   fi
 
-  # If a command was executed, print the prompt as well
-  if [[ "$output" = "$executed_output" ]] ; then
-    echo -n "${PS1@P}" | head -n -1
-    output=""
+  # Read the file content and parse it
+  local -a lines
+  mapfile -t lines < "$temp_result_file"
+  rm -f "$temp_result_file" 2>/dev/null
+  local status="${lines[0]}"
+  local action=""
+  local command=""
+  if ((${#lines[@]} > 1)); then
+    action="${lines[1]}"
   fi
-  # Clear the line we previously printed, to avoid readline from duplicating it
+  if ((${#lines[@]} > 2)); then
+    printf -v command '%s\n' "${lines[@]:2}"
+    command="${command%$'\n'}"
+  fi
+
+  # Determine the content of the readline buffer
+  if [[ "$action" == "REPLACE" ]]; then
+    READLINE_LINE="$command"
+    READLINE_POINT=${#command}
+  else
+    # For EXECUTED, DIRTY, or just CLEAN, the buffer should be empty
+    READLINE_LINE=""
+    READLINE_POINT=0
+  fi
+
+  # Determine whether to start a new prompt line
+  if [[ "$status" == "DIRTY" || "$action" == "EXECUTED" || $exit_status -ne 0 ]]; then
+    # If a new prompt is needed but the tool didn't output anything (e.g., Ctrl+C),
+    # we must print a newline ourselves to advance the cursor
+    if [[ "$status" == "CLEAN" && "$action" != "EXECUTED" ]]; then
+      echo
+    fi
+    # Print the multi-line part of the prompt that readline won't draw
+    echo -n "${PS1@P}" | head -n -1
+  fi
+
+  # Finally, clear the temporary prompt line we echoed at the start
   printf '\r\033[2K'
-  
-  # Rewrite the Readline buffer variables
-  READLINE_LINE=${output}
-  READLINE_POINT=${#READLINE_LINE}
 }
 
 # Readline callable function for searching

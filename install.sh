@@ -201,7 +201,7 @@ if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
         printf '# $env:INTELLI_BOOKMARK_HOTKEY = "Ctrl+b"\r\n' >> "$profile_file"
         printf '# $env:INTELLI_FIX_HOTKEY = "Ctrl+x"\r\n' >> "$profile_file"
         printf '# Set-Alias -Name "is" -Value "intelli-shell"\r\n' >> "$profile_file"
-        printf 'iex ((intelli-shell.exe init powershell) -join "`n")\r\n' >> "$profile_file"
+        printf 'iex (intelli-shell.exe init powershell | Out-String)\r\n' >> "$profile_file"
       elif [ "$shell_type" = "zsh" ]; then
         printf '\n# IntelliShell\n' >> "$profile_file"
         printf 'export INTELLI_HOME="%s"\n' "$INTELLI_HOME" >> "$profile_file"

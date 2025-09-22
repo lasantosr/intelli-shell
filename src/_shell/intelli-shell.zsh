@@ -10,42 +10,51 @@ intelli_fix_key="${INTELLI_FIX_HOTKEY:-^x}"
 
 # Helper function to execute intelli-shell and update the ZLE buffer
 function _intelli_exec {
-  local output
-  local exit_status
   local temp_result_file=$(mktemp)
-  local execute_prefix="____execute____"
 
-  # Clear the buffer
+  # Clear the buffer and invalidate to force a redraw of the line
   BUFFER=""
   zle -I
 
   # Run intelli-shell
   intelli-shell --skip-execution --file-output "$temp_result_file" "$@"
-  exit_status=$?
-
-  # Read output from temp file if it exists and remove it
-  if [[ -f "$temp_result_file" ]]; then
-    output=$(cat "$temp_result_file")
-  fi
-  rm -f "$temp_result_file" 2>/dev/null
-
-  # Check if the command failed
-  if [[ $exit_status -ne 0 ]]; then
-    zle redisplay
+  local exit_status=$?
+  
+  # If the output file is missing or empty, there's nothing to process (likely a crash)
+  if [[ ! -s "$temp_result_file" ]]; then
+    rm -f "$temp_result_file" 2>/dev/null
     return $exit_status
   fi
 
-  # Check if the output starts with the special execution prefix
-  if [[ "$output" == "${execute_prefix}"* ]]; then
-    # If it does, strip the prefix from the output
-    BUFFER="${output#$execute_prefix}"
-    # Execute it
-    zle accept-line
-  else
-    # Otherwise, perform the original action: just update the line
-    BUFFER=$output
-    zle end-of-line
-    zle redisplay
+  # Read the file content and parse it
+  local -a lines
+  lines=("${(f)$(<"$temp_result_file")}")
+  rm -f "$temp_result_file" 2>/dev/null
+  local out_status="${lines[1]}"
+  local action=""
+  local command=""
+  if ((${#lines[@]} > 1)); then
+    action="${lines[2]}"
+  fi
+  if ((${#lines[@]} > 2)); then
+    command="${(F)lines[3,-1]}"
+  fi
+
+  # Determine the content of the buffer
+  if [[ "$action" == "REPLACE" ]]; then
+    BUFFER="$command"
+    zle .end-of-line
+  elif [[ "$action" == "EXECUTE" ]]; then
+    BUFFER="$command"
+    zle .accept-line
+  fi
+
+  # Determine whether to start a new prompt line
+  if [[ "$out_status" == "DIRTY" || $exit_status -ne 0 ]]; then
+    # Nothing to do, ZLE will redraw the prompt on the next line (because of `zle -I` above)
+  else 
+    # For any clean action, stay on the same line.
+    zle .redisplay
   fi
 
 }

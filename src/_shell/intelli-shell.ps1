@@ -19,6 +19,23 @@ $IntelliBookmarkChord = if ([string]::IsNullOrEmpty($env:INTELLI_BOOKMARK_HOTKEY
 $IntelliVariableChord = if ([string]::IsNullOrEmpty($env:INTELLI_VARIABLE_HOTKEY)) { 'Ctrl+l' } else { $env:INTELLI_VARIABLE_HOTKEY }
 $IntelliFixChord = if ([string]::IsNullOrEmpty($env:INTELLI_FIX_HOTKEY)) { 'Ctrl+x' } else { $env:INTELLI_FIX_HOTKEY }
 
+# This function uses reflection to get the PSReadLine singleton and call its internal Render(force) method
+# to force a complete resynchronization with the terminal's current state.
+function Sync-PSReadLineState {
+  try {
+    $privateStatic = [System.Reflection.BindingFlags]'NonPublic, Static'
+    $privateInstance = [System.Reflection.BindingFlags]'NonPublic, Instance'
+
+    # Get the Singleton Instance
+    $singleton = [Microsoft.PowerShell.PSReadLine].GetField('_singleton', $privateStatic).GetValue($null)
+
+    # Call the private Render(force: true) method 
+    $renderMethod = $singleton.GetType().GetMethod('Render', $privateInstance).Invoke($singleton, @($true))
+  } catch {
+    Write-Error "An exception occurred during the sync process: $($_.Exception.Message)"
+  }
+}
+
 # Encapsulates the logic for running intelli-shell and updating the buffer
 function Invoke-IntelliShellAction {
   param(
@@ -28,8 +45,6 @@ function Invoke-IntelliShellAction {
     [Parameter(Mandatory=$false)]
     [string[]]$Args # Array of arguments to pass to intelli-shell.exe after the subcommand
   )
-  $executePrefix = "____execute____"
-
   # Define the executable name (assuming it's in PATH)
   $exeName = 'intelli-shell.exe'
 
@@ -39,11 +54,11 @@ function Invoke-IntelliShellAction {
     $processedArgs = $Args | ForEach-Object { Escape-ArgumentForCommandLine -Argument $_ }
   }
 
-  # Create a temporary file for the output 
+  # Create a temporary file for the output
   $stdoutTempFilePath = $null
   try {
     $stdoutTempFilePath = [System.IO.Path]::GetTempFileName()
-    
+
     # Construct the full argument list for intelli-shell.exe
     $fullArgumentList = (@('--extra-line', '--skip-execution', '--file-output', $stdoutTempFilePath, $Subcommand) + $processedArgs) -join ' '
 
@@ -54,51 +69,61 @@ function Invoke-IntelliShellAction {
     [Microsoft.PowerShell.PSConsoleReadLine]::BeginningOfLine()
     [Microsoft.PowerShell.PSConsoleReadLine]::KillLine()
 
-    # Execute intelli-shell.exe directly
+    # Execute intelli-shell
     $process = Start-Process -FilePath $exeName `
       -ArgumentList $fullArgumentList `
       -Wait `
       -NoNewWindow `
-      -PassThru 
+      -PassThru
 
-    # Check the exit code of the intelli-shell.exe process
-    if ($null -eq $process -or $process.ExitCode -ne 0) {
-      # When it fails it might have already printed an error message to the console
-      # We just need to redraw a new prompt
+    # PSReadLine caches the cursor screen position, which might have become invalid after the inline TUI pushed the prompt
+    # up to make room for its own content. We must re-synchronize the internal cache with the actual terminal state.
+    Sync-PSReadLineState
+
+    # If the output file is missing or empty, there's nothing to process (likely a crash)
+    if (-not (Test-Path -Path $stdoutTempFilePath) -or (Get-Item $stdoutTempFilePath).Length -eq 0) {
+      # Panic report was likely printed, we must start a new prompt line
       [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
       return
     }
 
-    # This ensures the prompt is redrawn correctly after any output IntelliShell might have produced
-    [Microsoft.PowerShell.PSConsoleReadLine]::Insert('')
-    $promptString = (prompt) -join ''
-    Write-Host -NoNewline "`r`e[2K"
-    Write-Host -NoNewline $promptString
+    # Read the file content and parse it
+    $lines = Get-Content -Path $stdoutTempFilePath -Raw -ErrorAction SilentlyContinue
+    $lines = $lines -split '\r?\n'
+    $outStatus = $lines[0]
+    $action = if ($lines.Length -gt 1) { $lines[1] } else { '' }
+    $command = if ($lines.Length -gt 2) { $lines[2..($lines.Length - 1)] -join "`n" } else { '' }
 
-    # Read the output from the temporary stdout file
-    $intelliOutput = Get-Content -Path $stdoutTempFilePath -Raw -ErrorAction SilentlyContinue
-
-    if (-not $?) { # Check if Get-Content for stdout failed
-      Display-ErrorMessage -Message "Failed to read IntelliShell stdout from '$stdoutTempFilePath'."
-      return
-    }
-
-    # Check if the output starts with the special execution prefix
-    if ($intelliOutput -and $intelliOutput.StartsWith($executePrefix, [System.StringComparison]::Ordinal)) {
-      # If it does, strip the prefix from the output
-      $commandToRun = $intelliOutput.Substring($executePrefix.Length)
-      
-      # Insert the command into the PSReadLine buffer
-      [Microsoft.PowerShell.PSConsoleReadLine]::Insert($commandToRun)
-      
-      # And execute it immediately
-      [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
-    }
-    else {
-      # Otherwise, just update the line with the output
-      if (-not [string]::IsNullOrWhiteSpace($intelliOutput)) {
-        [Microsoft.PowerShell.PSConsoleReadLine]::Insert($intelliOutput)
+    # Determine the content of the buffer
+    if ($action -eq 'REPLACE' -or $action -eq 'EXECUTE') {
+      # Use the event subscriber to perform the action on the next prompt
+      $global:PSReadlineNextAction = $action
+      $global:PSReadlineNextInsert = $command
+      $actionBlock = {
+        $subscriptionId = $Event.SubscriptionId
+        try {
+          if ($global:PSReadlineNextAction -eq 'REPLACE') {
+            [Microsoft.PowerShell.PSConsoleReadLine]::Insert($global:PSReadlineNextInsert)
+          }
+          elseif ($global:PSReadlineNextAction -eq 'EXECUTE') {
+            # `AcceptLine` doesn't trigger execution from an OnIdle event, so we simulate keyboard input
+            Add-Type -AssemblyName System.Windows.Forms
+            [System.Windows.Forms.SendKeys]::SendWait("$global:PSReadlineNextInsert{ENTER}")
+          }
+        }
+        finally {
+          # Clean up global variables and unregister the event
+          Remove-Variable -Name PSReadlineNextAction -Scope Global -ErrorAction SilentlyContinue
+          Remove-Variable -Name PSReadlineNextInsert -Scope Global -ErrorAction SilentlyContinue
+          Unregister-Event -SubscriptionId $subscriptionId
+        }
       }
+      Register-EngineEvent -SourceIdentifier PowerShell.OnIdle -Action $actionBlock
+    }
+
+    # Determine whether to start a new prompt line
+    if ($outStatus -eq 'DIRTY' -or $process.ExitCode -ne 0) {
+      [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
     }
   } catch {
     Display-ErrorMessage -Message "An error occurred during IntelliShell action: $_"

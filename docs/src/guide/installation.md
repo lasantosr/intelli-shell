@@ -72,7 +72,7 @@ Edit your profile to source the init output:
 - Powershell: `$Profile`
 
   ```powershell
-  iex ((intelli-shell init powershell) -join "`n")
+  iex (intelli-shell init powershell | Out-String)
   ```
 
 </details>

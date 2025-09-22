@@ -107,7 +107,7 @@ if ($env:INTELLI_SKIP_PROFILE -eq '1') {
   Write-Host "Skipping profile update because INTELLI_SKIP_PROFILE is set to 1."
   Write-Host "You may need to add the following to your PowerShell profile (`$Profile`):"
   Write-Host "`$env:INTELLI_HOME = `"$($env:INTELLI_HOME)`""
-  Write-Host "iex ((intelli-shell init powershell) -join `"``n`")"
+  Write-Host "iex (intelli-shell init powershell | Out-String)"
   Write-Host "Remember to restart your terminal after modifying the profile."
 } else {
   # Proceed with profile update
@@ -138,7 +138,7 @@ if ($env:INTELLI_SKIP_PROFILE -eq '1') {
       Add-Content -Path $Profile -Value "# `$env:INTELLI_BOOKMARK_HOTKEY = 'Ctrl+b'"
       Add-Content -Path $Profile -Value "# `$env:INTELLI_FIX_HOTKEY = 'Ctrl+x'"
       Add-Content -Path $Profile -Value "# Set-Alias -Name 'is' -Value 'intelli-shell'"
-      Add-Content -Path $Profile -Value "iex ((intelli-shell.exe init powershell) -join `"``n`")"
+      Add-Content -Path $Profile -Value "iex (intelli-shell.exe init powershell | Out-String)"
       Add-Content -Path $Profile -Value ""
 
       Write-Host "Please close this terminal and open a new one for changes to take effect."

@@ -4,46 +4,75 @@
 
 # Helper function to execute intelli-shell and update the command line buffer
 function _intelli_exec --description "Executes intelli-shell and updates command line"
-  set -l output ""
   set -l temp_result_file (mktemp)
-  set -l execute_prefix "____execute____"
 
-  # Clear the buffer
+  # --- Helper function to handle multi-line prompts ---
+  function _make_room_for_prompt
+    # To avoid repainting over existing output with multi-line prompts,
+    # we first print N-1 newlines to create the required vertical space.
+    set -l prompt_lines (string split \n -- (fish_prompt) | count)
+    if test $prompt_lines -gt 1
+      for i in (seq (math $prompt_lines - 1))
+        echo ""
+      end
+    end
+  end
+
+  # Clear the buffer with ANSI escapes to be rendered immediately
   set -l buffer_len (string length -- (commandline))
   if test $buffer_len -gt 0
     echo -ne "\e[$buffer_len"D'\e[K'
+    commandline -r -- ""
   end
 
   # Run intelli-shell
   intelli-shell --extra-line --skip-execution --file-output "$temp_result_file" $argv
   set -l exit_status $status
 
-  # Read output from temp file if it exists and remove it
-  if test -s "$temp_result_file"
-    set output (cat "$temp_result_file")
-  end
-  rm -f "$temp_result_file" 2>/dev/null
-
-  # Check if the command failed
-  if test $exit_status -ne 0
-    commandline -f bell
+  # If the output file is missing or empty, there's nothing to process (likely a crash)
+  if not test -s "$temp_result_file"
+    # Panic report was likely printed, we must start a new prompt line
+    _make_room_for_prompt
+    commandline -f repaint
+    rm -f "$temp_result_file" 2>/dev/null
     return $exit_status
   end
 
-  # Check if the output starts with the execution prefix
-  if string match -q -- "$execute_prefix*" -- "$output"
-    # If it does, strip the prefix from the output string
-    set -l command_to_run (string sub --start=(math (string length -- "$execute_prefix") + 1) -- "$output")
-    # Update the command line buffer with the command
-    commandline -r -- $command_to_run
-    # And execute it immediately
-    commandline -f execute
-  else
-    # Otherwise, just update the command line with the output
-    commandline -r -- $output
-    commandline -f end-of-line
-    commandline -f repaint
+  # Read the file content and parse it
+  set -l lines (string split \n -- (cat "$temp_result_file"))
+  rm -f "$temp_result_file" 2>/dev/null
+  set -l out_status $lines[1]
+  set -l action ""
+  set -l command ""
+  if test (count $lines) -gt 1
+    set action $lines[2]
   end
+  if test (count $lines) -gt 2
+    set command (string join \n $lines[3..-1])
+  end
+
+  # Determine the content of the buffer
+  if test "$action" = "REPLACE"
+    commandline -r -- "$command"
+    commandline -f end-of-line
+  else if test "$action" = "EXECUTE"
+    commandline -r -- "$command"
+    commandline -f execute
+  end
+  
+  # Determine whether to start a new prompt line
+  if test "$out_status" = "DIRTY" -o $exit_status -ne 0
+    # If a new prompt is needed but the tool didn't output anything (e.g., Ctrl+C),
+    # we must print a newline ourselves to advance the cursor
+    if test "$out_status" = "CLEAN"
+      echo ""
+    end
+    _make_room_for_prompt
+  end
+
+  # Always, repaint the prompt to ensure it's correctly drawn after those ANSI chars
+  commandline -f repaint
+
 end
 
 # --- Action Functions ---
