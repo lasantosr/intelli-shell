@@ -5,7 +5,7 @@ _Like IntelliSense, but for shells!_
 IntelliShell is a command-line tool that acts as a smart bookmark manager.
 It helps you find, organize, and reuse complex shell commands without ever leaving your terminal.
 
-Works on **Bash**, **Zsh**, **Fish**, and **PowerShell**, with standalone binaries for Linux, macOS, and Windows.
+Works on **Bash**, **Zsh**, **Fish**, **Nushell**, and **PowerShell**, with standalone binaries for Linux, macOS, and Windows.
 
 ![intelli-shell demo](docs/src/images/demo.gif)
 
@@ -26,7 +26,7 @@ Works on **Bash**, **Zsh**, **Fish**, and **PowerShell**, with standalone binari
 1. Install or update the binary:
 
    ```sh
-   # For sh-compatible shells on Linux/macOS/Windows (Bash, Zsh, Fish, Git Bash)
+   # For sh-compatible shells on Linux/macOS/Windows (Bash, Zsh, Fish, Nu, Git Bash)
    curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.sh | sh
    ```
 

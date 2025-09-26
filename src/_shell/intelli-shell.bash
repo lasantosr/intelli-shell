@@ -43,16 +43,6 @@ function _intelli_exec {
     command="${command%$'\n'}"
   fi
 
-  # Determine the content of the readline buffer
-  if [[ "$action" == "REPLACE" ]]; then
-    READLINE_LINE="$command"
-    READLINE_POINT=${#command}
-  else
-    # For EXECUTED, DIRTY, or just CLEAN, the buffer should be empty
-    READLINE_LINE=""
-    READLINE_POINT=0
-  fi
-
   # Determine whether to start a new prompt line
   if [[ "$status" == "DIRTY" || "$action" == "EXECUTED" || $exit_status -ne 0 ]]; then
     # If a new prompt is needed but the tool didn't output anything (e.g., Ctrl+C),
@@ -62,6 +52,16 @@ function _intelli_exec {
     fi
     # Print the multi-line part of the prompt that readline won't draw
     echo -n "${PS1@P}" | head -n -1
+  fi
+
+  # Determine the content of the readline buffer
+  if [[ "$action" == "REPLACE" ]]; then
+    READLINE_LINE="$command"
+    READLINE_POINT=${#command}
+  else
+    # For EXECUTED, DIRTY, or just CLEAN, the buffer should be empty
+    READLINE_LINE=""
+    READLINE_POINT=0
   fi
 
   # Finally, clear the temporary prompt line we echoed at the start

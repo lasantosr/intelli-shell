@@ -40,15 +40,6 @@ function _intelli_exec {
     command="${(F)lines[3,-1]}"
   fi
 
-  # Determine the content of the buffer
-  if [[ "$action" == "REPLACE" ]]; then
-    BUFFER="$command"
-    zle .end-of-line
-  elif [[ "$action" == "EXECUTE" ]]; then
-    BUFFER="$command"
-    zle .accept-line
-  fi
-
   # Determine whether to start a new prompt line
   if [[ "$out_status" == "DIRTY" || $exit_status -ne 0 ]]; then
     # Nothing to do, ZLE will redraw the prompt on the next line (because of `zle -I` above)
@@ -57,6 +48,14 @@ function _intelli_exec {
     zle .redisplay
   fi
 
+  # Determine the content of the buffer
+  if [[ "$action" == "REPLACE" ]]; then
+    BUFFER="$command"
+    zle .end-of-line
+  elif [[ "$action" == "EXECUTE" ]]; then
+    BUFFER="$command"
+    zle .accept-line
+  fi
 }
 
 # ZLE widget function for searching

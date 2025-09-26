@@ -18,6 +18,7 @@ pub fn read_history(source: HistorySource) -> Result<String> {
         HistorySource::Zsh => read_zsh_history(),
         HistorySource::Fish => read_fish_history(),
         HistorySource::Powershell => read_powershell_history(),
+        HistorySource::Nushell => read_nushell_history(),
         HistorySource::Atuin => read_atuin_history(),
     }
 }
@@ -49,6 +50,29 @@ fn read_powershell_history() -> Result<String> {
         vec![".local", "share", "powershell", "PSReadLine", "ConsoleHost_history.txt"]
     };
     read_history_from_home(&path)
+}
+
+fn read_nushell_history() -> Result<String> {
+    // Execute the `nu` command to get a newline-separated list of history entries
+    let output = Command::new("nu")
+        .arg("-c")
+        .arg("history | get command | str join \"\n\"")
+        .output();
+
+    match output {
+        Ok(output) if output.status.success() => {
+            Ok(String::from_utf8(output.stdout).wrap_err("Couldn't read nu output")?)
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.is_empty() {
+                tracing::error!("Couldn't execute nu: {stderr}");
+            }
+            Err(UserFacingError::HistoryNushellFailed.into())
+        }
+        Err(err) if err.kind() == ErrorKind::NotFound => Err(UserFacingError::HistoryNushellNotFound.into()),
+        Err(err) => Err(Report::from(err).wrap_err("Couldn't run nu").into()),
+    }
 }
 
 fn read_atuin_history() -> Result<String> {

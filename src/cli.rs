@@ -197,7 +197,10 @@ pub enum Shell {
     Bash,
     Zsh,
     Fish,
+    #[value(alias("pwsh"))]
     Powershell,
+    #[value(alias("nu"))]
+    Nushell,
 }
 
 /// Bookmarks a new command
@@ -373,7 +376,10 @@ pub enum HistorySource {
     Bash,
     Zsh,
     Fish,
+    #[value(alias("pwsh"))]
     Powershell,
+    #[value(alias("nu"))]
+    Nushell,
     Atuin,
 }
 

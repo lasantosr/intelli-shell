@@ -21,6 +21,7 @@
                 "oderwat.indent-rainbow",
                 "gruntfuggly.todo-tree",
                 "skyapps.fish-vscode",
+                "thenuprojectcontributors.vscode-nushell-lang",
                 "yzhang.markdown-all-in-one",
                 "davidanson.vscode-markdownlint",
                 "streetsidesoftware.code-spell-checker"
@@ -36,6 +37,9 @@
                     },
                     "fish": {
                         "path": "/usr/bin/fish"
+                    },
+                    "nushell": {
+                        "path": "/usr/local/cargo/bin/nu"
                     }
                 },
                 "files.watcherExclude": {

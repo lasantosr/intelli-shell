@@ -19,23 +19,6 @@ $IntelliBookmarkChord = if ([string]::IsNullOrEmpty($env:INTELLI_BOOKMARK_HOTKEY
 $IntelliVariableChord = if ([string]::IsNullOrEmpty($env:INTELLI_VARIABLE_HOTKEY)) { 'Ctrl+l' } else { $env:INTELLI_VARIABLE_HOTKEY }
 $IntelliFixChord = if ([string]::IsNullOrEmpty($env:INTELLI_FIX_HOTKEY)) { 'Ctrl+x' } else { $env:INTELLI_FIX_HOTKEY }
 
-# This function uses reflection to get the PSReadLine singleton and call its internal Render(force) method
-# to force a complete resynchronization with the terminal's current state.
-function Sync-PSReadLineState {
-  try {
-    $privateStatic = [System.Reflection.BindingFlags]'NonPublic, Static'
-    $privateInstance = [System.Reflection.BindingFlags]'NonPublic, Instance'
-
-    # Get the Singleton Instance
-    $singleton = [Microsoft.PowerShell.PSReadLine].GetField('_singleton', $privateStatic).GetValue($null)
-
-    # Call the private Render(force: true) method 
-    $renderMethod = $singleton.GetType().GetMethod('Render', $privateInstance).Invoke($singleton, @($true))
-  } catch {
-    Write-Error "An exception occurred during the sync process: $($_.Exception.Message)"
-  }
-}
-
 # Encapsulates the logic for running intelli-shell and updating the buffer
 function Invoke-IntelliShellAction {
   param(
@@ -46,7 +29,7 @@ function Invoke-IntelliShellAction {
     [string[]]$Args # Array of arguments to pass to intelli-shell.exe after the subcommand
   )
   # Define the executable name (assuming it's in PATH)
-  $exeName = 'intelli-shell.exe'
+  $exeName = if ($IsWindows) { 'intelli-shell.exe' } else { 'intelli-shell' }
 
   # Escape arguments
   $processedArgs = @()
@@ -59,7 +42,7 @@ function Invoke-IntelliShellAction {
   try {
     $stdoutTempFilePath = [System.IO.Path]::GetTempFileName()
 
-    # Construct the full argument list for intelli-shell.exe
+    # Construct the full argument list for intelli-shell
     $fullArgumentList = (@('--extra-line', '--skip-execution', '--file-output', $stdoutTempFilePath, $Subcommand) + $processedArgs) -join ' '
 
     Write-Verbose "Starting process: $exeName $fullArgumentList"
@@ -76,10 +59,6 @@ function Invoke-IntelliShellAction {
       -NoNewWindow `
       -PassThru
 
-    # PSReadLine caches the cursor screen position, which might have become invalid after the inline TUI pushed the prompt
-    # up to make room for its own content. We must re-synchronize the internal cache with the actual terminal state.
-    Sync-PSReadLineState
-
     # If the output file is missing or empty, there's nothing to process (likely a crash)
     if (-not (Test-Path -Path $stdoutTempFilePath) -or (Get-Item $stdoutTempFilePath).Length -eq 0) {
       # Panic report was likely printed, we must start a new prompt line
@@ -93,36 +72,27 @@ function Invoke-IntelliShellAction {
     $outStatus = $lines[0]
     $action = if ($lines.Length -gt 1) { $lines[1] } else { '' }
     $command = if ($lines.Length -gt 2) { $lines[2..($lines.Length - 1)] -join "`n" } else { '' }
+    
+    # If a new prompt is needed but the tool didn't output anything (e.g., Ctrl+C),
+    # we must print a newline ourselves to advance the cursor
+    if ($process.ExitCode -ne 0 -and $outStatus -eq 'CLEAN') {
+      [System.Console]::Error.WriteLine("")
+      $newCursorY = [System.Console]::CursorTop
+    } elseif ($outStatus -eq 'CLEAN') {
+      $promptText = & { prompt }
+      $promptLineCount = ($promptText -split "`r?`n").Count
+      $newCursorY = [System.Math]::Max(0, [System.Console]::CursorTop - ($promptLineCount - 1))
+    } else {
+      $newCursorY = [System.Console]::CursorTop
+    }
+    [System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    [Microsoft.PowerShell.PSConsoleReadLine]::InvokePrompt($null, $newCursorY)
 
     # Determine the content of the buffer
-    if ($action -eq 'REPLACE' -or $action -eq 'EXECUTE') {
-      # Use the event subscriber to perform the action on the next prompt
-      $global:PSReadlineNextAction = $action
-      $global:PSReadlineNextInsert = $command
-      $actionBlock = {
-        $subscriptionId = $Event.SubscriptionId
-        try {
-          if ($global:PSReadlineNextAction -eq 'REPLACE') {
-            [Microsoft.PowerShell.PSConsoleReadLine]::Insert($global:PSReadlineNextInsert)
-          }
-          elseif ($global:PSReadlineNextAction -eq 'EXECUTE') {
-            # `AcceptLine` doesn't trigger execution from an OnIdle event, so we simulate keyboard input
-            Add-Type -AssemblyName System.Windows.Forms
-            [System.Windows.Forms.SendKeys]::SendWait("$global:PSReadlineNextInsert{ENTER}")
-          }
-        }
-        finally {
-          # Clean up global variables and unregister the event
-          Remove-Variable -Name PSReadlineNextAction -Scope Global -ErrorAction SilentlyContinue
-          Remove-Variable -Name PSReadlineNextInsert -Scope Global -ErrorAction SilentlyContinue
-          Unregister-Event -SubscriptionId $subscriptionId
-        }
-      }
-      Register-EngineEvent -SourceIdentifier PowerShell.OnIdle -Action $actionBlock
-    }
-
-    # Determine whether to start a new prompt line
-    if ($outStatus -eq 'DIRTY' -or $process.ExitCode -ne 0) {
+    if ($action -eq 'REPLACE') {
+      [Microsoft.PowerShell.PSConsoleReadLine]::Insert($command)
+    } elseif ($action -eq 'EXECUTE') {
+      [Microsoft.PowerShell.PSConsoleReadLine]::Insert($command)
       [Microsoft.PowerShell.PSConsoleReadLine]::AcceptLine()
     }
   } catch {
@@ -171,9 +141,19 @@ function Display-ErrorMessage {
     [Parameter(Mandatory=$true)]
     [string]$Message
   )
-  
-  $wshell = New-Object -ComObject WScript.Shell
-  $wshell.Popup($Message, 0, "IntelliShell Warning", 48) | Out-Null
+  if ($IsWindows) {
+    # On Windows, use a COM object to show a graphical popup
+    try {
+      $wshell = New-Object -ComObject WScript.Shell
+      $wshell.Popup($Message, 0, "IntelliShell Warning", 48) | Out-Null
+    } catch {
+      # Fallback to Write-Error if the COM object fails for any reason
+      Write-Error "IntelliShell: $Message"
+    }
+  } else {
+    # On Linux/macOS, Write-Warning is the cross-platform equivalent
+    Write-Warning "IntelliShell: $Message"
+  }
 }
 
 # --- Key Handler Definitions ---
@@ -254,6 +234,6 @@ Set-PSReadLineKeyHandler -Chord $IntelliFixChord -BriefDescription "IntelliShell
 }
 
 # Export the execution prompt variable
-$env:INTELLI_EXEC_PROMPT = ">> "
+$env:INTELLI_EXEC_PROMPT = (Get-PSReadlineOption).ContinuationPrompt
 
 Write-Verbose "IntelliShell PSReadLine key handlers set."

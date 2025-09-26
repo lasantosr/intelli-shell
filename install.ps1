@@ -1,16 +1,14 @@
 #Requires -Modules Microsoft.PowerShell.Archive, Microsoft.PowerShell.Utility
 <#
 .SYNOPSIS
-Installs the IntelliShell tool for PowerShell.
+Installs the IntelliShell tool for PowerShell and Nushell on Windows.
 .DESCRIPTION
-Downloads the latest release of IntelliShell for the correct architecture,
-extracts it to the user's AppData directory (or a custom path specified
-by $env:INTELLI_HOME), adds the binary directory to the user's PATH,
-and updates the PowerShell profile to source the IntelliShell integration script.
+Downloads the latest release of IntelliShell, extracts it, adds the binary to the
+user's PATH, and updates both the PowerShell and Nushell profiles if they exist.
 .NOTES
 File Name: install.ps1
 Author   : Luis Santos
-Version  : 1.1
+Version  : 1.2
 #>
 
 # Set strict mode
@@ -39,11 +37,11 @@ $downloadUrl = "$BaseUrl/$artifactFilename"
 
 # --- Determine Installation Path (INTELLI_HOME) ---
 # Priority: 1. Existing $env:INTELLI_HOME, 2. Default AppData path
-if (-not ([string]::IsNullOrEmpty($env:INTELLI_HOME))) {
+if ($env:INTELLI_HOME) {
   $installPath = $env:INTELLI_HOME
 } else {
   # Default path within AppData
-  $installPath = Join-Path $env:APPDATA "$AppName\Intelli-Shell\data" 
+  $installPath = Join-Path $env:APPDATA "$AppName\Intelli-Shell\data"
   $env:INTELLI_HOME = $installPath
 }
 $binPath = Join-Path $installPath "bin"
@@ -100,51 +98,104 @@ try {
   Write-Warning "You may need to add '$binPath' to your PATH manually."
 }
 
-# --- Update PowerShell Profile (Optional) ---
+# --- Reusable Profile Update Function ---
+function Update-Profile {
+  param(
+    [string]$ProfilePath,
+    [string]$ShellType # 'PowerShell' or 'Nushell'
+  )
 
-# Check if profile update should be skipped
-if ($env:INTELLI_SKIP_PROFILE -eq '1') {
-  Write-Host "Skipping profile update because INTELLI_SKIP_PROFILE is set to 1."
-  Write-Host "You may need to add the following to your PowerShell profile (`$Profile`):"
-  Write-Host "`$env:INTELLI_HOME = `"$($env:INTELLI_HOME)`""
-  Write-Host "iex (intelli-shell init powershell | Out-String)"
-  Write-Host "Remember to restart your terminal after modifying the profile."
-} else {
-  # Proceed with profile update
   try {
     # Ensure profile file and its directory exist
-    if (-not (Test-Path -Path $Profile -PathType Leaf)) {
-      $parentDir = Split-Path -Parent $Profile
+    if (-not (Test-Path -Path $ProfilePath -PathType Leaf)) {
+      $parentDir = Split-Path -Parent $ProfilePath
       if (-not (Test-Path -Path $parentDir -PathType Container)) {
         $null = New-Item -Path $parentDir -ItemType Directory -Force -ErrorAction Stop
       }
-      $null = New-Item -Path $Profile -ItemType File -Force -ErrorAction Stop
+      $null = New-Item -Path $ProfilePath -ItemType File -Force -ErrorAction Stop
     }
 
     # Read profile content
-    $profileContent = Get-Content -Path $Profile -Raw -ErrorAction SilentlyContinue
+    $profileContent = Get-Content -Path $ProfilePath -Raw -ErrorAction SilentlyContinue
 
     # Check if IntelliShell is already mentioned
-    if ($profileContent -match [regex]::Escape("intelli-shell")) {
-      Write-Host "IntelliShell configuration already found in profile: $Profile"
+    if ($profileContent -match [regex]::Escape('intelli-shell')) {
+      Write-Host "IntelliShell configuration already found in profile: $ProfilePath"
     } else {
-      Write-Host "Updating profile: $Profile"
+      Write-Host "Updating profile: $ProfilePath"
 
-      Add-Content -Path $Profile -Value ""
-      Add-Content -Path $Profile -Value "# IntelliShell"
-      Add-Content -Path $Profile -Value "`$env:INTELLI_HOME = `"$($env:INTELLI_HOME)`""
-      Add-Content -Path $Profile -Value "# `$env:INTELLI_SEARCH_HOTKEY = 'Ctrl+Spacebar'"
-      Add-Content -Path $Profile -Value "# `$env:INTELLI_VARIABLE_HOTKEY = 'Ctrl+l'"
-      Add-Content -Path $Profile -Value "# `$env:INTELLI_BOOKMARK_HOTKEY = 'Ctrl+b'"
-      Add-Content -Path $Profile -Value "# `$env:INTELLI_FIX_HOTKEY = 'Ctrl+x'"
-      Add-Content -Path $Profile -Value "# Set-Alias -Name 'is' -Value 'intelli-shell'"
-      Add-Content -Path $Profile -Value "iex (intelli-shell.exe init powershell | Out-String)"
-      Add-Content -Path $Profile -Value ""
+      $configBlock = if ($ShellType -eq 'PowerShell') {
+        @"
 
-      Write-Host "Please close this terminal and open a new one for changes to take effect."
+# IntelliShell
+`$env:INTELLI_HOME = "$($env:INTELLI_HOME)"
+# `$env:INTELLI_SEARCH_HOTKEY = 'Ctrl+Spacebar'
+# `$env:INTELLI_VARIABLE_HOTKEY = 'Ctrl+l'
+# `$env:INTELLI_BOOKMARK_HOTKEY = 'Ctrl+b'
+# `$env:INTELLI_FIX_HOTKEY = 'Ctrl+x'
+# Set-Alias -Name 'is' -Value 'intelli-shell'
+intelli-shell.exe init powershell | Out-String | Invoke-Expression
+
+"@
+      } else { # Nushell
+        @"
+
+# IntelliShell
+`$env.INTELLI_HOME = '$($env:INTELLI_HOME)'
+# `$env.INTELLI_SEARCH_HOTKEY = "control space"
+# `$env.INTELLI_VARIABLE_HOTKEY = "control char_l"
+# `$env.INTELLI_BOOKMARK_HOTKEY = "control char_b"
+# `$env.INTELLI_FIX_HOTKEY = "control char_x"
+# alias is = intelli-shell
+mkdir (`$nu.data-dir | path join "vendor/autoload")
+intelli-shell init nushell | save -f (`$nu.data-dir | path join "vendor/autoload/intelli-shell.nu")
+
+"@
+      }
+      Add-Content -Path $ProfilePath -Value $configBlock
     }
   } catch {
-    Write-Warning "Failed to update PowerShell profile '$Profile': $_"
-    Write-Warning "You may need to add the IntelliShell configuration manually."
+    Write-Warning "Failed to update $ShellType profile '$ProfilePath': $_"
   }
+}
+
+# --- Update Shell Profiles (Optional) ---
+if ($env:INTELLI_SKIP_PROFILE -eq '1') {
+  Write-Host ""
+  Write-Host "Skipping automatic profile update as requested."
+  Write-Host "The binary path '$($binPath)' has been permanently added to your user PATH."
+  Write-Host "To complete the setup, you must manually add the integration lines to your"
+  Write-Host "shell's profile file and then restart your terminal."
+  Write-Host ""
+  Write-Host "--- For PowerShell (in `$Profile`) ---"
+  Write-Host "`$env:INTELLI_HOME = `"$($env:INTELLI_HOME)`""
+  Write-Host "intelli-shell init powershell | Out-String | Invoke-Expression"
+  Write-Host ""
+
+  # Conditionally show Nushell instructions if 'nu' is detected
+  $nuCommand = Get-Command nu -ErrorAction SilentlyContinue
+  if ($nuCommand) {
+    Write-Host "--- For Nushell (in your config.nu) ---"
+    Write-Host "`$env:INTELLI_HOME = '$($env:INTELLI_HOME)'"
+    Write-Host "mkdir (`$nu.data-dir | path join `"vendor/autoload`")"
+    Write-Host "intelli-shell init nushell | save -f (`$nu.data-dir | path join `"vendor/autoload/intelli-shell.nu`")"
+    Write-Host ""
+  }
+} else {
+  # Update PowerShell Profile
+  Update-Profile -ProfilePath $Profile -ShellType 'PowerShell'
+
+  # Update Nushell Profile if `nu` is found
+  $nuCommand = Get-Command nu -ErrorAction SilentlyContinue
+  if ($nuCommand) {
+    try {
+      $nuConfigPath = (nu -c '$nu.config-path').Trim()
+      if ($nuConfigPath) {
+        Update-Profile -ProfilePath $nuConfigPath -ShellType 'Nushell'
+      }
+    } catch {
+      Write-Warning "Found 'nu' command but could not determine its config path: $_"
+    }
+  }
+  Write-Host "Profile updates complete. Please restart your terminal for changes to take effect."
 }

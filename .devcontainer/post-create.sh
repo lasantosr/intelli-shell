@@ -65,6 +65,24 @@ else
   echo "$FISH_CONFIG_FILE already configured for IntelliShell."
 fi
 
+# --- Nushell Configuration ---
+NUSHELL_CONFIG_DIR="$HOME/.config/nushell"
+NUSHELL_CONFIG_FILE="$NUSHELL_CONFIG_DIR/config.nu"
+mkdir -p "$NUSHELL_CONFIG_DIR"
+if ! grep -q "$BLOCK_MARKER" "$NUSHELL_CONFIG_FILE" 2>/dev/null; then
+  echo "Updating $NUSHELL_CONFIG_FILE..."
+  cat << EOF >> "$NUSHELL_CONFIG_FILE"
+
+$BLOCK_MARKER
+alias intelli-shell = $INTELLI_SHELL_DEBUG_PATH
+alias is = $INTELLI_SHELL_DEBUG_PATH
+mkdir (\$nu.data-dir | path join "vendor/autoload")
+intelli-shell init nushell | save -f (\$nu.data-dir | path join "vendor/autoload/intelli-shell.nu")
+EOF
+else
+  echo "$NUSHELL_CONFIG_FILE already configured for IntelliShell."
+fi
+
 echo "Shell configuration complete."
 
 # --- IntelliShell Configuration ---

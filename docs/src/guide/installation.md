@@ -16,7 +16,7 @@ and setting up the shell integration.
 If you don't want the script to update the profile files, you can set `INTELLI_SKIP_PROFILE=1` environment variable
 before installing.
 
-### Linux, macOS & Windows on sh-compatible shell (Bash, Zsh, Fish, Git Bash)
+### Linux, macOS & Windows on sh-compatible shell (Bash, Zsh, Fish, Nu, Git Bash)
 
 ```sh
 curl -sSf https://raw.githubusercontent.com/lasantosr/intelli-shell/main/install.sh | sh
@@ -53,26 +53,33 @@ Edit your profile to source the init output:
 
 - Bash: `~/.bashrc` or `~/.bash_profile`
 
-  ```sh
+  ```bash
   eval "$(intelli-shell init bash)"
   ```
 
 - Zsh: `~/.zshrc`
 
-  ```sh
+  ```zsh
   eval "$(intelli-shell init zsh)"
   ```
 
 - Fish: `~/.config/fish/config.fish`
 
-  ```sh
+  ```fish
   intelli-shell init fish | source
+  ```
+
+- Nushell: `~/.config/nushell/config.nu`
+
+  ```nu
+  mkdir ($nu.data-dir | path join "vendor/autoload")
+  intelli-shell init nushell | save -f ($nu.data-dir | path join "vendor/autoload/intelli-shell.nu")
   ```
 
 - Powershell: `$Profile`
 
-  ```powershell
-  iex (intelli-shell init powershell | Out-String)
+  ```pwsh
+  intelli-shell init powershell | Out-String | Invoke-Expression
   ```
 
 </details>

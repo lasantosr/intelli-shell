@@ -47,7 +47,8 @@ intelli-shell import [OPTIONS] [LOCATION]
 
 - `--history <SHELL>`
   
-  Imports shell history (`bash`, `zsh`, `fish`, `powershell` or `atuin`). This option **requires** the `--ai` flag.
+  Imports shell history (`bash`, `zsh`, `fish`, `nushell`, `powershell` or `atuin`). This option **requires** the `--ai`
+  flag.
 
 - `-i, --interactive`
   

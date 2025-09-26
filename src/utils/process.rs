@@ -31,7 +31,7 @@ pub enum ShellType {
     Cmd,
     #[strum(serialize = "powershell", serialize = "powershell.exe")]
     WindowsPowerShell,
-    #[strum(serialize = "pwsh", serialize = "pwsh.exe")]
+    #[strum(to_string = "pwsh", serialize = "pwsh.exe")]
     PowerShellCore,
     #[strum(to_string = "bash", serialize = "bash.exe")]
     Bash,
@@ -41,6 +41,8 @@ pub enum ShellType {
     Fish,
     #[strum(serialize = "zsh")]
     Zsh,
+    #[strum(to_string = "nu", serialize = "nu.exe")]
+    Nushell,
     #[strum(default, to_string = "{0}")]
     Other(String),
 }
@@ -234,6 +236,7 @@ pub fn format_env_var(var: impl AsRef<str>) -> String {
     match get_shell_type() {
         ShellType::Cmd => format!("%{var}%"),
         ShellType::WindowsPowerShell | ShellType::PowerShellCore => format!("$env:{var}"),
+        ShellType::Nushell => format!("$env.{var}"),
         _ => format!("${var}"),
     }
 }

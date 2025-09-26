@@ -17,6 +17,7 @@ in
     pkgs.bash
     pkgs.zsh
     pkgs.fish
+    pkgs.nushell
     pkgs.vhs
     pkgs.chromium
     pkgs.mdbook
@@ -55,6 +56,7 @@ in
       "oderwat.indent-rainbow"
       "gruntfuggly.todo-tree"
       "skyapps.fish-vscode"
+      "thenuprojectcontributors.vscode-nushell-lang"
       "yzhang.markdown-all-in-one"
       "davidanson.vscode-markdownlint"
       "streetsidesoftware.code-spell-checker"

@@ -205,6 +205,12 @@ pub enum UserFacingError {
     /// The history file for the specified shell could not be found
     #[strum(to_string = "History file not found at: {0}")]
     HistoryFileNotFound(String),
+    /// The `nu` command is required for importing history but was not found in the system's PATH
+    #[strum(to_string = "Nushell not found, make sure it is installed and in your PATH")]
+    HistoryNushellNotFound,
+    /// The `nu` command failed to execute
+    #[strum(to_string = "Error running nu, maybe it is an old version")]
+    HistoryNushellFailed,
     /// The `atuin` command is required for importing history but was not found in the system's PATH
     #[strum(to_string = "Atuin not found, make sure it is installed and in your PATH")]
     HistoryAtuinNotFound,

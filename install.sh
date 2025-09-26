@@ -94,6 +94,13 @@ case "$os_type" in
         exit 1
       fi
     fi
+    # Convert the POSIX-style path in INTELLI_HOME to a native Windows path (e.g., C:\Users\...)
+    # This is needed for shells like PowerShell and Nushell that run natively on Windows
+    drive_letter=$(echo "$INTELLI_HOME" | sed -n 's,^/\(.\)/.*,\1,p')
+    drive_letter_upper=$(echo "$drive_letter" | tr 'a-z' 'A-Z')
+    path_without_drive=$(echo "$INTELLI_HOME" | sed 's,^/./,,')
+    path_win_slashes=$(echo "$path_without_drive" | sed 's|/|\\|g')
+    INTELLI_HOME_WIN="$drive_letter_upper:\\$path_win_slashes"
     ;;
 
   *)
@@ -144,7 +151,7 @@ rm -f "$TMP_ARCHIVE"
 
 # Ensure the main binary is executable
 if [ -f "$INTELLI_HOME/bin/intelli-shell" ]; then
-    chmod +x "$INTELLI_HOME/bin/intelli-shell"
+  chmod +x "$INTELLI_HOME/bin/intelli-shell"
 fi
 
 echo "Successfully installed IntelliShell at: $INTELLI_HOME"
@@ -160,15 +167,15 @@ if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
   # Function to add IntelliShell config to a given profile file if not already present
   update_rc() {
     profile_file="$1"
-    shell_type="$2" # 'bash', 'zsh', 'fish', or 'powershell'
+    shell_type="$2" # 'bash', 'zsh', 'fish', 'nushell' or 'powershell'
 
-    # Check if the file exists
+    # Check if the file's parent directory exists, and create it if not
+    profile_dir=$(dirname "$profile_file")
+    if [ ! -d "$profile_dir" ]; then
+      mkdir -p "$profile_dir"
+    fi
+    # Create the file if it doesn't exist
     if [ ! -f "$profile_file" ]; then
-      # If it's a fish config and doesn't exist, create the directory
-      if [ "$shell_type" = "fish" ] && [ ! -d "$HOME/.config/fish" ]; then
-        mkdir -p "$HOME/.config/fish"
-      fi
-      # Create the file if it doesn't exist
       touch "$profile_file"
     fi
 
@@ -193,15 +200,48 @@ if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
         printf '# alias is="intelli-shell"\n' >> "$profile_file"
         printf 'fish_add_path "$INTELLI_HOME/bin"\n' >> "$profile_file"
         printf 'intelli-shell init fish | source\n' >> "$profile_file"
+      elif [ "$shell_type" = "nushell" ]; then
+        printf '\n# IntelliShell\n' >> "$profile_file"
+        case "$os_type" in
+          MSYS*|MINGW*|CYGWIN*)
+            printf "\$env.INTELLI_HOME = '%s'\n" "$INTELLI_HOME_WIN" >> "$profile_file"
+            ;;
+          *)
+            printf '$env.INTELLI_HOME = "%s"\n' "$INTELLI_HOME" >> "$profile_file"
+            printf '$env.PATH = ($env.PATH | prepend "%s/bin")\n' "$INTELLI_HOME" >> "$profile_file"
+            ;;
+        esac
+        printf '# $env.INTELLI_SEARCH_HOTKEY = "control space"\n' >> "$profile_file"
+        printf '# $env.INTELLI_VARIABLE_HOTKEY = "control char_l"\n' >> "$profile_file"
+        printf '# $env.INTELLI_BOOKMARK_HOTKEY = "control char_b"\n' >> "$profile_file"
+        printf '# $env.INTELLI_FIX_HOTKEY = "control char_x"\n' >> "$profile_file"
+        printf '# alias is = intelli-shell\n' >> "$profile_file"
+        printf 'mkdir ($nu.data-dir | path join "vendor/autoload")\n' >> "$profile_file"
+        printf 'intelli-shell init nushell | save -f ($nu.data-dir | path join "vendor/autoload/intelli-shell.nu")\n' >> "$profile_file"
       elif [ "$shell_type" = "powershell" ]; then
-        printf '\r\n# IntelliShell\r\n' >> "$profile_file"
-        printf '$env:INTELLI_HOME = "%s"\r\n' "$INTELLI_HOME" >> "$profile_file"
-        printf '# $env:INTELLI_SEARCH_HOTKEY = "Ctrl+Spacebar"\r\n' >> "$profile_file"
-        printf '# $env:INTELLI_VARIABLE_HOTKEY = "Ctrl+l"\r\n' >> "$profile_file"
-        printf '# $env:INTELLI_BOOKMARK_HOTKEY = "Ctrl+b"\r\n' >> "$profile_file"
-        printf '# $env:INTELLI_FIX_HOTKEY = "Ctrl+x"\r\n' >> "$profile_file"
-        printf '# Set-Alias -Name "is" -Value "intelli-shell"\r\n' >> "$profile_file"
-        printf 'iex (intelli-shell.exe init powershell | Out-String)\r\n' >> "$profile_file"
+        case "$os_type" in
+          MSYS*|MINGW*|CYGWIN*)
+            printf '\r\n# IntelliShell\r\n' >> "$profile_file"
+            printf '$env:INTELLI_HOME = "%s"\r\n' "$INTELLI_HOME_WIN" >> "$profile_file"
+            printf '# $env:INTELLI_SEARCH_HOTKEY = "Ctrl+Spacebar"\r\n' >> "$profile_file"
+            printf '# $env:INTELLI_VARIABLE_HOTKEY = "Ctrl+l"\r\n' >> "$profile_file"
+            printf '# $env:INTELLI_BOOKMARK_HOTKEY = "Ctrl+b"\r\n' >> "$profile_file"
+            printf '# $env:INTELLI_FIX_HOTKEY = "Ctrl+x"\r\n' >> "$profile_file"
+            printf '# Set-Alias -Name "is" -Value "intelli-shell"\r\n' >> "$profile_file"
+            printf 'intelli-shell.exe init powershell | Out-String | Invoke-Expression\r\n' >> "$profile_file"
+            ;;
+          *)
+            printf '\n# IntelliShell\n' >> "$profile_file"
+            printf '$env:INTELLI_HOME = "%s"\n' "$INTELLI_HOME" >> "$profile_file"
+            printf '$env:PATH = "%s/bin:" + $env:PATH\n' "$INTELLI_HOME" >> "$profile_file"
+            printf '# $env:INTELLI_SEARCH_HOTKEY = "Ctrl+Spacebar"\n' >> "$profile_file"
+            printf '# $env:INTELLI_VARIABLE_HOTKEY = "Ctrl+l"\n' >> "$profile_file"
+            printf '# $env:INTELLI_BOOKMARK_HOTKEY = "Ctrl+b"\n' >> "$profile_file"
+            printf '# $env:INTELLI_FIX_HOTKEY = "Ctrl+x"\n' >> "$profile_file"
+            printf '# Set-Alias -Name "is" -Value "intelli-shell"\n' >> "$profile_file"
+            printf 'intelli-shell init powershell | Out-String | Invoke-Expression\n' >> "$profile_file"
+            ;;
+        esac
       elif [ "$shell_type" = "zsh" ]; then
         printf '\n# IntelliShell\n' >> "$profile_file"
         printf 'export INTELLI_HOME="%s"\n' "$INTELLI_HOME" >> "$profile_file"
@@ -276,6 +316,31 @@ if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
   if command -v fish >/dev/null 2>&1; then
     update_rc "$HOME/.config/fish/config.fish" "fish"
   fi
+  # Check if nu likely exists before updating nu config
+  if command -v nu >/dev/null 2>&1; then
+    # Query nushell for its config file path to be robust across versions and platforms
+    nu_config_path_native=$(nu -c '$nu.config-path' 2>/dev/null | tr -d '\r')
+    if [ -n "$nu_config_path_native" ]; then
+      nu_config_path_posix="$nu_config_path_native"
+      # If on Windows, convert the native path (C:\...) to a POSIX path (/c/...) for the sh script to use
+      case "$os_type" in
+        MSYS*|MINGW*|CYGWIN*)
+          nu_config_path_posix=$(echo "$nu_config_path_native" | sed -e 's|\\|/|g' -e 's|^ *\([A-Za-z]\):|/\L\1|')
+          ;;
+      esac
+      update_rc "$nu_config_path_posix" "nushell"
+    fi
+    # Check for PowerShell (pwsh) on Linux and macOS
+    if [ "$os_type" != "MSYS*" ] && [ "$os_type" != "MINGW*" ] && [ "$os_type" != "CYGWIN*" ]; then
+      if command -v pwsh >/dev/null 2>&1; then
+        # Query pwsh for its profile path
+        pwsh_profile_path=$(pwsh -NoProfile -Command '$PROFILE.CurrentUserCurrentHost' 2>/dev/null | tr -d '\r')
+        if [ -n "$pwsh_profile_path" ]; then
+          update_rc "$pwsh_profile_path" "powershell"
+        fi
+      fi
+    fi
+  fi
 
   # Trim leading newlines that might exist from the printf construction
   updated_files=$(echo "$updated_files" | sed '/^$/d')
@@ -338,6 +403,13 @@ if [ "${INTELLI_SKIP_PROFILE:-0}" = "0" ]; then
     printf 'intelli-shell init fish | source\n'
     
     echo ""
+    echo "--- For Nushell (in ~/.config/nushell/config.nu) ---"
+    printf '$env.INTELLI_HOME = "%s"\n' "$INTELLI_HOME"
+    printf '$env.PATH = ($env.PATH | prepend "%s/bin")\n' "$INTELLI_HOME"
+    printf 'mkdir ($nu.data-dir | path join "vendor/autoload")\n'
+    printf 'intelli-shell init nushell | save -f ($nu.data-dir | path join "vendor/autoload/intelli-shell.nu")\n'
+    
+    echo ""
     echo "After saving the file, please restart your terminal."
   fi
 
@@ -358,6 +430,13 @@ else
   printf 'set -gx INTELLI_HOME="%s"\n' "$INTELLI_HOME"
   printf 'fish_add_path "$INTELLI_HOME/bin"\n'
   printf 'intelli-shell init fish | source\n'
+  
+  echo ""
+  echo "--- For Nushell (in ~/.config/nushell/config.nu) ---"
+  printf '$env.INTELLI_HOME = "%s"\n' "$INTELLI_HOME"
+  printf '$env.PATH = ($env.PATH | prepend "%s/bin")\n' "$INTELLI_HOME"
+  printf 'mkdir ($nu.data-dir | path join "vendor/autoload")\n'
+  printf 'intelli-shell init nushell | save -f ($nu.data-dir | path join "vendor/autoload/intelli-shell.nu")\n'
   
   echo ""
   echo "After saving the file, please restart your terminal."

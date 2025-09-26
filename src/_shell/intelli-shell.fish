@@ -50,15 +50,6 @@ function _intelli_exec --description "Executes intelli-shell and updates command
   if test (count $lines) -gt 2
     set command (string join \n $lines[3..-1])
   end
-
-  # Determine the content of the buffer
-  if test "$action" = "REPLACE"
-    commandline -r -- "$command"
-    commandline -f end-of-line
-  else if test "$action" = "EXECUTE"
-    commandline -r -- "$command"
-    commandline -f execute
-  end
   
   # Determine whether to start a new prompt line
   if test "$out_status" = "DIRTY" -o $exit_status -ne 0
@@ -68,6 +59,15 @@ function _intelli_exec --description "Executes intelli-shell and updates command
       echo ""
     end
     _make_room_for_prompt
+  end
+
+  # Determine the content of the buffer
+  if test "$action" = "REPLACE"
+    commandline -r -- "$command"
+    commandline -f end-of-line
+  else if test "$action" = "EXECUTE"
+    commandline -r -- "$command"
+    commandline -f execute
   end
 
   # Always, repaint the prompt to ensure it's correctly drawn after those ANSI chars

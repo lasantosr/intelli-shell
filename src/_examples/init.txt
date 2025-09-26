@@ -8,5 +8,8 @@ Examples:
   # Add the following to your config.fish:
   intelli-shell init fish | source
 
+  # Add the following to your config.nu:
+  intelli-shell init nushell | save -f ($nu.data-dir | path join "vendor/autoload/intelli-shell.nu")
+
   # Add the following to your PowerShell profile:
-  iex (intelli-shell init powershell | Out-String)
+  intelli-shell init powershell | Out-String | Invoke-Expression

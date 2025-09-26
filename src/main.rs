@@ -31,6 +31,7 @@ const ACTION_REPLACE: &str = "REPLACE\n";
 const BASH_INIT: &str = include_str!("./_shell/intelli-shell.bash");
 const ZSH_INIT: &str = include_str!("./_shell/intelli-shell.zsh");
 const FISH_INIT: &str = include_str!("./_shell/intelli-shell.fish");
+const NUSHELL_INIT: &str = include_str!("./_shell/intelli-shell.nu");
 const POWERSHELL_INIT: &str = include_str!("./_shell/intelli-shell.ps1");
 
 #[tokio::main]
@@ -68,6 +69,7 @@ async fn main() -> Result<()> {
                     Shell::Bash => BASH_INIT,
                     Shell::Zsh => ZSH_INIT,
                     Shell::Fish => FISH_INIT,
+                    Shell::Nushell => NUSHELL_INIT,
                     Shell::Powershell => POWERSHELL_INIT,
                 };
                 let output_info = OutputInfo {
