@@ -8,7 +8,10 @@ use serde::Deserialize;
 use tracing::{Instrument, instrument};
 
 use super::IntelliShellService;
-use crate::{errors::Result, storage::SqliteStorage};
+use crate::{
+    errors::{Result, UserFacingError},
+    storage::SqliteStorage,
+};
 
 /// The timeout for the request to check for a new version
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -124,16 +127,35 @@ async fn fetch_latest_version(storage: &SqliteStorage) -> Result<Option<Version>
     }
 
     // Fetch latest release from GitHub
-    let release: Release = reqwest::Client::new()
+    let res = reqwest::Client::new()
         .get("https://api.github.com/repos/lasantosr/intelli-shell/releases/latest")
         .header(header::USER_AGENT, "intelli-shell")
         .timeout(REQUEST_TIMEOUT)
         .send()
         .await
-        .wrap_err("Failed to fetch latest release from GitHub")?
-        .json()
-        .await
-        .wrap_err("Failed to parse latest release response")?;
+        .map_err(|err| {
+            tracing::error!("{err:?}");
+            UserFacingError::LatestVersionRequestFailed(err.to_string())
+        })?;
+
+    if !res.status().is_success() {
+        let status = res.status();
+        let status_str = status.as_str();
+        let body = res.text().await.unwrap_or_default();
+        let message = serde_json::from_str::<serde_json::Value>(&body)
+            .ok()
+            .and_then(|v| v.get("message").and_then(|m| m.as_str()).map(|s| s.to_string()))
+            .unwrap_or_else(|| format!("received {status_str} response"));
+        if let Some(reason) = status.canonical_reason() {
+            tracing::error!("Got response [{status_str}] {reason}:\n{body}");
+            return Err(UserFacingError::LatestVersionRequestFailed(message).into());
+        } else {
+            tracing::error!("Got response [{status_str}]:\n{body}");
+            return Err(UserFacingError::LatestVersionRequestFailed(message).into());
+        }
+    }
+
+    let release: Release = res.json().await.wrap_err("Failed to parse latest release response")?;
 
     // Parse it
     let tag_version = release.tag_name.trim_start_matches('v');

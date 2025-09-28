@@ -238,6 +238,9 @@ pub enum UserFacingError {
     /// The request was rejected by the AI provider due to rate limiting
     #[strum(to_string = "AI request rate-limited, try again later")]
     AiRateLimit,
+    /// An HTTP request to fetch the latest version has failed
+    #[strum(to_string = "Couldn't check for latest version: {0}")]
+    LatestVersionRequestFailed(String),
 }
 
 impl AppError {
