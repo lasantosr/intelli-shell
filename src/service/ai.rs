@@ -13,8 +13,8 @@ use crate::{
     errors::{AppError, Result, UserFacingError},
     model::{CATEGORY_USER, Command, SOURCE_AI, SearchMode},
     utils::{
-        add_tags_to_description, execute_shell_command_capture, generate_working_dir_tree, get_executable_version,
-        get_os_info, get_shell_info,
+        ShellType, add_tags_to_description, execute_shell_command_capture, generate_working_dir_tree,
+        get_executable_version, get_os_info, get_shell_info,
     },
 };
 
@@ -307,12 +307,30 @@ fn replace_prompt_placeholders(prompt: &str, root_cmd: Option<&str>, history: Op
             "OS_SHELL_INFO" => {
                 let shell_info = get_shell_info();
                 let os_info = get_os_info();
+                let shell_name = match &shell_info.kind {
+                    ShellType::Cmd => "CMD",
+                    ShellType::WindowsPowerShell => "PowerShell",
+                    ShellType::PowerShellCore => "PowerShell",
+                    ShellType::Bash => "bash",
+                    ShellType::Sh => "sh",
+                    ShellType::Fish => "fish",
+                    ShellType::Zsh => "zsh",
+                    ShellType::Nushell => "NuShell",
+                    ShellType::Other(name) => name,
+                };
                 format!(
-                    "### Context:\n- {os_info}\n- {}{}\n",
+                    "### Context:\n- OS: {os_info}\n- Shell: {}{}\n",
                     shell_info
                         .version
-                        .clone()
-                        .unwrap_or_else(|| shell_info.kind.to_string()),
+                        .as_ref()
+                        .map(|version| {
+                            if version.to_lowercase().contains(&shell_name.to_lowercase()) {
+                                version.clone()
+                            } else {
+                                format!("{}, {}", shell_name, version)
+                            }
+                        })
+                        .unwrap_or_else(|| shell_name.to_string()),
                     root_cmd
                         .and_then(get_executable_version)
                         .map(|v| format!("\n- {v}"))
