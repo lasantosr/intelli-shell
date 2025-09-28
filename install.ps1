@@ -11,13 +11,17 @@ Author   : Luis Santos
 Version  : 1.2
 #>
 
+param(
+  # Specifies the version of IntelliShell to install (e.g., "v0.5.0" or "0.5.0").
+  # If not provided, the latest version will be installed.
+  [string]$Version
+)
+
 # Set strict mode
 Set-StrictMode -Version Latest
 
 # --- Configuration ---
 $AppName = "IntelliShell"
-$GitHubRepo = "lasantosr/intelli-shell"
-$BaseUrl = "https://github.com/$GitHubRepo/releases/latest/download"
 
 # --- Determine Architecture ---
 $architecture = $env:PROCESSOR_ARCHITECTURE
@@ -33,7 +37,6 @@ $osSlug = "pc-windows-msvc"
 $target = "$targetArch-$osSlug"
 $archiveExtension = "zip"
 $artifactFilename = "intelli-shell-$target.$archiveExtension"
-$downloadUrl = "$BaseUrl/$artifactFilename"
 
 # --- Determine Installation Path (INTELLI_HOME) ---
 # Priority: 1. Existing $env:INTELLI_HOME, 2. Default AppData path
@@ -57,9 +60,18 @@ try {
 }
 
 # --- Download and Extract ---
+$targetVersion = if ($Version) { $Version } else { $env:INTELLI_VERSION }
+if ([string]::IsNullOrWhiteSpace($targetVersion)) {
+  $releasePath = "releases/latest/download"
+  Write-Host "Downloading latest IntelliShell ($artifactFilename) ..."
+} else {
+  $cleanVersion = $targetVersion.TrimStart('v')
+  $releasePath = "releases/download/v$cleanVersion"
+  Write-Host "Downloading IntelliShell v$cleanVersion ($artifactFilename) ..."
+}
+$downloadUrl = "https://github.com/lasantosr/intelli-shell/$releasePath/$artifactFilename"
 $tempFile = Join-Path $env:TEMP -ChildPath ([System.Guid]::NewGuid().ToString() + ".$archiveExtension")
 
-Write-Host "Downloading IntelliShell ($artifactFilename) ..."
 try {
   Invoke-WebRequest -Uri $downloadUrl -OutFile $tempFile -UseBasicParsing -TimeoutSec 300 -ErrorAction Stop
 } catch {

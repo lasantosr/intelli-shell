@@ -118,11 +118,30 @@ artifact_filename="intelli-shell-$target.$archive_ext"
 # Ensure the target directory exists
 mkdir -p "$INTELLI_HOME/bin"
 
+# Determine the version to install
+target_version=""
+if [ -n "$1" ]; then
+  target_version="$1"
+elif [ -n "$INTELLI_VERSION" ]; then
+  target_version="$INTELLI_VERSION"
+fi
+
+# Determine the release path part of the URL based on the version
+if [ -n "$target_version" ]; then
+  # If a version is provided, use it
+  VERSION_TAG=$(echo "$target_version" | sed 's/^v//')
+  RELEASE_PATH="releases/download/v$VERSION_TAG"
+  echo "Downloading IntelliShell v$VERSION_TAG ($artifact_filename) ..."
+else
+  # Otherwise, download the latest release
+  RELEASE_PATH="releases/latest/download"
+  echo "No version specified, installing the latest release."
+fi
+
 # Define the download URL and a temporary file path
-DOWNLOAD_URL="https://github.com/lasantosr/intelli-shell/releases/latest/download/$artifact_filename"
+DOWNLOAD_URL="https://github.com/lasantosr/intelli-shell/$RELEASE_PATH/$artifact_filename"
 TMP_ARCHIVE="$INTELLI_HOME/$artifact_filename.tmp"
 
-echo "Downloading IntelliShell ($artifact_filename) ..."
 if ! curl -Lsf "$DOWNLOAD_URL" -o "$TMP_ARCHIVE"; then
   echo "Error: Download failed from $DOWNLOAD_URL" >&2
   rm -f "$TMP_ARCHIVE"
