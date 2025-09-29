@@ -848,7 +848,7 @@ fn default_ai_catalog() -> BTreeMap<String, AiModelConfig> {
         (
             "main".to_string(),
             AiModelConfig::Gemini(GeminiModelConfig {
-                model: "gemini-2.5-flash".to_string(),
+                model: "gemini-flash-latest".to_string(),
                 url: default_gemini_url(),
                 api_key_env: default_gemini_api_key_env(),
             }),
@@ -856,7 +856,7 @@ fn default_ai_catalog() -> BTreeMap<String, AiModelConfig> {
         (
             "fallback".to_string(),
             AiModelConfig::Gemini(GeminiModelConfig {
-                model: "gemini-2.0-flash-lite".to_string(),
+                model: "gemini-flash-lite-latest".to_string(),
                 url: default_gemini_url(),
                 api_key_env: default_gemini_api_key_env(),
             }),

@@ -251,11 +251,11 @@ fallback = "fallback"
 
 [ai.catalog.main]
 provider = "gemini"
-model = "gemini-2.5-flash"
+model = "gemini-flash-latest"
 
 [ai.catalog.fallback]
 provider = "gemini"
-model = "gemini-2.0-flash-lite"
+model = "gemini-flash-lite-latest"
 
 # --- AI Prompts ---
 # This section allows for the customization of the prompts sent to the AI for different tasks.
