@@ -25,7 +25,7 @@ By default, IntelliShell sets up several hotkeys. These are the primary ways you
 - **Clear Line** <kbd>Esc</kbd>: As a convenience, this key is bound to clear the entire command line. This can be
   disabled if it conflicts with your existing terminal habits.
 
-> 📝 **Note**: These shell hotkeys are fully customizable, see the [**Installation**](./installation.md#customizing-shell-integration)
+> 📝 **Note**: These shell hotkeys are fully customizable, see the [**Installation**](./installation.md#customizing-keybindings)
 > chapter for details on how to change them.
 >
 > Additionally, all keybindings used within the interactive UIs mentioned on the book are customizable in your

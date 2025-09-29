@@ -50,7 +50,7 @@ This section is broken down into the following chapters:
 
 The primary hotkeys that trigger IntelliShell from your command line (e.g., <kbd>Ctrl</kbd>+<kbd>Space</kbd>) are
 configured separately via environment variables in your shell's profile (e.g., `~/.bashrc`, `~/.zshrc`). This is
-covered in detail in the [**Installation**](../guide/installation.md#customizing-shell-integration) chapter.
+covered in detail in the [**Installation**](../guide/installation.md#customizing-keybindings) chapter.
 
 ---
 

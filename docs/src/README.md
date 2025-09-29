@@ -8,31 +8,38 @@ Welcome to the official guide for IntelliShell. If you find yourself constantly 
 one-trick `awk` command, forgetting the exact flags for `tar`, or re-typing long commands with only minor changes,
 then you've come to the right place.
 
-IntelliShell is a smart command-line assistant designed to solve these exact problems. It helps you save, find,
-generate, and fix your most valuable commands directly within your terminal, turning your command line from a
-simple execution tool into a structured, searchable, and **intelligent library**.
+IntelliShell is a powerful command template and snippet manager that goes far beyond a simple history search to
+fundamentally improve your command-line experience. It helps you save, find, generate, and fix your most valuable
+commands directly within your terminal, turning your command line from a simple execution tool into a structured,
+searchable, and **intelligent library**.
 
-## Key Features
+## Why IntelliShell?
 
-IntelliShell is built with a focus on **user experience**, efficiency and seamless integration:
+IntelliShell is built for users who want to be more efficient and organized in their terminal, with a focus on seamless
+integration and user experience.
 
-- **Instant Access**: Find and execute commands in seconds with an interactive search UI, triggered by a simple
-  keybinding (`ctrl+space`).
+- **Seamless Shell Integration**: Works directly within your current shell session, making saving and recalling commands
+  feel like a native feature rather than an external tool. Trigger it instantly with a simple keybinding
+  (`ctrl+space`).
 
-- **Command Templates**: Create powerful command templates using `{{variables}}`. IntelliShell will prompt you to fill
-  them in on the fly, making your commands reusable for any scenario.
+- **Smart & Fast Search**: Find the command you need in milliseconds. The intelligent search and ranking algorithm lets
+  you find commands even if you only remember a keyword or two.
 
-- **Smart Completions**: Power up your templates by defining custom scripts that generate live suggestions for your
-  variables, like listing available git branches or docker containers.
+- **Powerful Command Templates**: Create reusable command templates using `{{variables}}`. IntelliShell will prompt you
+  to fill them in on the fly, making any command adaptable to new scenarios.
 
-- **AI-Powered Assistance**: Generate complex commands from natural language, instantly fix errors in your last command,
-  and import templates from any text source—all powered by your favorite language models.
+- **Dynamic Completions**: Turn static templates into interactive command builders. Power up your templates by defining
+  custom scripts that generate live suggestions for your variables, like listing available git branches or docker
+  containers.
 
-- **Effortless Organization**: Use descriptions and hashtags (`#work`, `#maintenance`) to categorize your commands, making
-  them easy to filter and find.
+- **AI Copilot**: Bring the power of AI to your command line. Connect to any local or remote language model to generate
+  complex commands and completions from natural language or instantly fix errors in your last command.
 
-- **Workspace-Aware**: Automatically load workspace-specific commands and completions from a `.intellishell` file in your
-  current folder or workspace.
+- **Fully Customizable**: Tailor every aspect to your specific workflow via a simple configuration file—from keybindings
+  and themes to search behavior.
+
+- **Effortless Organization**: Use descriptions and hashtags (`#work`, `#maintenance`) to categorize your commands,
+  making them easy to filter and find.
 
 - **Sync & Share**: Export your command library to a file, an HTTP endpoint, or a GitHub Gist to back it up or share it
   with your team.
@@ -51,8 +58,8 @@ This documentation is structured into three main sections to help you find what 
 
 - **Configuration**: This section is your reference for personalizing IntelliShell.
   
-  Learn how to change keybindings, customize themes, configure AI providers,
-  and even fine-tune the search-ranking algorithms to make the tool truly your own.
+  Learn how to change keybindings, customize themes, configure AI providers, and even fine-tune the search-ranking
+  algorithms to make the tool truly your own.
 
 - **Command Line Tool**: Here you will find a detailed, technical breakdown of every command.
   

@@ -2,10 +2,11 @@
 
 _Like IntelliSense, but for shells!_
 
-IntelliShell is a command-line tool that acts as a smart bookmark manager.
-It helps you find, organize, and reuse complex shell commands without ever leaving your terminal.
+IntelliShell is a powerful command template and snippet manager for your shell. It goes far beyond a simple history search,
+transforming your terminal into a structured, searchable, and intelligent library of your commands.
 
-Works on **Bash**, **Zsh**, **Fish**, **Nushell**, and **PowerShell**, with standalone binaries for Linux, macOS, and Windows.
+Works on **Bash**, **Zsh**, **Fish**, **Nushell**, and **PowerShell**, with standalone binaries for Linux, macOS, and
+Windows.
 
 ![intelli-shell demo](docs/src/images/demo.gif)
 
