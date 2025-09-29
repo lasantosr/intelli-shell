@@ -41,7 +41,7 @@ pub enum ProcessOutput {
 /// This structure defines what should be sent to standard output (stdout), standard error (stderr), and/or a dedicated
 /// file, along with a status indicating if the operation itself succeeded or failed.
 #[derive(Clone, PartialEq, Eq, Default)]
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[cfg_attr(test, derive(Debug))]
 pub struct OutputInfo {
     /// Indicates whether the operation that generated this output bundle was considered a failure
     pub failed: bool,

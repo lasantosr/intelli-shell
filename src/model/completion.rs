@@ -7,7 +7,7 @@ use crate::utils::{flatten_str, flatten_variable_name};
 
 /// Type to represent a variable completion
 #[derive(Clone, PartialEq, Eq)]
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[cfg_attr(test, derive(Debug))]
 pub struct VariableCompletion {
     /// The unique identifier for the completion
     pub id: Uuid,

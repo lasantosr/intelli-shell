@@ -3,8 +3,7 @@
 /// A query is parsed into a sequence of `FuzzyMatch` items.
 ///
 /// These items are implicitly ANDed together when performing a search, unless they are part of an `Or` variant.
-#[derive(PartialEq, Eq)]
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[derive(PartialEq, Eq, Debug)]
 pub enum FuzzyMatch<'a> {
     /// A single search term with a specific matching strategy
     Term(FuzzyTerm<'a>),
@@ -13,8 +12,7 @@ pub enum FuzzyMatch<'a> {
 }
 
 /// Represents an individual search term and its associated matching semantics
-#[derive(PartialEq, Eq)]
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[derive(PartialEq, Eq, Debug)]
 pub struct FuzzyTerm<'a> {
     /// The kind of fuzzy matching to apply to this term
     pub kind: FuzzyTermKind,
@@ -25,8 +23,7 @@ pub struct FuzzyTerm<'a> {
 /// Defines the different kinds of matching strategies for a [`FuzzyTerm`].
 ///
 /// The specific syntax used in the query string determines the `FuzzyTermKind`.
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum FuzzyTermKind {
     /// Chars must be found in the same order, but not necessarily consecutively
     #[default]

@@ -273,7 +273,7 @@ pub mod dto {
     pub const GIST_README_FILENAME_UPPER: &str = "README.md";
 
     #[derive(Serialize, Deserialize)]
-    #[cfg_attr(debug_assertions, derive(Debug))]
+    #[cfg_attr(test, derive(Debug))]
     #[serde(untagged)]
     pub enum ImportExportItemDto {
         Command(CommandDto),
@@ -297,7 +297,7 @@ pub mod dto {
     }
 
     #[derive(Serialize, Deserialize)]
-    #[cfg_attr(debug_assertions, derive(Debug))]
+    #[cfg_attr(test, derive(Debug))]
     pub struct CommandDto {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub id: Option<Uuid>,
@@ -326,7 +326,7 @@ pub mod dto {
     }
 
     #[derive(Serialize, Deserialize)]
-    #[cfg_attr(debug_assertions, derive(Debug))]
+    #[cfg_attr(test, derive(Debug))]
     pub struct VariableCompletionDto {
         pub command: String,
         pub variable: String,
@@ -348,12 +348,12 @@ pub mod dto {
     }
 
     #[derive(Serialize, Deserialize)]
-    #[cfg_attr(debug_assertions, derive(Debug))]
+    #[cfg_attr(test, derive(Debug))]
     pub struct GistDto {
         pub files: HashMap<String, GistFileDto>,
     }
     #[derive(Serialize, Deserialize)]
-    #[cfg_attr(debug_assertions, derive(Debug))]
+    #[cfg_attr(test, derive(Debug))]
     pub struct GistFileDto {
         pub content: String,
     }

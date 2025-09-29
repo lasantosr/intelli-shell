@@ -57,7 +57,7 @@ pub enum SearchMode {
 
 /// Represents the filtering criteria for searching for commands
 #[derive(Default, Clone)]
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[cfg_attr(test, derive(Debug))]
 pub struct SearchCommandsFilter {
     /// Filter commands by a specific category (`user`, `workspace` or tldr's category)
     pub category: Option<Vec<String>>,
@@ -118,8 +118,7 @@ impl SearchCommandsFilter {
 }
 
 #[derive(Clone)]
-#[cfg_attr(debug_assertions, derive(Debug))]
-#[cfg_attr(test, derive(Default))]
+#[cfg_attr(test, derive(Default, Debug))]
 pub struct Command {
     /// Unique identifier for the command
     pub id: Uuid,

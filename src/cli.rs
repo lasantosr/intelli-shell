@@ -24,7 +24,7 @@ use crate::model::SearchMode;
 /// - `ctrl+l` to replace variables from a command
 /// - `ctrl+x` to fix a command that is failing
 #[derive(Parser)]
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[cfg_attr(test, derive(Debug))]
 #[command(
     author,
     version,
@@ -59,7 +59,7 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[cfg_attr(test, derive(Debug))]
 pub enum CliProcess {
     #[cfg(debug_assertions)]
     /// (debug) Runs an sql query against the database
@@ -118,7 +118,7 @@ pub enum CliProcess {
 
 #[cfg(feature = "tldr")]
 #[derive(Subcommand)]
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[cfg_attr(test, derive(Debug))]
 pub enum TldrProcess {
     /// Fetches command examples from tldr pages and imports them
     ///
@@ -132,7 +132,7 @@ pub enum TldrProcess {
 }
 
 #[derive(Subcommand)]
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[cfg_attr(test, derive(Debug))]
 pub enum CompletionProcess {
     /// Adds a new dynamic completion for a variable
     #[command(after_long_help = include_str!("_examples/completion_new.txt"))]

@@ -52,7 +52,7 @@ pub trait AiProvider: AiProviderBase {
 }
 
 /// A generic client to communicate with AI providers
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[cfg_attr(test, derive(Debug))]
 pub struct AiClient<'a> {
     inner: Client,
     primary_alias: &'a str,

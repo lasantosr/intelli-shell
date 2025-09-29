@@ -26,7 +26,7 @@ use crate::{
 
 /// Main configuration struct for the application
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct Config {
     /// Directory where the data must be stored
@@ -53,7 +53,7 @@ pub struct Config {
 
 /// Configuration for the search command
 #[derive(Clone, Copy, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct SearchConfig {
     /// The delay (in ms) to wait and accumulate type events before triggering the query
@@ -68,7 +68,7 @@ pub struct SearchConfig {
 
 /// Configuration settings for application logging
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct LogsConfig {
     /// Whether application logging is enabled
@@ -84,7 +84,7 @@ pub struct LogsConfig {
 /// This struct holds the `KeyBinding` instances for various actions within the application's TUI, allowing users to
 /// customize their interaction with the interface.
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct KeyBindingsConfig(
     #[serde(deserialize_with = "deserialize_bindings_with_defaults")] BTreeMap<KeyBindingAction, KeyBinding>,
@@ -119,14 +119,14 @@ pub enum KeyBindingAction {
 /// Internally, it is stored as a `Vec<KeyEvent>` because multiple different key press combinations can map to the same
 /// action.
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct KeyBinding(#[serde(deserialize_with = "deserialize_key_events")] Vec<KeyEvent>);
 
 /// TUI theme configuration.
 ///
 /// Defines the colors, styles, and highlighting behavior for the Terminal User Interface.
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct Theme {
     /// To be used as the primary style, like for selected items or main text
@@ -165,7 +165,7 @@ pub struct Theme {
 
 /// Configuration settings for the default gist
 #[derive(Clone, Default, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct GistConfig {
     /// Gist unique identifier
     pub id: String,
@@ -175,7 +175,7 @@ pub struct GistConfig {
 
 /// Holds all tunable parameters for the command and variable search ranking algorithms
 #[derive(Clone, Copy, Default, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct SearchTuning {
     /// Configuration for the command search ranking
@@ -186,7 +186,7 @@ pub struct SearchTuning {
 
 /// Configures the ranking parameters for command search
 #[derive(Clone, Copy, Default, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct SearchCommandTuning {
     /// Defines weights and points for the text relevance component
@@ -199,7 +199,7 @@ pub struct SearchCommandTuning {
 
 /// Defines weights and points for the text relevance (FTS) score component
 #[derive(Clone, Copy, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct SearchCommandsTextTuning {
     /// Points assigned to the normalized text relevance score in the final calculation
@@ -214,7 +214,7 @@ pub struct SearchCommandsTextTuning {
 
 /// Tunable weights for the different matching strategies within the 'auto' search mode
 #[derive(Clone, Copy, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct SearchCommandsTextAutoTuning {
     /// Weight multiplier for results from the prefix-based FTS query
@@ -229,7 +229,7 @@ pub struct SearchCommandsTextAutoTuning {
 
 /// Configures the path-aware scoring model
 #[derive(Clone, Copy, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct SearchPathTuning {
     /// Points assigned to the normalized path score in the final calculation
@@ -246,7 +246,7 @@ pub struct SearchPathTuning {
 
 /// Configures the total usage scoring model
 #[derive(Clone, Copy, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct SearchUsageTuning {
     /// Points assigned to the normalized total usage in the final calculation
@@ -255,7 +255,7 @@ pub struct SearchUsageTuning {
 
 /// Configures the ranking parameters for variable values ranking
 #[derive(Clone, Copy, Default, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct SearchVariableTuning {
     /// Defines points for completions relevance component
@@ -268,7 +268,7 @@ pub struct SearchVariableTuning {
 
 /// Defines points for the completions relevance score component of variable values
 #[derive(Clone, Copy, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct SearchVariableCompletionTuning {
     /// Points assigned for values present on the completions
@@ -277,7 +277,7 @@ pub struct SearchVariableCompletionTuning {
 
 /// Defines points for the context relevance score component of variable values
 #[derive(Clone, Copy, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct SearchVariableContextTuning {
     /// Points assigned for matching contextual information (e.g. other selected values)
@@ -286,7 +286,7 @@ pub struct SearchVariableContextTuning {
 
 /// Main configuration for all AI-related features
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct AiConfig {
     /// A global switch to enable or disable all AI-powered functionality
@@ -305,7 +305,7 @@ pub struct AiConfig {
 
 /// Configuration for the prompts
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct AiPromptsConfig {
     /// The prompt to use when generating command suggestions from natural language.
@@ -320,7 +320,7 @@ pub struct AiPromptsConfig {
 
 /// Configuration for the models to be used
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[cfg_attr(not(test), serde(default))]
 pub struct AiModelsConfig {
     /// The alias of the AI model to use for generating command suggestions from natural language.
@@ -342,7 +342,7 @@ pub struct AiModelsConfig {
 
 /// Represents the configuration for a specific AI model, distinguished by the provider
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[serde(tag = "provider", rename_all = "snake_case")]
 pub enum AiModelConfig {
     /// Configuration for OpenAI or compatible APIs
@@ -357,7 +357,7 @@ pub enum AiModelConfig {
 
 /// Configuration for connecting to an OpenAI or a compatible API
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct OpenAiModelConfig {
     /// The exact model identifier to use (e.g., "gpt-4o", "gpt-3.5-turbo")
     pub model: String,
@@ -379,7 +379,7 @@ fn default_openai_api_key_env() -> String {
 
 /// Configuration for connecting to the Google Gemini API
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct GeminiModelConfig {
     /// The exact model identifier to use (e.g., "gemini-2.5-flash-lite")
     pub model: String,
@@ -399,7 +399,7 @@ fn default_gemini_api_key_env() -> String {
 
 /// Configuration for connecting to the Anthropic API
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct AnthropicModelConfig {
     /// The exact model identifier to use (e.g., "claude-sonnet-4-0")
     pub model: String,
@@ -419,7 +419,7 @@ fn default_anthropic_api_key_env() -> String {
 
 /// Configuration for connecting to a local or remote Ollama instance
 #[derive(Clone, Deserialize)]
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct OllamaModelConfig {
     /// The model name as configured in Ollama (e.g., "llama3", "mistral")
     pub model: String,

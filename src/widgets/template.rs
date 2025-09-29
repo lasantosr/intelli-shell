@@ -17,8 +17,8 @@ use crate::{
 };
 
 /// The widget for a command containing variables
-#[cfg_attr(debug_assertions, derive(Debug))]
 #[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub struct CommandTemplateWidget {
     /// The command template
     pub template: CommandTemplate,

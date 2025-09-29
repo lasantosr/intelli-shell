@@ -16,8 +16,8 @@ use crate::utils::{
 };
 
 /// A command containing variables
-#[cfg_attr(debug_assertions, derive(Debug))]
 #[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub struct CommandTemplate {
     /// The flattened root command (i.e., the first word)
     pub flat_root_cmd: String,
@@ -155,8 +155,8 @@ impl Display for CommandTemplate {
 }
 
 /// Represents a part of a command, which can be either text, a variable, or a variable value
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq, Eq))]
 #[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 pub enum TemplatePart {
     Text(String),
     Variable(Variable),
@@ -178,8 +178,8 @@ impl Display for TemplatePart {
 }
 
 /// Represents a variable from a command template
-#[cfg_attr(debug_assertions, derive(Debug, PartialEq, Eq))]
 #[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 pub struct Variable {
     /// The variable as it was displayed on the command (e.g., `"Opt1|Opt2:lower:kebab"`)
     pub display: String,

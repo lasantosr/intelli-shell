@@ -1,6 +1,6 @@
 /// Type to represent a variable value
 #[derive(Clone)]
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[cfg_attr(test, derive(Debug))]
 pub struct VariableValue {
     /// The unique identifier for the value (if stored)
     pub id: Option<i32>,
@@ -29,7 +29,7 @@ impl VariableValue {
 }
 
 /// Suggestion for a variable value
-#[cfg_attr(debug_assertions, derive(Debug))]
+#[cfg_attr(test, derive(Debug))]
 pub enum VariableSuggestion {
     /// A new secret value, the user must input it and it won't be stored
     Secret,
