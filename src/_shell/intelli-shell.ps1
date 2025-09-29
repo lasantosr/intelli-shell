@@ -13,6 +13,12 @@ if (-not (Get-Module -Name PSReadLine -ListAvailable)) {
 # Import the module if it's not already loaded
 Import-Module PSReadLine -ErrorAction SilentlyContinue
 
+# Polyfill for $IsWindows on older PowerShell versions
+if (-not (Test-Path 'variable:IsWindows')) {
+  # In Windows PowerShell (<= 5.1), we are always on Windows
+  New-Variable -Name 'IsWindows' -Value $true -Scope Script
+}
+
 # --- Configuration ---
 $IntelliSearchChord = if ([string]::IsNullOrEmpty($env:INTELLI_SEARCH_HOTKEY)) { 'Ctrl+Spacebar' } else { $env:INTELLI_SEARCH_HOTKEY }
 $IntelliBookmarkChord = if ([string]::IsNullOrEmpty($env:INTELLI_BOOKMARK_HOTKEY)) { 'Ctrl+b' } else { $env:INTELLI_BOOKMARK_HOTKEY }
@@ -67,7 +73,7 @@ function Invoke-IntelliShellAction {
     }
 
     # Read the file content and parse it
-    $lines = Get-Content -Path $stdoutTempFilePath -Raw -ErrorAction SilentlyContinue
+    $lines = [System.IO.File]::ReadAllText($stdoutTempFilePath)
     $lines = $lines -split '\r?\n'
     $outStatus = $lines[0]
     $action = if ($lines.Length -gt 1) { $lines[1] } else { '' }
