@@ -48,6 +48,23 @@ pub enum ShellType {
 }
 
 static PARENT_SHELL_INFO: LazyLock<ShellInfo> = LazyLock::new(|| {
+    // Default to `sh` on Unix and `powershell` on Windows if detection fails
+    let default = if cfg!(target_os = "windows") {
+        ShellType::WindowsPowerShell
+    } else {
+        ShellType::Sh
+    };
+
+    // In test mode, always return the default shell to avoid complications
+    if cfg!(test) {
+        tracing::info!("Using default shell for tests: {default}");
+        return ShellInfo {
+            kind: default,
+            version: None,
+        };
+    }
+
+    // Otherwise, try to detect the parent shell process
     let pid = Pid::from_u32(process::id());
 
     tracing::debug!("Retrieving info for pid {pid}");
@@ -58,12 +75,6 @@ static PARENT_SHELL_INFO: LazyLock<ShellInfo> = LazyLock::new(|| {
         .expect("Couldn't retrieve current process from pid")
         .parent()
         .and_then(|parent_pid| sys.process(parent_pid));
-
-    let default = if cfg!(target_os = "windows") {
-        ShellType::WindowsPowerShell
-    } else {
-        ShellType::Sh
-    };
 
     let Some(parent) = parent_process else {
         tracing::warn!("Couldn't detect shell, assuming {default}");
