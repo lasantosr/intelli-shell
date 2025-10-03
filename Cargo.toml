@@ -16,9 +16,21 @@ path = "src/main.rs"
 required-features = []
 
 [features]
-default = ["tldr", "self-update"]
+# Default features
+default = ["extra-features", "self-update", "vendored"]
+
+# Additional features that require extra dependencies
+extra-features = ["tldr"]
 tldr = ["dep:git2"]
+
+# Self-update doesn't work with package managers, they can disable it
 self-update = ["dep:self_update"]
+
+# Group the different vendored options into a single feature for convenience
+vendored = ["vendored-sqlite3", "vendored-openssl", "vendored-libgit2"]
+vendored-sqlite3 = ["rusqlite/bundled"]
+vendored-openssl = ["git2?/vendored-openssl"]
+vendored-libgit2 = ["git2?/vendored-libgit2"]
 
 [dependencies]
 async-stream       = "0.3"
@@ -44,7 +56,7 @@ ratatui            = "0.29"
 rayon              = "1"
 regex              = { version = "1" }
 reqwest            = { version = "0.12", features = ["stream", "json"] }
-rusqlite           = { version = "0.37", features = ["bundled", "functions", "chrono", "uuid", "serde_json"] }
+rusqlite           = { version = "0.37", features = ["functions", "chrono", "uuid", "serde_json"] }
 rusqlite_migration = "2.3"
 schemars           = "1"
 sea-query          = { version = "1.0.0-rc.14", features = ["derive", "thread-safe", "backend-sqlite"] }
@@ -74,7 +86,7 @@ walkdir            = "2"
 
 [dependencies.git2]
 default-features = false
-features         = ["https", "vendored-openssl", "vendored-libgit2"]
+features         = ["https"]
 optional         = true
 version          = "0.20"
 
