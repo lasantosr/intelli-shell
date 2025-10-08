@@ -107,10 +107,10 @@ end
 # Helper function to set up IntelliShell key bindings
 function _intelli_shell_bindings --description "Setup IntelliShell key bindings"
   # Use defaults if environment variables are not set
-  set -l search_key ctrl-space
-  set -l bookmark_key ctrl-b
-  set -l variable_key ctrl-l
-  set -l fix_key ctrl-x
+  set -l search_key '-k nul'
+  set -l bookmark_key \cb
+  set -l variable_key \cl
+  set -l fix_key \cx
 
   # Override defaults if environment variables are set
   if set -q INTELLI_SEARCH_HOTKEY; and test -n "$INTELLI_SEARCH_HOTKEY"
@@ -128,11 +128,15 @@ function _intelli_shell_bindings --description "Setup IntelliShell key bindings"
 
   # Bind ESC to kill the whole line if not skipped
   if not set -q INTELLI_SKIP_ESC_BIND; or test "$INTELLI_SKIP_ESC_BIND" != "1"
-    bind escape kill-whole-line
+    bind --preset \e kill-whole-line
   end
 
   # Bind the keys to the action functions
-  bind $search_key _intelli_search
+  if string match -q -- '\c@' $search_key; or string match -q -- '-k nul' $search_key
+    bind -k nul _intelli_search
+  else
+    bind $search_key _intelli_search
+  end
   bind $bookmark_key _intelli_save
   bind $variable_key _intelli_replace
   bind $fix_key _intelli_fix
