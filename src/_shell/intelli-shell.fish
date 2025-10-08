@@ -103,12 +103,14 @@ function _intelli_fix --description "IntelliShell Fix Command"
 end
 
 # --- Key Bindings ---
-function fish_user_key_bindings
+
+# Helper function to set up IntelliShell key bindings
+function _intelli_shell_bindings --description "Setup IntelliShell key bindings"
   # Use defaults if environment variables are not set
-  set -l search_key '-k nul'
-  set -l bookmark_key \cb
-  set -l variable_key \cl
-  set -l fix_key \cx
+  set -l search_key ctrl-space
+  set -l bookmark_key ctrl-b
+  set -l variable_key ctrl-l
+  set -l fix_key ctrl-x
 
   # Override defaults if environment variables are set
   if set -q INTELLI_SEARCH_HOTKEY; and test -n "$INTELLI_SEARCH_HOTKEY"
@@ -126,15 +128,11 @@ function fish_user_key_bindings
 
   # Bind ESC to kill the whole line if not skipped
   if not set -q INTELLI_SKIP_ESC_BIND; or test "$INTELLI_SKIP_ESC_BIND" != "1"
-    bind --preset \e kill-whole-line
+    bind escape kill-whole-line
   end
 
   # Bind the keys to the action functions
-  if string match -q -- '\c@' $search_key; or string match -q -- '-k nul' $search_key
-    bind -k nul _intelli_search
-  else
-    bind $search_key _intelli_search
-  end
+  bind $search_key _intelli_search
   bind $bookmark_key _intelli_save
   bind $variable_key _intelli_replace
   bind $fix_key _intelli_fix
@@ -147,3 +145,6 @@ if functions -q fish_prompt_second
 else
     set -gx INTELLI_EXEC_PROMPT '> '
 end
+
+# Initialize bindings
+_intelli_shell_bindings
