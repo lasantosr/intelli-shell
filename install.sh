@@ -10,10 +10,13 @@ os_type=$(uname -s)
 # Base commands required for all platforms
 required_cmds="curl tar uname mkdir rm grep sed printf"
 
-# Add unzip check only if on a Windows-like system
+# Add platform-specific commands
 case "$os_type" in
   MSYS*|MINGW*|CYGWIN*)
     required_cmds="$required_cmds unzip powershell.exe"
+    ;;
+  *)
+    required_cmds="$required_cmds gzip"
     ;;
 esac
 
