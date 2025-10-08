@@ -62,7 +62,7 @@ this by setting the `data_dir` option in your configuration file.
 
 - **Configuration File**:
   - _Linux_: `~/.config/intelli-shell/config.toml`
-  - _macOS_: `~/Library/Preferences/org.IntelliShell.Intelli-Shell/config.toml`
+  - _macOS_: `~/Library/Application Support/org.IntelliShell.Intelli-Shell/config.toml`
   - _Windows_: `%APPDATA%\IntelliShell\Intelli-Shell\config\config.toml`
 
 - **Data Files (Database, Logs)**:
