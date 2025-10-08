@@ -103,7 +103,9 @@ function _intelli_fix --description "IntelliShell Fix Command"
 end
 
 # --- Key Bindings ---
-function fish_user_key_bindings
+
+# Helper function to set up IntelliShell key bindings
+function _intelli_shell_bindings --description "Setup IntelliShell key bindings"
   # Use defaults if environment variables are not set
   set -l search_key '-k nul'
   set -l bookmark_key \cb
@@ -147,3 +149,6 @@ if functions -q fish_prompt_second
 else
     set -gx INTELLI_EXEC_PROMPT '> '
 end
+
+# Initialize bindings
+_intelli_shell_bindings
