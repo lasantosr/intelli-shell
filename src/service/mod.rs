@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     env,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -131,6 +132,7 @@ impl IntelliShellService {
 /// Returns a vector of tuples (file_path, folder_name) for all found files, with local workspace file first.
 fn find_workspace_files() -> Vec<(PathBuf, Option<String>)> {
     let mut result = Vec::new();
+    let mut seen_paths = HashSet::new();
 
     // Search upwards from current directory
     let working_dir = PathBuf::from(get_working_dir());
@@ -138,8 +140,12 @@ fn find_workspace_files() -> Vec<(PathBuf, Option<String>)> {
     while let Some(parent) = current {
         let candidate = parent.join(".intellishell");
         if candidate.is_file() {
-            let folder_name = parent.file_name().and_then(|n| n.to_str()).map(String::from);
-            result.push((candidate, folder_name));
+            if seen_paths.insert(candidate.clone()) {
+                let folder_name = parent.file_name().and_then(|n| n.to_str()).map(String::from);
+                result.push((candidate.clone(), folder_name));
+            } else {
+                tracing::debug!("Skipping duplicate workspace file: {}", candidate.display());
+            }
             break;
         }
 
@@ -152,32 +158,39 @@ fn find_workspace_files() -> Vec<(PathBuf, Option<String>)> {
     }
 
     // Search in INTELLI_WORKSPACE_PATH directories
-    if let Ok(path_var) = env::var("INTELLI_WORKSPACE_PATH") {
-        if !path_var.is_empty() {
-            #[cfg(target_os = "windows")]
-            let separator = ';';
-            #[cfg(not(target_os = "windows"))]
-            let separator = ':';
+    if let Ok(path_var) = env::var("INTELLI_WORKSPACE_PATH")
+        && !path_var.is_empty()
+    {
+        #[cfg(target_os = "windows")]
+        let separator = ';';
+        #[cfg(not(target_os = "windows"))]
+        let separator = ':';
 
-            for path_str in path_var.split(separator) {
-                let path_str = path_str.trim();
-                if path_str.is_empty() {
-                    continue;
-                }
+        for path_str in path_var.split(separator) {
+            let path_str = path_str.trim();
+            if path_str.is_empty() {
+                continue;
+            }
 
-                let dir_path = PathBuf::from(path_str);
-                let candidate = dir_path.join(".intellishell");
+            let dir_path = PathBuf::from(path_str);
+            let candidate = dir_path.join(".intellishell");
 
-                if candidate.is_file() {
+            if candidate.is_file() {
+                if seen_paths.insert(candidate.clone()) {
                     let folder_name = dir_path.file_name().and_then(|n| n.to_str()).map(String::from);
                     tracing::debug!("Found .intellishell in INTELLI_WORKSPACE_PATH: {}", candidate.display());
-                    result.push((candidate, folder_name));
+                    result.push((candidate.clone(), folder_name));
                 } else {
-                    tracing::trace!(
-                        "No .intellishell file found in INTELLI_WORKSPACE_PATH directory: {}",
-                        dir_path.display()
+                    tracing::debug!(
+                        "Skipping duplicate workspace file from INTELLI_WORKSPACE_PATH: {}",
+                        candidate.display()
                     );
                 }
+            } else {
+                tracing::trace!(
+                    "No .intellishell file found in INTELLI_WORKSPACE_PATH directory: {}",
+                    dir_path.display()
+                );
             }
         }
     }
