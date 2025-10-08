@@ -86,15 +86,7 @@ impl IntelliShellService {
         }
 
         // Collect all workspace files
-        let mut workspace_files = Vec::new();
-
-        // Add local workspace file if found
-        if let Some(file) = find_workspace_file() {
-            workspace_files.push(file);
-        }
-
-        // Add additional workspace files from INTELLI_WORKSPACE_PATH
-        workspace_files.extend(find_additional_workspace_files());
+        let workspace_files = find_workspace_files();
 
         if workspace_files.is_empty() {
             return Ok(false);
@@ -127,68 +119,66 @@ impl IntelliShellService {
     }
 }
 
-/// Searches upwards from the current working dir for a `.intellishell` file.
+/// Searches for `.intellishell` files in the current working directory tree and additional paths.
 ///
-/// The search stops if a `.git` directory or the filesystem root is found.
-/// Returns a tuple of (file_path, folder_name) if found.
-fn find_workspace_file() -> Option<(PathBuf, Option<String>)> {
+/// First searches upwards from the current working dir until a `.git` directory or the filesystem root is found.
+/// Then searches in directories specified by the `INTELLI_WORKSPACE_PATH` environment variable.
+///
+/// The paths in `INTELLI_WORKSPACE_PATH` should be separated by:
+/// - `:` (colon) on Unix-like systems
+/// - `;` (semicolon) on Windows
+///
+/// Returns a vector of tuples (file_path, folder_name) for all found files, with local workspace file first.
+fn find_workspace_files() -> Vec<(PathBuf, Option<String>)> {
+    let mut result = Vec::new();
+
+    // Search upwards from current directory
     let working_dir = PathBuf::from(get_working_dir());
     let mut current = Some(working_dir.as_path());
     while let Some(parent) = current {
         let candidate = parent.join(".intellishell");
         if candidate.is_file() {
             let folder_name = parent.file_name().and_then(|n| n.to_str()).map(String::from);
-            return Some((candidate, folder_name));
+            result.push((candidate, folder_name));
+            break;
         }
 
         if parent.join(".git").is_dir() {
             // Workspace boundary found
-            return None;
+            break;
         }
 
         current = parent.parent();
     }
-    None
-}
 
-/// Searches for `.intellishell` files in the directories specified by the `INTELLI_WORKSPACE_PATH` environment variable.
-///
-/// The paths should be separated by:
-/// - `:` (colon) on Unix-like systems
-/// - `;` (semicolon) on Windows
-///
-/// Returns a vector of tuples (file_path, folder_name) for each found file.
-fn find_additional_workspace_files() -> Vec<(PathBuf, Option<String>)> {
-    let path_var = match env::var("INTELLI_WORKSPACE_PATH") {
-        Ok(val) if !val.is_empty() => val,
-        _ => return Vec::new(),
-    };
+    // Search in INTELLI_WORKSPACE_PATH directories
+    if let Ok(path_var) = env::var("INTELLI_WORKSPACE_PATH") {
+        if !path_var.is_empty() {
+            #[cfg(target_os = "windows")]
+            let separator = ';';
+            #[cfg(not(target_os = "windows"))]
+            let separator = ':';
 
-    #[cfg(target_os = "windows")]
-    let separator = ';';
-    #[cfg(not(target_os = "windows"))]
-    let separator = ':';
+            for path_str in path_var.split(separator) {
+                let path_str = path_str.trim();
+                if path_str.is_empty() {
+                    continue;
+                }
 
-    let mut result = Vec::new();
+                let dir_path = PathBuf::from(path_str);
+                let candidate = dir_path.join(".intellishell");
 
-    for path_str in path_var.split(separator) {
-        let path_str = path_str.trim();
-        if path_str.is_empty() {
-            continue;
-        }
-
-        let dir_path = PathBuf::from(path_str);
-        let candidate = dir_path.join(".intellishell");
-
-        if candidate.is_file() {
-            let folder_name = dir_path.file_name().and_then(|n| n.to_str()).map(String::from);
-            tracing::debug!("Found .intellishell in INTELLI_WORKSPACE_PATH: {}", candidate.display());
-            result.push((candidate, folder_name));
-        } else {
-            tracing::trace!(
-                "No .intellishell file found in INTELLI_WORKSPACE_PATH directory: {}",
-                dir_path.display()
-            );
+                if candidate.is_file() {
+                    let folder_name = dir_path.file_name().and_then(|n| n.to_str()).map(String::from);
+                    tracing::debug!("Found .intellishell in INTELLI_WORKSPACE_PATH: {}", candidate.display());
+                    result.push((candidate, folder_name));
+                } else {
+                    tracing::trace!(
+                        "No .intellishell file found in INTELLI_WORKSPACE_PATH directory: {}",
+                        dir_path.display()
+                    );
+                }
+            }
         }
     }
 
