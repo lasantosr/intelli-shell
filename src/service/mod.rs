@@ -5,6 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use directories::BaseDirs;
 use tokio::fs::File;
 use tracing::instrument;
 
@@ -70,13 +71,17 @@ impl IntelliShellService {
         self.storage.query(sql).await
     }
 
-    /// Loads workspace commands and completions from the `.intellishell` file in the current working directory setting
-    /// up the temporary tables in the database if they don't exist.
+    /// Loads workspace commands and completions from `.intellishell` files using a built-in search hierarchy.
     ///
-    /// Additionally, loads `.intellishell` files from paths specified in the `INTELLI_WORKSPACE_PATH` environment
-    /// variable (colon-separated on Unix, semicolon-separated on Windows).
+    /// Search order:
+    /// 1. Local workspace: searches upward from current directory until `.git` or filesystem root
+    /// 2. Home directory: `~/.intellishell` (file or directory)
+    /// 3. System-wide: `/etc/.intellishell` (Unix) or `C:\ProgramData\.intellishell` (Windows)
     ///
-    /// Returns whether a workspace file was processed or not
+    /// Each location can be either a file or directory. Directories are recursively searched for all files.
+    /// Sets up temporary tables in the database if they don't exist.
+    ///
+    /// Returns whether any workspace file was processed
     #[instrument(skip_all)]
     pub async fn load_workspace_items(&self) -> Result<bool> {
         if !env::var("INTELLI_SKIP_WORKSPACE")
@@ -120,32 +125,91 @@ impl IntelliShellService {
     }
 }
 
-/// Searches for `.intellishell` files in the current working directory tree and additional paths.
+/// Collects `.intellishell` files or directories from a given path.
 ///
-/// First searches upwards from the current working dir until a `.git` directory or the filesystem root is found.
-/// Then searches in directories specified by the `INTELLI_WORKSPACE_PATH` environment variable.
+/// If the path is a file, returns it with the parent folder name as tag.
+/// If the path is a directory, recursively collects all files inside (excluding
+/// dotfiles, using the file name as tag.
+fn collect_intellishell_files_from_location(
+    path: &Path,
+    seen_paths: &mut HashSet<PathBuf>,
+) -> Vec<(PathBuf, Option<String>)> {
+    let mut result = Vec::new();
+
+    if path.is_file() {
+        // Single file: use parent folder name as tag
+        if seen_paths.insert(path.to_path_buf()) {
+            let folder_name = path
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .map(String::from);
+            result.push((path.to_path_buf(), folder_name));
+        } else {
+            tracing::debug!("Skipping duplicate workspace file: {}", path.display());
+        }
+    } else if path.is_dir() {
+        // Directory: recursively collect all files
+        collect_files_recursive(path, seen_paths, &mut result);
+    }
+
+    result
+}
+
+/// Recursively collects files from a directory, skipping dotfiles
+fn collect_files_recursive(dir: &Path, seen_paths: &mut HashSet<PathBuf>, result: &mut Vec<(PathBuf, Option<String>)>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        tracing::trace!("Could not read directory: {}", dir.display());
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+
+        // Get file name for filtering
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        // If it is a file but not a dotfile then process it
+        if path.is_file() && !file_name.starts_with(".") {
+            // Add file with its name as tag
+            if seen_paths.insert(path.clone()) {
+                let tag = path.file_stem().and_then(|n| n.to_str()).map(String::from);
+                tracing::debug!("Found workspace file in directory: {}", path.display());
+                result.push((path, tag));
+            } else {
+                tracing::debug!("Skipping duplicate workspace file: {}", path.display());
+            }
+        } else if path.is_dir() {
+            collect_files_recursive(&path, seen_paths, result);
+        }
+    }
+}
+
+/// Searches for `.intellishell` files using a built-in hierarchy.
 ///
-/// The paths in `INTELLI_WORKSPACE_PATH` should be separated by:
-/// - `:` (colon) on Unix-like systems
-/// - `;` (semicolon) on Windows
+/// Search order:
+/// 1. Local workspace: searches upward from current directory until `.git` or filesystem root
+/// 2. Home directory: `~/.intellishell` (file or directory)
+/// 3. System-wide: `/etc/.intellishell` (Unix) or `C:\ProgramData\.intellishell` (Windows)
 ///
-/// Returns a vector of tuples (file_path, folder_name) for all found files, with local workspace file first.
+/// Each location can be either a file or directory:
+/// - File: loaded with parent folder name as tag
+/// - Directory: all files inside are loaded recursively with file name as tag
+///
+/// Returns a vector of tuples (file_path, tag) for all found files.
 fn find_workspace_files() -> Vec<(PathBuf, Option<String>)> {
     let mut result = Vec::new();
     let mut seen_paths = HashSet::new();
 
-    // Search upwards from current directory
+    // 1. Search upwards from current directory
     let working_dir = PathBuf::from(get_working_dir());
     let mut current = Some(working_dir.as_path());
     while let Some(parent) = current {
         let candidate = parent.join(".intellishell");
-        if candidate.is_file() {
-            if seen_paths.insert(candidate.clone()) {
-                let folder_name = parent.file_name().and_then(|n| n.to_str()).map(String::from);
-                result.push((candidate.clone(), folder_name));
-            } else {
-                tracing::debug!("Skipping duplicate workspace file: {}", candidate.display());
-            }
+        if candidate.exists() {
+            result.extend(collect_intellishell_files_from_location(&candidate, &mut seen_paths));
             break;
         }
 
@@ -157,42 +221,36 @@ fn find_workspace_files() -> Vec<(PathBuf, Option<String>)> {
         current = parent.parent();
     }
 
-    // Search in INTELLI_WORKSPACE_PATH directories
-    if let Ok(path_var) = env::var("INTELLI_WORKSPACE_PATH")
-        && !path_var.is_empty()
-    {
-        #[cfg(target_os = "windows")]
-        let separator = ';';
-        #[cfg(not(target_os = "windows"))]
-        let separator = ':';
-
-        for path_str in path_var.split(separator) {
-            let path_str = path_str.trim();
-            if path_str.is_empty() {
-                continue;
-            }
-
-            let dir_path = PathBuf::from(path_str);
-            let candidate = dir_path.join(".intellishell");
-
-            if candidate.is_file() {
-                if seen_paths.insert(candidate.clone()) {
-                    let folder_name = dir_path.file_name().and_then(|n| n.to_str()).map(String::from);
-                    tracing::debug!("Found .intellishell in INTELLI_WORKSPACE_PATH: {}", candidate.display());
-                    result.push((candidate.clone(), folder_name));
-                } else {
-                    tracing::debug!(
-                        "Skipping duplicate workspace file from INTELLI_WORKSPACE_PATH: {}",
-                        candidate.display()
-                    );
-                }
-            } else {
-                tracing::trace!(
-                    "No .intellishell file found in INTELLI_WORKSPACE_PATH directory: {}",
-                    dir_path.display()
-                );
-            }
+    // 2. Search in home directory
+    if let Some(base_dirs) = BaseDirs::new() {
+        let home_candidate = base_dirs.home_dir().join(".intellishell");
+        if home_candidate.exists() {
+            tracing::debug!(
+                "Checking home directory for .intellishell: {}",
+                home_candidate.display()
+            );
+            result.extend(collect_intellishell_files_from_location(
+                &home_candidate,
+                &mut seen_paths,
+            ));
         }
+    }
+
+    // 3. Search in system-wide location
+    #[cfg(target_os = "windows")]
+    let system_candidate = PathBuf::from(r"C:\ProgramData\.intellishell");
+    #[cfg(not(target_os = "windows"))]
+    let system_candidate = PathBuf::from("/etc/.intellishell");
+
+    if system_candidate.exists() {
+        tracing::debug!(
+            "Checking system-wide location for .intellishell: {}",
+            system_candidate.display()
+        );
+        result.extend(collect_intellishell_files_from_location(
+            &system_candidate,
+            &mut seen_paths,
+        ));
     }
 
     result
