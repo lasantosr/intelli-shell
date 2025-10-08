@@ -4,14 +4,21 @@ FROM tsl0922/ttyd:alpine AS ttyd
 # Start from the official Rust image, which is Debian-based
 FROM rust
 
-# Add Charm repo for vhs and update package lists
+# Add Charm & GitHub CLI repos and update package lists
 RUN mkdir -p /etc/apt/keyrings && \
+    # Charm Repo
     curl -fsSL https://repo.charm.sh/apt/gpg.key | gpg --dearmor -o /etc/apt/keyrings/charm.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | tee /etc/apt/sources.list.d/charm.list && \
+    # GitHub CLI Repo
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list && \
+    # Update lists
     apt-get update
 
 # Install system dependencies
 RUN apt-get install -y --no-install-recommends \
+    # GitHub CLI
+    gh \
     # Shells
     zsh \
     fish \
