@@ -72,18 +72,40 @@ impl IntelliShellService {
     /// Loads workspace commands and completions from the `.intellishell` file in the current working directory setting
     /// up the temporary tables in the database if they don't exist.
     ///
+    /// Additionally, loads `.intellishell` files from paths specified in the `INTELLI_WORKSPACE_PATH` environment
+    /// variable (colon-separated on Unix, semicolon-separated on Windows).
+    ///
     /// Returns whether a workspace file was processed or not
     #[instrument(skip_all)]
     pub async fn load_workspace_items(&self) -> Result<bool> {
-        if env::var("INTELLI_SKIP_WORKSPACE")
+        if !env::var("INTELLI_SKIP_WORKSPACE")
             .map(|v| v != "1" && v.to_lowercase() != "true")
             .unwrap_or(true)
-            && let Some((workspace_file, folder_name)) = find_workspace_file()
         {
-            tracing::debug!("Found workspace file at {}", workspace_file.display());
+            return Ok(false);
+        }
 
-            // Set up the temporary tables in the database
-            self.storage.setup_workspace_storage().await?;
+        // Collect all workspace files
+        let mut workspace_files = Vec::new();
+
+        // Add local workspace file if found
+        if let Some(file) = find_workspace_file() {
+            workspace_files.push(file);
+        }
+
+        // Add additional workspace files from INTELLI_WORKSPACE_PATH
+        workspace_files.extend(find_additional_workspace_files());
+
+        if workspace_files.is_empty() {
+            return Ok(false);
+        }
+
+        // Set up the temporary tables in the database
+        self.storage.setup_workspace_storage().await?;
+
+        // Load all workspace files
+        for (workspace_file, folder_name) in workspace_files {
+            tracing::debug!("Found workspace file at {}", workspace_file.display());
 
             // Parse the items from the file
             let file = File::open(&workspace_file).await?;
@@ -99,11 +121,9 @@ impl IntelliShellService {
                 stats.completions_imported,
                 workspace_file.display()
             );
-
-            Ok(true)
-        } else {
-            Ok(false)
         }
+
+        Ok(true)
     }
 }
 
@@ -129,4 +149,48 @@ fn find_workspace_file() -> Option<(PathBuf, Option<String>)> {
         current = parent.parent();
     }
     None
+}
+
+/// Searches for `.intellishell` files in the directories specified by the `INTELLI_WORKSPACE_PATH` environment variable.
+///
+/// The paths should be separated by:
+/// - `:` (colon) on Unix-like systems
+/// - `;` (semicolon) on Windows
+///
+/// Returns a vector of tuples (file_path, folder_name) for each found file.
+fn find_additional_workspace_files() -> Vec<(PathBuf, Option<String>)> {
+    let path_var = match env::var("INTELLI_WORKSPACE_PATH") {
+        Ok(val) if !val.is_empty() => val,
+        _ => return Vec::new(),
+    };
+
+    #[cfg(target_os = "windows")]
+    let separator = ';';
+    #[cfg(not(target_os = "windows"))]
+    let separator = ':';
+
+    let mut result = Vec::new();
+
+    for path_str in path_var.split(separator) {
+        let path_str = path_str.trim();
+        if path_str.is_empty() {
+            continue;
+        }
+
+        let dir_path = PathBuf::from(path_str);
+        let candidate = dir_path.join(".intellishell");
+
+        if candidate.is_file() {
+            let folder_name = dir_path.file_name().and_then(|n| n.to_str()).map(String::from);
+            tracing::debug!("Found .intellishell in INTELLI_WORKSPACE_PATH: {}", candidate.display());
+            result.push((candidate, folder_name));
+        } else {
+            tracing::trace!(
+                "No .intellishell file found in INTELLI_WORKSPACE_PATH directory: {}",
+                dir_path.display()
+            );
+        }
+    }
+
+    result
 }
