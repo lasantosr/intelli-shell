@@ -8,6 +8,7 @@ use std::{
 use directories::BaseDirs;
 use tokio::fs::File;
 use tracing::instrument;
+use walkdir::WalkDir;
 
 use crate::{
     config::{AiConfig, SearchTuning},
@@ -102,12 +103,12 @@ impl IntelliShellService {
         self.storage.setup_workspace_storage().await?;
 
         // Load all workspace files
-        for (workspace_file, folder_name) in workspace_files {
+        for (workspace_file, tag_name) in workspace_files {
             tracing::debug!("Found workspace file at {}", workspace_file.display());
 
             // Parse the items from the file
             let file = File::open(&workspace_file).await?;
-            let tag = format!("#{}", folder_name.as_deref().unwrap_or("workspace"));
+            let tag = format!("#{}", tag_name.as_deref().unwrap_or("workspace"));
             let items_stream = parse_import_items(file, vec![tag], CATEGORY_WORKSPACE, SOURCE_WORKSPACE);
 
             // Import items into the temp tables
@@ -125,19 +126,20 @@ impl IntelliShellService {
     }
 }
 
-/// Collects `.intellishell` files or directories from a given path.
+/// Collects `.intellishell` files from a given path, handling both single files and directories.
 ///
-/// If the path is a file, returns it with the parent folder name as tag.
-/// If the path is a directory, recursively collects all files inside (excluding
-/// dotfiles, using the file name as tag.
+/// - If the path is a file, it's added directly. The tag is the parent folder's name.
+/// - If the path is a directory, this function recursively finds all non-hidden files within it. The tag for each file
+///   is its own filename stem.
+///
+/// Duplicates are skipped based on the `seen_paths` set.
 fn collect_intellishell_files_from_location(
     path: &Path,
     seen_paths: &mut HashSet<PathBuf>,
-) -> Vec<(PathBuf, Option<String>)> {
-    let mut result = Vec::new();
-
+    result: &mut Vec<(PathBuf, Option<String>)>,
+) {
     if path.is_file() {
-        // Single file: use parent folder name as tag
+        // Handle the case where `.intellishell` is a single file.
         if seen_paths.insert(path.to_path_buf()) {
             let folder_name = path
                 .parent()
@@ -149,40 +151,21 @@ fn collect_intellishell_files_from_location(
             tracing::debug!("Skipping duplicate workspace file: {}", path.display());
         }
     } else if path.is_dir() {
-        // Directory: recursively collect all files
-        collect_files_recursive(path, seen_paths, &mut result);
-    }
-
-    result
-}
-
-/// Recursively collects files from a directory, skipping dotfiles
-fn collect_files_recursive(dir: &Path, seen_paths: &mut HashSet<PathBuf>, result: &mut Vec<(PathBuf, Option<String>)>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        tracing::trace!("Could not read directory: {}", dir.display());
-        return;
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-
-        // Get file name for filtering
-        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-
-        // If it is a file but not a dotfile then process it
-        if path.is_file() && !file_name.starts_with(".") {
-            // Add file with its name as tag
-            if seen_paths.insert(path.clone()) {
-                let tag = path.file_stem().and_then(|n| n.to_str()).map(String::from);
-                tracing::debug!("Found workspace file in directory: {}", path.display());
-                result.push((path, tag));
-            } else {
-                tracing::debug!("Skipping duplicate workspace file: {}", path.display());
+        // Use `walkdir` to recursively iterate through the directory.
+        // `min_depth(1)` skips the root directory itself.
+        for entry in WalkDir::new(path).min_depth(1).into_iter().filter_map(|e| e.ok()) {
+            let entry_path = entry.path();
+            let file_name = entry.file_name().to_string_lossy();
+            // Process the entry if it's a file and not a hidden file.
+            if entry_path.is_file() && !file_name.starts_with('.') {
+                if seen_paths.insert(entry_path.to_path_buf()) {
+                    let tag = entry_path.file_stem().and_then(|n| n.to_str()).map(String::from);
+                    tracing::debug!("Found workspace file in directory: {}", entry_path.display());
+                    result.push((entry_path.to_path_buf(), tag));
+                } else {
+                    tracing::debug!("Skipping duplicate workspace file: {}", entry_path.display());
+                }
             }
-        } else if path.is_dir() {
-            collect_files_recursive(&path, seen_paths, result);
         }
     }
 }
@@ -209,7 +192,7 @@ fn find_workspace_files() -> Vec<(PathBuf, Option<String>)> {
     while let Some(parent) = current {
         let candidate = parent.join(".intellishell");
         if candidate.exists() {
-            result.extend(collect_intellishell_files_from_location(&candidate, &mut seen_paths));
+            collect_intellishell_files_from_location(&candidate, &mut seen_paths, &mut result);
             break;
         }
 
@@ -229,10 +212,7 @@ fn find_workspace_files() -> Vec<(PathBuf, Option<String>)> {
                 "Checking home directory for .intellishell: {}",
                 home_candidate.display()
             );
-            result.extend(collect_intellishell_files_from_location(
-                &home_candidate,
-                &mut seen_paths,
-            ));
+            collect_intellishell_files_from_location(&home_candidate, &mut seen_paths, &mut result);
         }
     }
 
@@ -247,10 +227,7 @@ fn find_workspace_files() -> Vec<(PathBuf, Option<String>)> {
             "Checking system-wide location for .intellishell: {}",
             system_candidate.display()
         );
-        result.extend(collect_intellishell_files_from_location(
-            &system_candidate,
-            &mut seen_paths,
-        ));
+        collect_intellishell_files_from_location(&system_candidate, &mut seen_paths, &mut result);
     }
 
     result
