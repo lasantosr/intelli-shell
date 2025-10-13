@@ -136,6 +136,66 @@ impl CommandTemplate {
         }
     }
 
+    /// Counts the total number of variables in the template (both filled and unfilled)
+    pub fn count_variables(&self) -> usize {
+        self.parts
+            .iter()
+            .filter(|part| matches!(part, TemplatePart::Variable(_) | TemplatePart::VariableValue(_, _)))
+            .count()
+    }
+
+    /// Returns the variable at a specific index (0-based)
+    pub fn variable_at_index(&self, index: usize) -> Option<&Variable> {
+        self.parts
+            .iter()
+            .filter_map(|part| match part {
+                TemplatePart::Variable(v) | TemplatePart::VariableValue(v, _) => Some(v),
+                _ => None,
+            })
+            .nth(index)
+    }
+
+    /// Sets the value for the variable at a specific index
+    fn set_value_at_index(&mut self, index: usize, value: Option<String>) {
+        let mut variable_count = 0;
+
+        for part in self.parts.iter_mut() {
+            if matches!(part, TemplatePart::Variable(_) | TemplatePart::VariableValue(_, _)) {
+                if variable_count == index {
+                    // Found the variable at the target index
+                    let new_part = match (&part, &value) {
+                        (TemplatePart::Variable(v), Some(val)) => {
+                            // Convert Variable to VariableValue
+                            Some(TemplatePart::VariableValue(v.clone(), val.clone()))
+                        }
+                        (TemplatePart::VariableValue(v, _), Some(val)) => {
+                            // Update existing VariableValue
+                            Some(TemplatePart::VariableValue(v.clone(), val.clone()))
+                        }
+                        (TemplatePart::VariableValue(v, _), None) => {
+                            // Convert VariableValue back to Variable
+                            Some(TemplatePart::Variable(v.clone()))
+                        }
+                        _ => None,
+                    };
+
+                    if let Some(new_part) = new_part {
+                        *part = new_part;
+                    }
+                    return;
+                }
+                variable_count += 1;
+            }
+        }
+    }
+
+    /// Syncs the template parts with the given variable values array
+    pub fn sync_with_values(&mut self, values: &[Option<String>]) {
+        for (index, value) in values.iter().enumerate() {
+            self.set_value_at_index(index, value.clone());
+        }
+    }
+
     /// Creates a [VariableValue] for this command with the given flat variable name and value
     pub fn new_variable_value_for(
         &self,

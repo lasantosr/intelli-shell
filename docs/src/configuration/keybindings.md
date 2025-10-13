@@ -43,7 +43,7 @@ You can change these bindings by modifying the `[keybindings]` block in your con
 These key bindings are **not configurable** and provide a standard way to navigate lists and edit text. They are always
 active unless overridden by a customizable action.
 
-### List & Tab Navigation
+### List Navigation
 
 | Action                      | Key(s)               |
 | --------------------------- | -------------------- |
@@ -51,6 +51,15 @@ active unless overridden by a customizable action.
 | Move selection down         | `Down`, `ctrl-n`     |
 | Navigate to previous item   | `ctrl-k`             |
 | Navigate to next item       | `ctrl-j`             |
+
+### Variable Navigation
+
+When filling in command variables, these keys allow navigation between multiple variables:
+
+| Action                              | Key(s)       |
+| ----------------------------------- | ------------ |
+| Move to next variable (with wrap)   | `Tab`        |
+| Move to previous variable (with wrap) | `Shift-Tab` |
 
 ### Text Cursor Movement
 

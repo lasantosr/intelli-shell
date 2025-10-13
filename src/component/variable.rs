@@ -70,8 +70,10 @@ struct VariableReplacementComponentState<'a> {
     error: ErrorPopup<'a>,
     /// A spinner to indicate that completions are being fetched
     loading: Option<LoadingSpinner<'a>>,
-    /// The last value that was unset via undo, to be used by redo
-    last_unset_value: Option<String>,
+    /// Index of the current variable being edited (0-based)
+    current_variable_index: usize,
+    /// Stored values for all variables (Some = set, None = not set)
+    variable_values: Vec<Option<String>>,
 }
 
 impl VariableReplacementComponent {
@@ -97,6 +99,10 @@ impl VariableReplacementComponent {
             Layout::vertical([Constraint::Length(3), Constraint::Min(5)]).margin(1)
         };
 
+        // Initialize variable tracking
+        let total_vars = command.count_variables();
+        let variable_values = vec![None; total_vars];
+
         Self {
             theme,
             inline,
@@ -113,7 +119,8 @@ impl VariableReplacementComponent {
                 suggestions,
                 error,
                 loading: None,
-                last_unset_value: None,
+                current_variable_index: 0,
+                variable_values,
             })),
         }
     }
@@ -141,6 +148,13 @@ impl Component for VariableReplacementComponent {
         let [cmd_area, suggestions_area] = self.layout.areas(area);
 
         let mut state = self.state.write();
+
+        // Sync the template parts with the current variable values
+        let values = state.variable_values.clone();
+        state.template.sync_with_values(&values);
+
+        // Sync the current variable index with the widget for highlighting
+        state.template.current_variable_index = state.current_variable_index;
 
         // Render the command widget
         frame.render_widget(&state.template, cmd_area);
@@ -268,6 +282,73 @@ impl Component for VariableReplacementComponent {
         self.move_down()
     }
 
+    fn move_prev_variable(&mut self) -> Result<Action> {
+        let mut state = self.state.write();
+
+        // Don't navigate if editing an existing value
+        if matches!(
+            state.suggestions.selected(),
+            Some(VariableSuggestionItem::Existing { editing: Some(_), .. })
+        ) {
+            return Ok(Action::NoOp);
+        }
+
+        // Save the currently selected value
+        let current_index = state.current_variable_index;
+        if let Some(selected_value) = Self::extract_value_from_suggestion(state.suggestions.selected()) {
+            state.variable_values[current_index] = Some(selected_value);
+        }
+
+        let total_vars = state.template.count_variables();
+        if total_vars == 0 {
+            return Ok(Action::NoOp);
+        }
+
+        // Move to previous variable with wrapping
+        if state.current_variable_index == 0 {
+            state.current_variable_index = total_vars - 1; // Wrap to last
+        } else {
+            state.current_variable_index -= 1;
+        }
+
+        drop(state);
+        self.debounced_update_variable_context();
+        Ok(Action::NoOp)
+    }
+
+    fn move_next_variable(&mut self) -> Result<Action> {
+        let mut state = self.state.write();
+
+        // Don't navigate if editing an existing value
+        if matches!(
+            state.suggestions.selected(),
+            Some(VariableSuggestionItem::Existing { editing: Some(_), .. })
+        ) {
+            return Ok(Action::NoOp);
+        }
+
+        // Save the currently selected value
+        let current_index = state.current_variable_index;
+        if let Some(selected_value) = Self::extract_value_from_suggestion(state.suggestions.selected()) {
+            state.variable_values[current_index] = Some(selected_value);
+        }
+
+        let total_vars = state.template.count_variables();
+        if total_vars == 0 {
+            return Ok(Action::NoOp);
+        }
+
+        // Move to next variable with wrapping
+        state.current_variable_index += 1;
+        if state.current_variable_index >= total_vars {
+            state.current_variable_index = 0; // Wrap to first
+        }
+
+        drop(state);
+        self.debounced_update_variable_context();
+        Ok(Action::NoOp)
+    }
+
     fn move_home(&mut self, absolute: bool) -> Result<Action> {
         let mut state = self.state.write();
         match state.suggestions.selected_mut() {
@@ -307,12 +388,7 @@ impl Component for VariableReplacementComponent {
             Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
                 ta.undo();
             }
-            _ => {
-                if let Some(unset_value) = state.template.unset_last_variable() {
-                    state.last_unset_value = Some(unset_value);
-                    self.debounced_update_variable_context();
-                }
-            }
+            _ => (),
         }
         Ok(Action::NoOp)
     }
@@ -328,19 +404,15 @@ impl Component for VariableReplacementComponent {
             Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
                 ta.redo();
             }
-            _ => {
-                if let Some(value_to_set) = state.last_unset_value.take() {
-                    state.template.set_next_variable(value_to_set);
-                    self.debounced_update_variable_context();
-                }
-            }
+            _ => (),
         }
         Ok(Action::NoOp)
     }
 
     fn insert_text(&mut self, mut text: String) -> Result<Action> {
         let mut state = self.state.write();
-        if let Some(variable) = state.template.current_variable() {
+        let current_index = state.current_variable_index;
+        if let Some(variable) = state.template.variable_at_index(current_index) {
             text = variable.apply_functions_to(text);
         }
         match state.suggestions.selected_mut() {
@@ -359,9 +431,10 @@ impl Component for VariableReplacementComponent {
 
     fn insert_char(&mut self, c: char) -> Result<Action> {
         let mut state = self.state.write();
+        let current_index = state.current_variable_index;
         let maybe_replacement = state
             .template
-            .current_variable()
+            .variable_at_index(current_index)
             .and_then(|variable| variable.check_functions_char(c));
         let insert_content = |ta: &mut CustomTextArea<'_>| {
             if let Some(r) = &maybe_replacement {
@@ -674,6 +747,22 @@ impl<'a> VariableReplacementComponentState<'a> {
 }
 
 impl VariableReplacementComponent {
+    /// Extracts the value from a suggestion item (for Tab/Shift-Tab navigation)
+    fn extract_value_from_suggestion(item: Option<&VariableSuggestionItem>) -> Option<String> {
+        match item {
+            Some(VariableSuggestionItem::New { textarea, .. }) => {
+                let content = textarea.lines_as_string();
+                if content.is_empty() { None } else { Some(content) }
+            }
+            Some(VariableSuggestionItem::Existing { value, .. }) => Some(value.value.clone()),
+            Some(VariableSuggestionItem::Previous { value, .. }) => Some(value.clone()),
+            Some(VariableSuggestionItem::Environment { content, .. }) => Some(content.clone()),
+            Some(VariableSuggestionItem::Completion { value, .. }) => Some(value.clone()),
+            Some(VariableSuggestionItem::Derived { value, .. }) => Some(value.clone()),
+            None => None,
+        }
+    }
+
     /// Immediately starts a debounced task to update the variable context
     fn debounced_update_variable_context(&self) {
         let this = self.clone();
@@ -684,8 +773,27 @@ impl VariableReplacementComponent {
         });
     }
 
+    /// Moves to the next variable (without wrapping) after confirming a value
+    fn move_to_next_variable_with_value(&self, value: String) {
+        let mut state = self.state.write();
+
+        // Store the confirmed value
+        let current_index = state.current_variable_index;
+        state.variable_values[current_index] = Some(value);
+
+        // Move to next variable without wrapping (Enter will exit if out of bounds)
+        state.current_variable_index += 1;
+    }
+
     /// Updates the variable context and the suggestions widget, or returns an acton
     async fn update_variable_context(&self, peek: bool) -> Result<Action> {
+        // Sync the template with current variable values before checking variables
+        {
+            let mut state = self.state.write();
+            let values = state.variable_values.clone();
+            state.template.sync_with_values(&values);
+        }
+
         // Cancels previous completion task and issue a new one
         let cancellation_token = {
             let mut token_guard = self.cancellation_token.lock().unwrap();
@@ -697,15 +805,18 @@ impl VariableReplacementComponent {
             new_token
         };
 
-        // Retrieves the current variable and its context
-        let (flat_root_cmd, previous_values, current_variable, context) = {
+        // Retrieves the current variable and its context using the index
+        let (flat_root_cmd, previous_values, current_variable, context, current_stored_value) = {
             let state = self.state.read();
-            match state.template.current_variable().cloned() {
+            let current_index = state.current_variable_index;
+
+            match state.template.variable_at_index(current_index).cloned() {
                 Some(variable) => (
                     state.template.flat_root_cmd.clone(),
                     state.template.previous_values_for(&variable.flat_name),
                     variable,
                     state.template.current_variable_context(),
+                    state.variable_values.get(current_index).and_then(|v| v.clone()),
                 ),
                 None => {
                     if peek {
@@ -785,15 +896,35 @@ impl VariableReplacementComponent {
             None
         };
 
-        // Pre-select the first non-derived suggestion
+        // Pre-select based on current stored value or first non-derived suggestion
         {
             let mut state = self.state.write();
-            if let Some(idx) = state.suggestions.items().iter().position(|s| {
-                !matches!(
-                    s,
-                    VariableSuggestionItem::New { .. } | VariableSuggestionItem::Derived { .. }
-                )
-            }) {
+
+            // Try to find and select the currently stored value
+            let mut selected = false;
+            if let Some(ref stored_value) = current_stored_value
+                && let Some(idx) = state.suggestions.items().iter().position(|item| match item {
+                    VariableSuggestionItem::Existing { value, .. } => &value.value == stored_value,
+                    VariableSuggestionItem::Previous { value, .. } => value == stored_value,
+                    VariableSuggestionItem::Environment { content, .. } => content == stored_value,
+                    VariableSuggestionItem::Completion { value, .. } => value == stored_value,
+                    VariableSuggestionItem::Derived { value, .. } => value == stored_value,
+                    VariableSuggestionItem::New { .. } => false,
+                })
+            {
+                state.suggestions.select(idx);
+                selected = true;
+            }
+
+            // If no stored value matched, select first non-derived suggestion
+            if !selected
+                && let Some(idx) = state.suggestions.items().iter().position(|s| {
+                    !matches!(
+                        s,
+                        VariableSuggestionItem::New { .. } | VariableSuggestionItem::Derived { .. }
+                    )
+                })
+            {
                 state.suggestions.select(idx);
             }
         }
@@ -840,7 +971,7 @@ impl VariableReplacementComponent {
     #[instrument(skip_all)]
     async fn confirm_new_secret_value(&mut self, value: String) -> Result<Action> {
         tracing::debug!("Secret variable value selected");
-        self.state.write().template.set_next_variable(value);
+        self.move_to_next_variable_with_value(value);
         self.update_variable_context(false).await
     }
 
@@ -866,7 +997,7 @@ impl VariableReplacementComponent {
             }
         } else {
             tracing::debug!("New empty variable value selected");
-            self.state.write().template.set_next_variable(value);
+            self.move_to_next_variable_with_value(value);
             self.update_variable_context(false).await
         }
     }
@@ -915,7 +1046,7 @@ impl VariableReplacementComponent {
                 if !new {
                     tracing::debug!("Existing variable value selected");
                 }
-                self.state.write().template.set_next_variable(value.value);
+                self.move_to_next_variable_with_value(value.value);
                 self.update_variable_context(false).await
             }
             Err(report) => Err(report),
@@ -937,14 +1068,14 @@ impl VariableReplacementComponent {
                 }
                 Err(AppError::UserFacing(err)) => {
                     tracing::debug!("Literal variable value selected but couldn't be stored: {err}");
-                    self.state.write().template.set_next_variable(value);
+                    self.move_to_next_variable_with_value(value);
                     self.update_variable_context(false).await
                 }
                 Err(AppError::Unexpected(report)) => Err(report),
             }
         } else {
             tracing::debug!("Literal variable value selected");
-            self.state.write().template.set_next_variable(value);
+            self.move_to_next_variable_with_value(value);
             self.update_variable_context(false).await
         }
     }

@@ -96,6 +96,18 @@ This means:
 This system gives you fine-grained control over which commands share suggestion histories, helping you keep different
 contexts neatly organized.
 
+## Navigating Between Variables
+
+When filling in variables, you can navigate between them freely:
+
+- **Tab**: Confirm current value and move to next variable. After the last variable, cycles back to the first.
+- **Shift-Tab**: Move to previous variable. From the first variable, cycles to the last.
+- **Enter**: Confirm current value and move to next variable. After the last variable, exits and executes/outputs the
+  command.
+
+Variables remember their values as you navigate. When you return to a variable you've already filled, its current value
+will be pre-selected in the suggestions list, making it easy to review or change values before executing the command.
+
 ## Dynamic Suggestions with Completions
 
 While providing static options with `|` is useful, the real power of templates comes from **dynamic completions**.

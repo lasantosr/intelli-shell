@@ -734,13 +734,12 @@ impl Default for KeyBindingsConfig {
             ),
             (
                 KeyBindingAction::Confirm,
-                KeyBinding(vec![KeyEvent::from(KeyCode::Tab), KeyEvent::from(KeyCode::Enter)]),
+                KeyBinding(vec![KeyEvent::from(KeyCode::Enter)]),
             ),
             (
                 KeyBindingAction::Execute,
                 KeyBinding(vec![
                     KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL),
-                    KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL),
                 ]),
             ),
             (

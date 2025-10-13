@@ -22,6 +22,8 @@ use crate::{
 pub struct CommandTemplateWidget {
     /// The command template
     pub template: CommandTemplate,
+    /// The index of the current variable being edited (for highlighting)
+    pub current_variable_index: usize,
     // Internal fields
     block: Option<Block<'static>>,
     primary_style: Style,
@@ -43,6 +45,7 @@ impl CommandTemplateWidget {
         };
         Self {
             template,
+            current_variable_index: 0,
             block,
             primary_style: theme.primary.into(),
             secondary_style: theme.secondary.into(),
@@ -63,17 +66,32 @@ impl Widget for &CommandTemplateWidget {
             area = block.inner(area);
         }
 
-        let mut first_variable_found = false;
+        let mut variable_index = 0;
         Line::from_iter(self.template.parts.iter().map(|p| match p {
-            TemplatePart::Text(t) | TemplatePart::VariableValue(_, t) => Span::styled(t, self.secondary_style),
+            TemplatePart::Text(t) => Span::styled(t, self.secondary_style),
             TemplatePart::Variable(v) => {
-                let style = if !first_variable_found {
-                    first_variable_found = true;
+                let is_current = variable_index == self.current_variable_index;
+                variable_index += 1;
+
+                let style = if is_current {
                     self.primary_style
                 } else {
                     self.secondary_style
                 };
+
                 Span::styled(format!("{{{{{}}}}}", v.display), style)
+            }
+            TemplatePart::VariableValue(_v, t) => {
+                let is_current = variable_index == self.current_variable_index;
+                variable_index += 1;
+
+                let style = if is_current {
+                    self.primary_style
+                } else {
+                    self.secondary_style
+                };
+
+                Span::styled(t, style)
             }
         }))
         .render(area, buf);

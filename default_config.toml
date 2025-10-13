@@ -100,9 +100,9 @@ update = ["ctrl-u", "ctrl-e", "F2"]
 # Delete the currently highlighted record or item
 delete = "ctrl-d"
 # Confirm a selection or action related to the highlighted record
-confirm = ["tab", "enter"]
+confirm = ["enter"]
 # Execute the action associated with the highlighted record or item (e.g., run a command)
-execute = ["ctrl-enter", "ctrl-r"]
+execute = ["ctrl-enter"]
 # Prompt ai about suggestions (e.g. when searching for commands)
 ai = ["ctrl-i", "ctrl-x"]
 # Toggle the search mode
