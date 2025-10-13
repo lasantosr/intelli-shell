@@ -104,6 +104,8 @@ pub trait Component: Send {
                 KeyBindingAction::AI => self.prompt_ai().await?,
                 KeyBindingAction::SearchMode => self.toggle_search_mode()?,
                 KeyBindingAction::SearchUserOnly => self.toggle_search_user_only()?,
+                KeyBindingAction::VariableNext => self.move_next_variable()?,
+                KeyBindingAction::VariablePrev => self.move_prev_variable()?,
             }));
         }
 

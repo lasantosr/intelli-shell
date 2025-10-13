@@ -24,18 +24,20 @@ The format and a list of available actions are detailed below. Note that if a de
 | `quit`             | Exits the TUI gracefully without making a selection                   | `esc`                     |
 | `update`           | Enters edit mode for the highlighted item (e.g., to edit a command)   | `ctrl-u`, `ctrl-e`, `F2`  |
 | `delete`           | Deletes the currently highlighted item (e.g., a bookmarked command)   | `ctrl-d`                  |
-| `confirm`          | Confirms a selection or moves to the next step (e.g., variable entry) | `tab`, `enter`            |
-| `execute`          | Executes the highlighted command instead of just selecting it         | `ctrl-enter`, `ctrl-r`    |
+| `confirm`          | Confirms a selection or moves to the next step (e.g., variable entry) | `enter`                   |
+| `execute`          | Executes the highlighted command instead of just selecting it         | `ctrl-enter`              |
 | `ai`               | Prompts ai for suggestions                                            | `ctrl-i`, `ctrl-x`        |
 | `search_mode`      | Cycles through the available search modes (auto, fuzzy, regex, etc.)  | `ctrl-s`                  |
 | `search_user_only` | Toggles whether to filter user commands only in the search results    | `ctrl-o`                  |
+| `variable_next`    | Moves to the next variable when editing a command template            | `tab`                     |
+| `variable_prev`    | Moves to the previous variable when editing a command template        | `shift-tab`               |
 
 ### Default Configuration
 
 You can change these bindings by modifying the `[keybindings]` block in your configuration file.
 
 ```toml
-{{#include ../../../default_config.toml:86:111}}
+{{#include ../../../default_config.toml:86:115}}
 ```
 
 ## Standard Controls
@@ -51,15 +53,6 @@ active unless overridden by a customizable action.
 | Move selection down         | `Down`, `ctrl-n`     |
 | Navigate to previous item   | `ctrl-k`             |
 | Navigate to next item       | `ctrl-j`             |
-
-### Variable Navigation
-
-When filling in command variables, these keys allow navigation between multiple variables:
-
-| Action                              | Key(s)       |
-| ----------------------------------- | ------------ |
-| Move to next variable (with wrap)   | `Tab`        |
-| Move to previous variable (with wrap) | `Shift-Tab` |
 
 ### Text Cursor Movement
 
