@@ -17,6 +17,8 @@ Here is a summary of all available commands, with each one detailed on its own p
 
 | Command                                   | Description                                                                  |
 | ----------------------------------------- | ---------------------------------------------------------------------------- |
+| [`config`](./config.md)                   | Opens the intelli-shell configuration file                                   |
+| [`logs`](./logs.md)                       | Displays the logs from the last execution, if they were enabled              |
 | [`new`](./new.md)                         | Bookmarks a new command, optionally using AI to generate it                  |
 | [`search`](./search.md)                   | Searches stored commands or uses AI to generate new ones                     |
 | [`replace`](./replace.md)                 | Replaces the variables in a command template                                 |

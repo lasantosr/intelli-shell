@@ -62,7 +62,7 @@ impl App {
                 self.run_non_interactive(query_process, config, service, extra_line)
                     .await
             }
-            CliProcess::Init(_) => unreachable!("Handled in main"),
+            CliProcess::Init(_) | CliProcess::Config(_) | CliProcess::Logs(_) => unreachable!("Handled in main"),
             CliProcess::New(bookmark_command) => {
                 tracing::info!("Running 'new' process");
                 tracing::debug!("Options: {:?}", bookmark_command);

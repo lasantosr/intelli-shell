@@ -48,8 +48,9 @@ impl SqliteStorage {
             SqliteClientBuilder::new().path(path)
         } else {
             // Otherwise, use the provided data directory
-            tracing::info!("Using default storage path: {}", data_dir.as_ref().display());
-            SqliteClientBuilder::new().path(data_dir.as_ref().join("storage.db3"))
+            let db_path = data_dir.as_ref().join("storage.db3");
+            tracing::info!("Using default storage path: {}", db_path.display());
+            SqliteClientBuilder::new().path(db_path)
         };
         Ok(Self {
             workspace_tables_loaded: Arc::new(AtomicBool::new(false)),

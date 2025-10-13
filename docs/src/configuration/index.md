@@ -23,6 +23,9 @@ If the environment variable is not set, IntelliShell falls back to searching in 
 - **macOS**: `~/Library/Application Support/org.IntelliShell.Intelli-Shell/config.toml`
 - **Windows**: `%APPDATA%\IntelliShell\Intelli-Shell\config\config.toml`
 
+> 💡 **Tip**: You can quickly open this file for editing by running `intelli-shell config`, or find its location
+> with `intelli-shell config --path`.
+
 If no configuration file is found, IntelliShell will use its built-in default settings. To get started with
 customization, you can copy a section from the [default configuration file](https://github.com/lasantosr/intelli-shell/blob/main/default_config.toml)
 and modify it to your liking. Any setting you don't explicitly define will automatically use its default value.

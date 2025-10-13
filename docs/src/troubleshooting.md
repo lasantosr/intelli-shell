@@ -19,7 +19,7 @@ If hotkeys like <kbd>Ctrl</kbd>+<kbd>Space</kbd> or <kbd>Ctrl</kbd>+<kbd>B</kbd>
    - **Terminal Limitations**: Some terminal emulators do not forward all key combinations to the shell. For instance,
      <kbd>Ctrl</kbd>+<kbd>Enter</kbd> (the default "execute" hotkey) is not supported by many terminals.
    - **Solution**: You can change any conflicting or unsupported hotkey. Set the appropriate environment variable in
-     your shell profile _before_ the IntelliShell line. See the [Installation Guide](./guide/installation.md#customizing-keybindings)
+     your shell profile _before_ the IntelliShell `init` line. See the [Installation Guide](./guide/installation.md#customizing-keybindings)
      for a full list of integration variables or the [Keybindings Configuration](./configuration/keybindings.md)
      for in-app bindings.
 
@@ -31,8 +31,8 @@ If your shell cannot find the `intelli-shell` executable after installation:
 
 1. **Restart Your Terminal**: Just like with hotkeys, your shell needs to reload its `PATH` environment variable.
 
-2. **Verify `PATH`**: The installer attempts to add the binary's location to your `PATH`. If this failed, you may
-    need to add it manually to your shell's profile file.
+2. **Verify `PATH`**: The installer attempts to add the binary's location to your `PATH`. If this failed, you may need
+   to add it manually to your shell's profile file.
 
 ### "Permission Denied" errors on Linux/macOS
 
@@ -49,16 +49,16 @@ chmod +x "$(which intelli-shell)"
 
 From the search UI (<kbd>Ctrl</kbd>+<kbd>Space</kbd>), highlight the command you wish to modify.
 
-- **Edit**: Press <kbd>Ctrl</kbd>+<kbd>U</kbd>
+- **Edit**: Press <kbd>Ctrl</kbd>+<kbd>U</kbd> or <kbd>F2</kbd>
 - **Delete**: Press <kbd>Ctrl</kbd>+<kbd>D</kbd>
 
-> ⚠️ **Note**: It you can't edit or delete some commands, they might come from the workspace-specific files. You can
-> enable user-only search to exclude them or add them you your own user library before updating the alias or description.
+> ⚠️ **Note**: If you can't edit or delete some commands, they might come from the workspace-specific `.intellishell`
+> files. You can enable user-only search to exclude them or add them to your own user library before updating the alias
+> or description.
 
 ### Where is my data stored?
 
-By default, IntelliShell stores its database and configuration in platform-specific user directories. You can override
-this by setting the `data_dir` option in your configuration file.
+By default, IntelliShell stores its database and configuration in platform-specific user directories.
 
 - **Configuration File**:
   - _Linux_: `~/.config/intelli-shell/config.toml`
@@ -69,6 +69,16 @@ this by setting the `data_dir` option in your configuration file.
   - _Linux_: `~/.local/share/intelli-shell`
   - _macOS_: `~/Library/Application Support/org.IntelliShell.Intelli-Shell`
   - _Windows_: `%APPDATA%\IntelliShell\Intelli-Shell\data`
+
+> 💡 **Tip**: You can quickly find the location of your configuration and log files by running:
+>
+> ```sh
+> # Show path to config.toml
+> intelli-shell config --path
+>
+> # Show path to intelli-shell.log
+> intelli-shell logs --path
+> ```
 
 ### How can I sync commands between machines?
 
@@ -96,17 +106,26 @@ copy the database file (`storage.db3`) located in your IntelliShell data directo
 
 ## Advanced Troubleshooting
 
-### Enabling logs
+### Enabling Logs
 
 If you encounter a persistent bug, enabling logs can help diagnose the problem. You can do this in two ways:
 
 1. **Configuration File**: In your `config.toml`, set `enabled = true` under the `[logs]` section. You can also adjust
-    the log level here.
+   the log level here.
 
-2. **Environment Variable**: For a quick debug session, set the `INTELLI_LOG` variable. This overrides the config file. For
-    example: `INTELLI_LOG=debug intelli-shell search`.
+2. **Environment Variable**: For a quick debug session, set the `INTELLI_LOG` variable. This overrides the config file.
+   For example: `INTELLI_LOG=debug intelli-shell search`.
 
 Logs will be written to a file inside the application's data directory.
+
+#### Viewing Logs
+
+Once logging is enabled, you can easily view the logs from the last run using the `logs` command:
+
+```sh
+# Display the full log content
+intelli-shell logs
+```
 
 ### Resetting to defaults
 

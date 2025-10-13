@@ -23,6 +23,7 @@ RUN apt-get install -y --no-install-recommends \
     zsh \
     fish \
     # Utilities
+    vim \
     sudo \
     gnupg2 \
     bat \
@@ -63,6 +64,9 @@ RUN groupadd --gid $USER_GID $USERNAME && \
 # Switch to the new non-root user
 USER $USERNAME
 WORKDIR /home/$USERNAME
+
+# Set the default editor to VSCode
+ENV EDITOR="code"
 
 # VHS requires this to run without a sandbox inside Docker
 ENV VHS_NO_SANDBOX="true"

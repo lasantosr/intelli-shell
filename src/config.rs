@@ -437,31 +437,50 @@ fn default_ollama_api_key_env() -> String {
     "OLLAMA_API_KEY".to_string()
 }
 
+/// Statistics about how the configuration was loaded
+pub struct ConfigLoadStats {
+    /// Whether the config path used was the default one
+    pub default_config_path: bool,
+    /// The actual path from which the config was loaded (or attempted to be loaded)
+    pub config_path: PathBuf,
+    /// Whether the config file was found and loaded or the defaults were used
+    pub config_loaded: bool,
+    /// Whether the data dir used was the default one
+    pub default_data_dir: bool,
+}
+
 impl Config {
     /// Initializes the application configuration.
     ///
     /// Attempts to load the configuration from the user's config directory (`config.toml`). If the file does not exist
     /// or has missing fields, it falls back to default values.
-    pub fn init(config_file: Option<PathBuf>) -> Result<Self> {
+    pub fn init(config_file: Option<PathBuf>) -> Result<(Self, ConfigLoadStats)> {
         // Initialize directories
         let proj_dirs = ProjectDirs::from("org", "IntelliShell", "Intelli-Shell")
             .wrap_err("Couldn't initialize project directory")?;
         let config_dir = proj_dirs.config_dir().to_path_buf();
 
-        // Initialize the config
-        let config_path = config_file.unwrap_or_else(|| config_dir.join("config.toml"));
-        let mut config = if config_path.exists() {
+        // Initialize the stats and config
+        let mut stats = ConfigLoadStats {
+            default_config_path: config_file.is_none(),
+            config_path: config_file.unwrap_or_else(|| config_dir.join("config.toml")),
+            config_loaded: false,
+            default_data_dir: false,
+        };
+        let mut config = if stats.config_path.exists() {
+            stats.config_loaded = true;
             // Read from the config file, if found
-            let config_str = fs::read_to_string(&config_path)
-                .wrap_err_with(|| format!("Couldn't read config file {}", config_path.display()))?;
+            let config_str = fs::read_to_string(&stats.config_path)
+                .wrap_err_with(|| format!("Couldn't read config file {}", stats.config_path.display()))?;
             toml::from_str(&config_str)
-                .wrap_err_with(|| format!("Couldn't parse config file {}", config_path.display()))?
+                .wrap_err_with(|| format!("Couldn't parse config file {}", stats.config_path.display()))?
         } else {
             // Use default values if not found
             Config::default()
         };
         // If no data dir is provided, use the default
         if config.data_dir.as_os_str().is_empty() {
+            stats.default_data_dir = true;
             config.data_dir = proj_dirs.data_dir().to_path_buf();
         }
 
@@ -470,7 +489,7 @@ impl Config {
         if !conflicts.is_empty() {
             return Err(eyre!(
                 "Couldn't parse config file {}\n\nThere are some key binding conflicts:\n{}",
-                config_path.display(),
+                stats.config_path.display(),
                 conflicts
                     .into_iter()
                     .map(|(_, a)| format!("- {}", a.into_iter().map(|a| format!("{a:?}")).join(", ")))
@@ -509,7 +528,7 @@ impl Config {
             if !missing.is_empty() {
                 return Err(eyre!(
                     "Couldn't parse config file {}\n\nMissing model definitions on the catalog:\n{}",
-                    config_path.display(),
+                    stats.config_path.display(),
                     missing
                         .into_iter()
                         .into_group_map()
@@ -527,7 +546,7 @@ impl Config {
         fs::create_dir_all(&config.data_dir)
             .wrap_err_with(|| format!("Could't create data dir {}", config.data_dir.display()))?;
 
-        Ok(config)
+        Ok((config, stats))
     }
 }
 

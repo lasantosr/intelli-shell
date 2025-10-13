@@ -42,6 +42,7 @@ color-eyre         = "0.6"
 crossbeam-channel  = "0.5"
 crossterm          = { version = "0.28.1", features = ["serde", "event-stream", "use-dev-tty", "libc"] }
 directories        = "6"
+edit               = "0.1.5"
 enum_cycling       = { version = "0.2", features = ["derive"] }
 futures-util       = "0.3"
 heck               = "0.5"

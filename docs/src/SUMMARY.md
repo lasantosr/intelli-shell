@@ -23,6 +23,8 @@
   - [AI Integration](./configuration/ai.md)
 
 - [Command Line Tool](./reference/index.md)
+  - [config](./reference/config.md)
+  - [logs](./reference/logs.md)
   - [new](./reference/new.md)
   - [search](./reference/search.md)
   - [replace](./reference/replace.md)

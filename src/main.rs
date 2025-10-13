@@ -9,10 +9,10 @@ use std::{
 use color_eyre::{Result, eyre::Context};
 use intelli_shell::{
     app::App,
-    cli::{Cli, CliProcess, Shell},
+    cli::{Cli, CliProcess, LogsProcess, Shell},
     config::Config,
     errors::{self, AppError},
-    logging,
+    format_error, logging,
     process::{OutputInfo, ProcessOutput},
     service::IntelliShellService,
     storage::SqliteStorage,
@@ -37,52 +37,106 @@ const POWERSHELL_INIT: &str = include_str!("./_shell/intelli-shell.ps1");
 #[tokio::main]
 async fn main() -> Result<()> {
     // Read and initialize config
-    let config = Config::init(env::var("INTELLI_CONFIG").ok().map(Into::into))?;
+    let (config, stats) = Config::init(env::var("INTELLI_CONFIG").ok().map(Into::into))?;
 
-    // Initialize logging
-    let logs_path = logging::init(&config)?;
-
-    tracing::info!("intelli-shell v{}", env!("CARGO_PKG_VERSION"));
-
-    // Create a cancellation token
-    let cancellation_token = CancellationToken::new();
-    let ctrl_c_token = cancellation_token.clone();
-
-    // Link the cancellation token with the ctrl+c signal
-    tokio::spawn(async move {
-        tokio::signal::ctrl_c().await.ok();
-        ctrl_c_token.cancel();
-    });
+    // Prepare logging
+    let (logs_path, logs_filter) = logging::resolve_path_and_filter(&config);
 
     // Initialize error handling
     errors::init(
-        logs_path,
+        logs_filter.is_some().then(|| logs_path.clone()),
         AssertUnwindSafe(async move {
             // Parse cli arguments
             let args = Cli::parse_extended();
 
-            // Check for init process before initialization, to avoid unnecessary overhead
-            if let CliProcess::Init(init) = args.process {
-                tracing::info!("Running 'init' process");
-                tracing::debug!("Options: {:?}", init);
-                let script = match init.shell {
-                    Shell::Bash => BASH_INIT,
-                    Shell::Zsh => ZSH_INIT,
-                    Shell::Fish => FISH_INIT,
-                    Shell::Nushell => NUSHELL_INIT,
-                    Shell::Powershell => POWERSHELL_INIT,
-                };
-                let output_info = OutputInfo {
-                    stdout: Some(script.into()),
-                    ..Default::default()
-                };
-                return handle_output(
-                    ProcessOutput::Output(output_info),
-                    args.file_output,
-                    args.skip_execution,
-                    cancellation_token,
-                )
-                .await;
+            // Check for logs process before tracing initialization, to avoid overwriting logs
+            if let CliProcess::Logs(LogsProcess { path }) = args.process {
+                if path {
+                    println!("{}", logs_path.display());
+                } else {
+                    match fs::read_to_string(&logs_path) {
+                        Ok(logs_content) if !logs_content.is_empty() => {
+                            println!("{logs_content}");
+                        }
+                        _ => {
+                            eprintln!(
+                                "{}",
+                                format_error!(
+                                    config.theme,
+                                    "No logs found on: {}\n\nMake sure logging is enabled in the config file: {}",
+                                    logs_path.display(),
+                                    stats.config_path.display()
+                                )
+                            )
+                        }
+                    }
+                }
+                return Ok(());
+            }
+
+            // Initialize logging
+            logging::init(logs_path, logs_filter)?;
+
+            // Initial logs
+            tracing::info!("intelli-shell v{}", env!("CARGO_PKG_VERSION"));
+            match (stats.config_loaded, stats.default_config_path) {
+                (true, true) => tracing::info!("Loaded config from default path: {}", stats.config_path.display()),
+                (true, false) => tracing::info!("Loaded config from custom path: {}", stats.config_path.display()),
+                (false, true) => tracing::info!("No config found at default path: {}", stats.config_path.display()),
+                (false, false) => tracing::warn!("No config found at custom path: {}", stats.config_path.display()),
+            }
+            if stats.default_data_dir {
+                tracing::info!("Using default data dir: {}", config.data_dir.display());
+            } else {
+                tracing::info!("Using custom data dir: {}", config.data_dir.display());
+            }
+
+            // Create a cancellation token
+            let cancellation_token = CancellationToken::new();
+            let ctrl_c_token = cancellation_token.clone();
+
+            // Link the cancellation token with the ctrl+c signal
+            tokio::spawn(async move {
+                tokio::signal::ctrl_c().await.ok();
+                ctrl_c_token.cancel();
+            });
+
+            // Check for init and config processes before service initialization, to avoid unnecessary overhead
+            match args.process {
+                CliProcess::Init(init) => {
+                    tracing::info!("Running 'init' process");
+                    tracing::debug!("Options: {:?}", init);
+                    let script = match init.shell {
+                        Shell::Bash => BASH_INIT,
+                        Shell::Zsh => ZSH_INIT,
+                        Shell::Fish => FISH_INIT,
+                        Shell::Nushell => NUSHELL_INIT,
+                        Shell::Powershell => POWERSHELL_INIT,
+                    };
+                    let output_info = OutputInfo {
+                        stdout: Some(script.into()),
+                        ..Default::default()
+                    };
+                    return handle_output(
+                        ProcessOutput::Output(output_info),
+                        args.file_output,
+                        args.skip_execution,
+                        cancellation_token,
+                    )
+                    .await;
+                }
+                CliProcess::Config(c) => {
+                    tracing::info!("Running 'config' process");
+                    tracing::debug!("Options: {:?}", c);
+                    if c.path {
+                        println!("{}", stats.config_path.display());
+                    } else {
+                        edit::edit_file(&stats.config_path)
+                            .wrap_err_with(|| format!("Failed to open config file: {}", stats.config_path.display()))?;
+                    }
+                    return Ok(());
+                }
+                _ => (),
             }
 
             // Initialize the storage and the service

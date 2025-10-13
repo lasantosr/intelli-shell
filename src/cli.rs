@@ -69,6 +69,12 @@ pub enum CliProcess {
     #[command(after_long_help = include_str!("_examples/init.txt"))]
     Init(InitProcess),
 
+    /// Opens the config file in the default editor
+    Config(ConfigProcess),
+
+    /// Displays logs from the last execution, if they were enabled
+    Logs(LogsProcess),
+
     /// Bookmarks a new command
     #[command(after_long_help = include_str!("_examples/new.txt"))]
     New(Interactive<BookmarkCommandProcess>),
@@ -201,6 +207,22 @@ pub enum Shell {
     Powershell,
     #[value(alias("nu"))]
     Nushell,
+}
+
+/// Opens the config file in the default editor
+#[derive(Args, Debug)]
+pub struct ConfigProcess {
+    /// Whether to display the path instead of trying to open the editor
+    #[arg(short = 'p', long)]
+    pub path: bool,
+}
+
+/// Displays logs from the last execution, if they were enabled
+#[derive(Args, Debug)]
+pub struct LogsProcess {
+    /// Whether to display the path instead of the logs content
+    #[arg(short = 'p', long)]
+    pub path: bool,
 }
 
 /// Bookmarks a new command
