@@ -6,39 +6,20 @@ share commands and completions that are relevant only to your current working di
 
 ## How It Works
 
-When you trigger a search, IntelliShell automatically looks for a file named `.intellishell` in the current directory. If
-it doesn't find one, it searches parent directories until it reaches a `.git` directory or the filesystem root.
+When you trigger a search, IntelliShell automatically searches for `.intellishell` files using a built-in hierarchy:
 
-If an `.intellishell` file is found, its content is loaded into a temporary, session-only library. These commands are
-given top priority in search results, appearing above your personal and `tldr` commands.
+1. **Local workspace**: Searches upward from the current directory until reaching a `.git` directory or filesystem root
+2. **Home directory**: `~/.intellishell` (file or directory)
+3. **System-wide**: `/etc/.intellishell` (Unix) or `C:\ProgramData\.intellishell` (Windows)
+
+Each location can be either a file or directory:
+- **File**: Loaded with parent directory name as tag
+- **Directory**: All files inside are loaded recursively with file name as tag (hidden files are skipped)
+
+All found files are loaded into a temporary, session-only library. These commands are given top priority in search results, appearing above your personal and `tldr` commands. Duplicate files (based on path) are automatically skipped.
 
 > **Note**: You can temporarily disable this feature by setting the `INTELLI_SKIP_WORKSPACE=1` environment variable. If
 > this variable is set, IntelliShell will not search for or load any `.intellishell` file.
-
-### Loading Additional Workspace Files
-
-In addition to the local workspace file, you can load `.intellishell` files from additional directories by setting the
-`INTELLI_WORKSPACE_PATH` environment variable.
-
-The variable should contain a list of directory paths separated by:
-- `:` (colon) on Linux and macOS
-- `;` (semicolon) on Windows
-
-**Example (Linux/macOS):**
-```sh
-export INTELLI_WORKSPACE_PATH="$HOME/.intellishell-global:/opt/company-commands"
-```
-
-**Example (Windows):**
-```powershell
-$env:INTELLI_WORKSPACE_PATH="C:\Users\YourName\.intellishell-global;C:\Company\commands"
-```
-
-Each directory in the path will be checked for a `.intellishell` file, and all found files will be loaded in order:
-1. First, the local workspace file (from current directory or parent)
-2. Then, additional files from `INTELLI_WORKSPACE_PATH` in the order they appear
-
-Each file is tagged with its directory name for easy identification in the search results.
 
 ### Key Behaviors
 
