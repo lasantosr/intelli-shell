@@ -114,13 +114,6 @@ pub trait Component: Send {
             #[cfg(debug_assertions)]
             // Debug
             KeyCode::Char('p') if key.modifiers == KeyModifiers::ALT => panic!("Debug panic!"),
-            // Variable navigation
-            KeyCode::Char('j') if key.modifiers == KeyModifiers::ALT => {
-                Some(self.move_next_variable()?)
-            }
-            KeyCode::Char('k') if key.modifiers == KeyModifiers::ALT => {
-                Some(self.move_prev_variable()?)
-            }
             // Selection / Movement
             KeyCode::Char('k') if key.modifiers == KeyModifiers::CONTROL => Some(self.move_prev()?),
             KeyCode::Char('j') if key.modifiers == KeyModifiers::CONTROL => Some(self.move_next()?),
@@ -258,16 +251,14 @@ pub trait Component: Send {
 
     /// Handles a request to move to the previous variable in a template.
     ///
-    /// This is used for navigating backwards through variables in commands,
-    /// with wrapping from first to last variable.
+    /// This is used for navigating backwards through variables in commands, with wrapping from first to last variable.
     fn move_prev_variable(&mut self) -> Result<Action> {
         Ok(Action::NoOp)
     }
 
     /// Handles a request to move to the next variable in a template.
     ///
-    /// This is used for navigating forwards through variables in commands,
-    /// with wrapping from last to first variable.
+    /// This is used for navigating forwards through variables in commands, with wrapping from last to first variable.
     fn move_next_variable(&mut self) -> Result<Action> {
         Ok(Action::NoOp)
     }

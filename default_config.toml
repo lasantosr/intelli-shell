@@ -109,9 +109,9 @@ ai = ["ctrl-i", "ctrl-x"]
 search_mode = "ctrl-s"
 # Toggle whether to search for user commands only or include workspace and tldr's
 search_user_only = "ctrl-o"
-# Move to the next variable when editing a command template
+# Move to the next variable when replacing variables
 variable_next = "alt-j"
-# Move to the previous variable when editing a command template
+# Move to the previous variable when replacing variables
 variable_prev = "alt-k"
 
 # --------------------------------------------------------------

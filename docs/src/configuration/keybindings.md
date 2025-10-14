@@ -29,8 +29,8 @@ The format and a list of available actions are detailed below. Note that if a de
 | `ai`               | Prompts ai for suggestions                                            | `ctrl-i`, `ctrl-x`        |
 | `search_mode`      | Cycles through the available search modes (auto, fuzzy, regex, etc.)  | `ctrl-s`                  |
 | `search_user_only` | Toggles whether to filter user commands only in the search results    | `ctrl-o`                  |
-| `variable_next`    | Moves to the next variable when editing a command template            | `alt-j`                   |
-| `variable_prev`    | Moves to the previous variable when editing a command template        | `alt-k`                   |
+| `variable_next`    | Moves to the next variable when replacing template variables          | `alt-j`                   |
+| `variable_prev`    | Moves to the previous variable when replacing template variables      | `alt-k`                   |
 
 ### Default Configuration
 

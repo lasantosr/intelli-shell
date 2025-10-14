@@ -155,44 +155,22 @@ impl CommandTemplate {
             .nth(index)
     }
 
-    /// Sets the value for the variable at a specific index
-    fn set_value_at_index(&mut self, index: usize, value: Option<String>) {
-        let mut variable_count = 0;
-
-        for part in self.parts.iter_mut() {
-            if matches!(part, TemplatePart::Variable(_) | TemplatePart::VariableValue(_, _)) {
-                if variable_count == index {
-                    // Found the variable at the target index
-                    let new_part = match (&part, &value) {
-                        (TemplatePart::Variable(v), Some(val)) => {
-                            // Convert Variable to VariableValue
-                            Some(TemplatePart::VariableValue(v.clone(), val.clone()))
-                        }
-                        (TemplatePart::VariableValue(v, _), Some(val)) => {
-                            // Update existing VariableValue
-                            Some(TemplatePart::VariableValue(v.clone(), val.clone()))
-                        }
-                        (TemplatePart::VariableValue(v, _), None) => {
-                            // Convert VariableValue back to Variable
-                            Some(TemplatePart::Variable(v.clone()))
-                        }
-                        _ => None,
-                    };
-
-                    if let Some(new_part) = new_part {
-                        *part = new_part;
-                    }
-                    return;
-                }
-                variable_count += 1;
-            }
-        }
-    }
-
     /// Syncs the template parts with the given variable values array
     pub fn sync_with_values(&mut self, values: &[Option<String>]) {
-        for (index, value) in values.iter().enumerate() {
-            self.set_value_at_index(index, value.clone());
+        // Create an iterator for the values to consume them as we find variables
+        let mut values_iter = values.iter();
+
+        // Iterate through all parts of the command template
+        for part in self.parts.iter_mut() {
+            // We only care about parts that are variables
+            if matches!(part, TemplatePart::Variable(_) | TemplatePart::VariableValue(_, _)) {
+                // If we run out of values, stop. Otherwise, update the part.
+                if let Some(value) = values_iter.next() {
+                    part.set_value(value.clone());
+                } else {
+                    break;
+                }
+            }
         }
     }
 
@@ -221,6 +199,29 @@ pub enum TemplatePart {
     Text(String),
     Variable(Variable),
     VariableValue(Variable, String),
+}
+impl TemplatePart {
+    /// Updates a `Variable` or `VariableValue` part based on the provided value.
+    /// - If `Some(value)` is provided, it becomes a `VariableValue`.
+    /// - If `None` is provided, it becomes a `Variable`.
+    /// - `Text` parts are ignored.
+    pub fn set_value(&mut self, value: Option<String>) {
+        // We only care about parts that can hold a variable
+        if !matches!(self, Self::Variable(_) | Self::VariableValue(_, _)) {
+            return;
+        }
+
+        // Temporarily replace self with a default to take ownership of the variable `v`
+        let taken_part = mem::take(self);
+
+        // Re-assign self with the new, correct part
+        *self = match (taken_part, value) {
+            (Self::Variable(v) | Self::VariableValue(v, _), Some(val)) => Self::VariableValue(v, val),
+            (Self::Variable(v) | Self::VariableValue(v, _), None) => Self::Variable(v),
+            // This case should not be hit due to the guard clause above
+            (other, _) => other,
+        };
+    }
 }
 impl Default for TemplatePart {
     fn default() -> Self {
@@ -577,6 +578,134 @@ mod tests {
         // Unset again when no variables are set, should return None
         let no_unset_value = cmd.unset_last_variable();
         assert_eq!(no_unset_value, None);
+    }
+
+    #[test]
+    fn test_count_variables() {
+        let mut cmd = CommandTemplate::parse("cmd {{var1}} middle {{var2}}", false);
+        assert_eq!(cmd.count_variables(), 2);
+
+        // Count should remain the same after setting a variable
+        cmd.set_next_variable("value1");
+        assert_eq!(cmd.count_variables(), 2);
+
+        // Test with no variables
+        let cmd_no_vars = CommandTemplate::parse("cmd no-vars", false);
+        assert_eq!(cmd_no_vars.count_variables(), 0);
+    }
+
+    #[test]
+    fn test_variable_at_index() {
+        let cmd = CommandTemplate::parse("cmd {{var1}} middle {{var2}}", false);
+        let var1 = Variable::parse("var1");
+        let var2 = Variable::parse("var2");
+
+        // Test valid indices
+        assert_eq!(cmd.variable_at_index(0), Some(&var1));
+        assert_eq!(cmd.variable_at_index(1), Some(&var2));
+
+        // Test out-of-bounds index
+        assert_eq!(cmd.variable_at_index(2), None);
+
+        // Test with no variables
+        let cmd_no_vars = CommandTemplate::parse("cmd no-vars", false);
+        assert_eq!(cmd_no_vars.variable_at_index(0), None);
+    }
+
+    #[test]
+    fn test_sync_with_values_full_update() {
+        let mut cmd = CommandTemplate::parse("cmd {{var1}} {{var2}}", false);
+        let values = vec![Some("value1".to_string()), Some("value2".to_string())];
+        cmd.sync_with_values(&values);
+
+        let var1 = Variable::parse("var1");
+        let var2 = Variable::parse("var2");
+        assert_eq!(cmd.parts[1], TemplatePart::VariableValue(var1, "value1".into()));
+        assert_eq!(cmd.parts[3], TemplatePart::VariableValue(var2, "value2".into()));
+        assert!(!cmd.has_pending_variable());
+    }
+
+    #[test]
+    fn test_sync_with_values_partial_update() {
+        let mut cmd = CommandTemplate::parse("cmd {{var1}} {{var2}} {{var3}}", false);
+        let values = vec![Some("value1".to_string()), Some("value2".to_string())];
+        cmd.sync_with_values(&values);
+
+        let var1 = Variable::parse("var1");
+        let var2 = Variable::parse("var2");
+        let var3 = Variable::parse("var3");
+        assert_eq!(cmd.parts[1], TemplatePart::VariableValue(var1, "value1".into()));
+        assert_eq!(cmd.parts[3], TemplatePart::VariableValue(var2, "value2".into()));
+        assert_eq!(cmd.parts[5], TemplatePart::Variable(var3));
+        assert!(cmd.has_pending_variable());
+    }
+
+    #[test]
+    fn test_sync_with_values_with_none_to_unset() {
+        let mut cmd = CommandTemplate::parse("cmd {{var1}} {{var2}}", false);
+        // Initially set both values
+        cmd.sync_with_values(&[Some("val1".into()), Some("val2".into())]);
+        assert!(!cmd.has_pending_variable());
+
+        // Now, sync with a new set of values where the first is None (unset) and the second is updated
+        let values = vec![None, Some("new_val2".to_string())];
+        cmd.sync_with_values(&values);
+
+        let var1 = Variable::parse("var1");
+        let var2 = Variable::parse("var2");
+        assert_eq!(cmd.parts[1], TemplatePart::Variable(var1));
+        assert_eq!(cmd.parts[3], TemplatePart::VariableValue(var2, "new_val2".into()));
+        assert!(cmd.has_pending_variable());
+    }
+
+    #[test]
+    fn test_sync_with_values_empty_slice() {
+        let mut cmd = CommandTemplate::parse("cmd {{var1}} {{var2}}", false);
+        let original_parts = cmd.parts.clone();
+        cmd.sync_with_values(&[]);
+
+        assert_eq!(cmd.parts, original_parts);
+    }
+
+    #[test]
+    fn test_sync_with_values_more_values_than_variables() {
+        let mut cmd = CommandTemplate::parse("cmd {{var1}}", false);
+        let values = vec![Some("value1".to_string()), Some("ignored".to_string())];
+        cmd.sync_with_values(&values);
+
+        let var1 = Variable::parse("var1");
+        assert_eq!(cmd.parts[1], TemplatePart::VariableValue(var1, "value1".into()));
+        assert!(!cmd.has_pending_variable());
+    }
+
+    #[test]
+    fn test_template_part_set_value() {
+        let var = Variable::parse("v");
+
+        // Test setting a value on a Variable
+        let mut part1 = TemplatePart::Variable(var.clone());
+        part1.set_value(Some("value".into()));
+        assert_eq!(part1, TemplatePart::VariableValue(var.clone(), "value".into()));
+
+        // Test updating a value on a VariableValue
+        let mut part2 = TemplatePart::VariableValue(var.clone(), "old".into());
+        part2.set_value(Some("new".into()));
+        assert_eq!(part2, TemplatePart::VariableValue(var.clone(), "new".into()));
+
+        // Test unsetting a value on a VariableValue
+        let mut part3 = TemplatePart::VariableValue(var.clone(), "value".into());
+        part3.set_value(None);
+        assert_eq!(part3, TemplatePart::Variable(var.clone()));
+
+        // Test setting None on a Variable (should not change)
+        let mut part4 = TemplatePart::Variable(var.clone());
+        part4.set_value(None);
+        assert_eq!(part4, TemplatePart::Variable(var.clone()));
+
+        // Test on a Text part (should not change)
+        let mut part5 = TemplatePart::Text("text".into());
+        part5.set_value(Some("value".into()));
+        assert_eq!(part5, TemplatePart::Text("text".into()));
     }
 
     #[test]

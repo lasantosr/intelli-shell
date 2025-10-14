@@ -98,15 +98,18 @@ contexts neatly organized.
 
 ## Navigating Between Variables
 
-When filling in variables, you can navigate between them freely:
+When filling in variables on the variable replacement TUI, you can navigate between them freely:
 
-- **Alt-j**: Confirm current value and move to next variable. After the last variable, cycles back to the first.
-- **Alt-k**: Move to previous variable. From the first variable, cycles to the last.
-- **Enter**: Confirm current value and move to next variable. After the last variable, exits and executes/outputs the
-  command.
+- <kbd>Alt</kbd>+<kbd>J</kbd>: Confirm current value and move to next variable. After the last variable, cycles back to
+  the first.
+- <kbd>Alt</kbd>+<kbd>K</kbd>: Move to previous variable. From the first variable, cycles to the last.
+- <kbd>Enter</kbd>: Confirm current value and move to next variable. After the last variable, exits and executes / outputs
+  the command.
 
 Variables remember their values as you navigate. When you return to a variable you've already filled, its current value
 will be pre-selected in the suggestions list, making it easy to review or change values before executing the command.
+
+> 💡 **Tip**: You can also undo / redo the variable selection with <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd>.
 
 ## Dynamic Suggestions with Completions
 

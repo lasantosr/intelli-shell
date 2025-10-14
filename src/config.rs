@@ -112,9 +112,9 @@ pub enum KeyBindingAction {
     SearchMode,
     /// Toggle whether to search for user commands only or include tldr's
     SearchUserOnly,
-    /// Move to the next variable when editing command templates
+    /// Move to the next variable when replacing variables
     VariableNext,
-    /// Move to the previous variable when editing command templates
+    /// Move to the previous variable when replacing variables
     VariablePrev,
 }
 
