@@ -100,9 +100,9 @@ update = ["ctrl-u", "ctrl-e", "F2"]
 # Delete the currently highlighted record or item
 delete = "ctrl-d"
 # Confirm a selection or action related to the highlighted record
-confirm = ["enter"]
+confirm = ["tab", "enter"]
 # Execute the action associated with the highlighted record or item (e.g., run a command)
-execute = ["ctrl-enter"]
+execute = ["ctrl-enter", "ctrl-r"]
 # Prompt ai about suggestions (e.g. when searching for commands)
 ai = ["ctrl-i", "ctrl-x"]
 # Toggle the search mode
@@ -110,9 +110,9 @@ search_mode = "ctrl-s"
 # Toggle whether to search for user commands only or include workspace and tldr's
 search_user_only = "ctrl-o"
 # Move to the next variable when editing a command template
-variable_next = "tab"
+variable_next = "alt-j"
 # Move to the previous variable when editing a command template
-variable_prev = "backtab"
+variable_prev = "alt-k"
 
 # --------------------------------------------------------------
 #   Theme

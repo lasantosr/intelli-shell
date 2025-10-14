@@ -100,8 +100,8 @@ contexts neatly organized.
 
 When filling in variables, you can navigate between them freely:
 
-- **Tab**: Confirm current value and move to next variable. After the last variable, cycles back to the first.
-- **Shift-Tab**: Move to previous variable. From the first variable, cycles to the last.
+- **Alt-j**: Confirm current value and move to next variable. After the last variable, cycles back to the first.
+- **Alt-k**: Move to previous variable. From the first variable, cycles to the last.
 - **Enter**: Confirm current value and move to next variable. After the last variable, exits and executes/outputs the
   command.
 

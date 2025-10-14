@@ -115,8 +115,12 @@ pub trait Component: Send {
             // Debug
             KeyCode::Char('p') if key.modifiers == KeyModifiers::ALT => panic!("Debug panic!"),
             // Variable navigation
-            KeyCode::Tab => Some(self.move_next_variable()?),
-            KeyCode::BackTab => Some(self.move_prev_variable()?),
+            KeyCode::Char('j') if key.modifiers == KeyModifiers::ALT => {
+                Some(self.move_next_variable()?)
+            }
+            KeyCode::Char('k') if key.modifiers == KeyModifiers::ALT => {
+                Some(self.move_prev_variable()?)
+            }
             // Selection / Movement
             KeyCode::Char('k') if key.modifiers == KeyModifiers::CONTROL => Some(self.move_prev()?),
             KeyCode::Char('j') if key.modifiers == KeyModifiers::CONTROL => Some(self.move_next()?),

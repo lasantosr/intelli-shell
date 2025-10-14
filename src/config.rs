@@ -738,12 +738,13 @@ impl Default for KeyBindingsConfig {
             ),
             (
                 KeyBindingAction::Confirm,
-                KeyBinding(vec![KeyEvent::from(KeyCode::Enter)]),
+                KeyBinding(vec![KeyEvent::from(KeyCode::Tab), KeyEvent::from(KeyCode::Enter)]),
             ),
             (
                 KeyBindingAction::Execute,
                 KeyBinding(vec![
                     KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL),
+                    KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL),
                 ]),
             ),
             (
@@ -763,11 +764,11 @@ impl Default for KeyBindingsConfig {
             ),
             (
                 KeyBindingAction::VariableNext,
-                KeyBinding(vec![KeyEvent::from(KeyCode::Tab)]),
+                KeyBinding(vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::ALT)]),
             ),
             (
                 KeyBindingAction::VariablePrev,
-                KeyBinding(vec![KeyEvent::from(KeyCode::BackTab)]),
+                KeyBinding(vec![KeyEvent::new(KeyCode::Char('k'), KeyModifiers::ALT)]),
             ),
         ]))
     }
