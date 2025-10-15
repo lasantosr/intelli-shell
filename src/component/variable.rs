@@ -299,12 +299,6 @@ impl Component for VariableReplacementComponent {
             return Ok(Action::NoOp);
         }
 
-        // Save the currently selected value
-        let current_index = state.current_variable_index;
-        if let Some(selected_value) = Self::extract_value_from_suggestion(state.suggestions.selected()) {
-            state.variable_values[current_index] = Some(selected_value);
-        }
-
         let total_vars = state.template.count_variables();
         if total_vars == 0 {
             return Ok(Action::NoOp);
@@ -331,12 +325,6 @@ impl Component for VariableReplacementComponent {
             Some(VariableSuggestionItem::Existing { editing: Some(_), .. })
         ) {
             return Ok(Action::NoOp);
-        }
-
-        // Save the currently selected value
-        let current_index = state.current_variable_index;
-        if let Some(selected_value) = Self::extract_value_from_suggestion(state.suggestions.selected()) {
-            state.variable_values[current_index] = Some(selected_value);
         }
 
         let total_vars = state.template.count_variables();
