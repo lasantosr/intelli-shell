@@ -157,7 +157,7 @@ impl Component for VariableReplacementComponent {
 
         // Sync the template parts with the current variable values
         let values = state.variable_values.clone();
-        state.template.sync_with_values(&values);
+        state.template.set_variable_values(&values);
 
         // Sync the current variable index with the widget for highlighting
         state.template.current_variable_index = state.current_variable_index;
@@ -397,8 +397,8 @@ impl Component for VariableReplacementComponent {
             _ => {
                 let should_refresh = if let Some(last_index) = state.confirmed_variables.pop() {
                     if let Some(value) = state.variable_values[last_index].take() {
-                        state.redo_stack.push((last_index, value));
-                        state.current_variable_index = last_index;
+                    state.redo_stack.push((last_index, value));
+                    state.current_variable_index = last_index;
                         true
                     } else {
                         false
@@ -449,7 +449,7 @@ impl Component for VariableReplacementComponent {
     fn insert_text(&mut self, mut text: String) -> Result<Action> {
         let mut state = self.state.write();
         let current_index = state.current_variable_index;
-        if let Some(variable) = state.template.variable_at_index(current_index) {
+        if let Some(variable) = state.template.variable_at(current_index) {
             text = variable.apply_functions_to(text);
         }
         match state.suggestions.selected_mut() {
@@ -471,7 +471,7 @@ impl Component for VariableReplacementComponent {
         let current_index = state.current_variable_index;
         let maybe_replacement = state
             .template
-            .variable_at_index(current_index)
+            .variable_at(current_index)
             .and_then(|variable| variable.check_functions_char(c));
         let insert_content = |ta: &mut CustomTextArea<'_>| {
             if let Some(r) = &maybe_replacement {
@@ -784,22 +784,6 @@ impl<'a> VariableReplacementComponentState<'a> {
 }
 
 impl VariableReplacementComponent {
-    /// Extracts the value from a suggestion item (for Tab/Shift-Tab navigation)
-    fn extract_value_from_suggestion(item: Option<&VariableSuggestionItem>) -> Option<String> {
-        match item {
-            Some(VariableSuggestionItem::New { textarea, .. }) => {
-                let content = textarea.lines_as_string();
-                if content.is_empty() { None } else { Some(content) }
-            }
-            Some(VariableSuggestionItem::Existing { value, .. }) => Some(value.value.clone()),
-            Some(VariableSuggestionItem::Previous { value, .. }) => Some(value.clone()),
-            Some(VariableSuggestionItem::Environment { content, .. }) => Some(content.clone()),
-            Some(VariableSuggestionItem::Completion { value, .. }) => Some(value.clone()),
-            Some(VariableSuggestionItem::Derived { value, .. }) => Some(value.clone()),
-            None => None,
-        }
-    }
-
     /// Immediately starts a debounced task to update the variable context
     fn debounced_update_variable_context(&self) {
         let this = self.clone();
@@ -830,7 +814,7 @@ impl VariableReplacementComponent {
         {
             let mut state = self.state.write();
             let values = state.variable_values.clone();
-            state.template.sync_with_values(&values);
+            state.template.set_variable_values(&values);
         }
 
         // Cancels previous completion task and issue a new one
@@ -849,12 +833,12 @@ impl VariableReplacementComponent {
             let state = self.state.read();
             let current_index = state.current_variable_index;
 
-            match state.template.variable_at_index(current_index).cloned() {
+            match state.template.variable_at(current_index).cloned() {
                 Some(variable) => (
                     state.template.flat_root_cmd.clone(),
                     state.template.previous_values_for(&variable.flat_name),
                     variable,
-                    state.template.current_variable_context(),
+                    state.template.variable_context(),
                     state.variable_values.get(current_index).and_then(|v| v.clone()),
                 ),
                 None => {
@@ -1074,7 +1058,7 @@ impl VariableReplacementComponent {
                 value.id.expect("just inserted")
             }
         };
-        let context = self.state.read().template.current_variable_context();
+        let context = self.state.read().template.variable_context();
         match self
             .service
             .increment_variable_value_usage(value_id, context)
