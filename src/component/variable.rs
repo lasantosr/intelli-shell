@@ -383,22 +383,13 @@ impl Component for VariableReplacementComponent {
                 ta.undo();
             }
             _ => {
-                let should_refresh = if let Some(last_index) = state.confirmed_variables.pop() {
-                    if let Some(value) = state.variable_values[last_index].take() {
+                if let Some(last_index) = state.confirmed_variables.pop()
+                    && let Some(value) = state.variable_values[last_index].take()
+                {
                     state.redo_stack.push((last_index, value));
                     state.current_variable_index = last_index;
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
-                drop(state);
-                if should_refresh {
                     self.debounced_update_variable_context();
                 }
-                return Ok(Action::NoOp);
             }
         }
         Ok(Action::NoOp)
@@ -416,19 +407,12 @@ impl Component for VariableReplacementComponent {
                 ta.redo();
             }
             _ => {
-                let should_refresh = if let Some((index, value)) = state.redo_stack.pop() {
+                if let Some((index, value)) = state.redo_stack.pop() {
                     state.variable_values[index] = Some(value.clone());
                     state.confirmed_variables.push(index);
                     state.current_variable_index = index + 1;
-                    true
-                } else {
-                    false
-                };
-                drop(state);
-                if should_refresh {
                     self.debounced_update_variable_context();
                 }
-                return Ok(Action::NoOp);
             }
         }
         Ok(Action::NoOp)
@@ -782,7 +766,8 @@ impl VariableReplacementComponent {
         });
     }
 
-    /// Moves to the next variable (without wrapping) after confirming a value
+    /// Moves to the next variable after confirming a value.
+    /// It will wrap around if there are still pending variables.
     fn move_to_next_variable_with_value(&self, value: String) {
         let mut state = self.state.write();
 
@@ -792,8 +777,18 @@ impl VariableReplacementComponent {
         state.confirmed_variables.push(current_index);
         state.redo_stack.clear();
 
-        // Move to next variable without wrapping (Enter will exit if out of bounds)
-        state.current_variable_index = current_index + 1;
+        // Move to the next variable index
+        state.current_variable_index += 1;
+
+        // Check if we are at the end
+        if state.current_variable_index >= state.variable_values.len() {
+            // Check if there are any pending variables
+            let has_pending = state.variable_values.iter().any(|v| v.is_none());
+            if has_pending {
+                // Wrap around to the first variable
+                state.current_variable_index = 0;
+            }
+        }
     }
 
     /// Updates the variable context and the suggestions widget, or returns an acton
