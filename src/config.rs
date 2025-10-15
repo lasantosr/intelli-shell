@@ -764,11 +764,14 @@ impl Default for KeyBindingsConfig {
             ),
             (
                 KeyBindingAction::VariableNext,
-                KeyBinding(vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::ALT)]),
+                KeyBinding(vec![KeyEvent::new(KeyCode::Tab, KeyModifiers::CONTROL)]),
             ),
             (
                 KeyBindingAction::VariablePrev,
-                KeyBinding(vec![KeyEvent::new(KeyCode::Char('k'), KeyModifiers::ALT)]),
+                KeyBinding(vec![
+                    KeyEvent::new(KeyCode::Tab, KeyModifiers::SHIFT),
+                    KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT),
+                ]),
             ),
         ]))
     }
