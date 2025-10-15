@@ -74,6 +74,10 @@ struct VariableReplacementComponentState<'a> {
     current_variable_index: usize,
     /// Stored values for all variables (Some = set, None = not set)
     variable_values: Vec<Option<String>>,
+    /// Stack of indices reflecting the order variables were confirmed
+    confirmed_variables: Vec<usize>,
+    /// Stack of undone values so redo can reinstate them
+    redo_stack: Vec<(usize, String)>,
 }
 
 impl VariableReplacementComponent {
@@ -121,6 +125,8 @@ impl VariableReplacementComponent {
                 loading: None,
                 current_variable_index: 0,
                 variable_values,
+                confirmed_variables: Vec::new(),
+                redo_stack: Vec::new(),
             })),
         }
     }
@@ -388,7 +394,24 @@ impl Component for VariableReplacementComponent {
             Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
                 ta.undo();
             }
-            _ => (),
+            _ => {
+                let should_refresh = if let Some(last_index) = state.confirmed_variables.pop() {
+                    if let Some(value) = state.variable_values[last_index].take() {
+                        state.redo_stack.push((last_index, value));
+                        state.current_variable_index = last_index;
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                drop(state);
+                if should_refresh {
+                    self.debounced_update_variable_context();
+                }
+                return Ok(Action::NoOp);
+            }
         }
         Ok(Action::NoOp)
     }
@@ -404,7 +427,21 @@ impl Component for VariableReplacementComponent {
             Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
                 ta.redo();
             }
-            _ => (),
+            _ => {
+                let should_refresh = if let Some((index, value)) = state.redo_stack.pop() {
+                    state.variable_values[index] = Some(value.clone());
+                    state.confirmed_variables.push(index);
+                    state.current_variable_index = index + 1;
+                    true
+                } else {
+                    false
+                };
+                drop(state);
+                if should_refresh {
+                    self.debounced_update_variable_context();
+                }
+                return Ok(Action::NoOp);
+            }
         }
         Ok(Action::NoOp)
     }
@@ -780,9 +817,11 @@ impl VariableReplacementComponent {
         // Store the confirmed value
         let current_index = state.current_variable_index;
         state.variable_values[current_index] = Some(value);
+        state.confirmed_variables.push(current_index);
+        state.redo_stack.clear();
 
         // Move to next variable without wrapping (Enter will exit if out of bounds)
-        state.current_variable_index += 1;
+        state.current_variable_index = current_index + 1;
     }
 
     /// Updates the variable context and the suggestions widget, or returns an acton
