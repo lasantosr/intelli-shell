@@ -112,6 +112,10 @@ pub enum KeyBindingAction {
     SearchMode,
     /// Toggle whether to search for user commands only or include tldr's
     SearchUserOnly,
+    /// Move to the next variable when replacing variables
+    VariableNext,
+    /// Move to the previous variable when replacing variables
+    VariablePrev,
 }
 
 /// Represents a single logical key binding that can be triggered by one or more physical `KeyEvent`s.
@@ -776,6 +780,17 @@ impl Default for KeyBindingsConfig {
             (
                 KeyBindingAction::SearchUserOnly,
                 KeyBinding(vec![KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)]),
+            ),
+            (
+                KeyBindingAction::VariableNext,
+                KeyBinding(vec![KeyEvent::new(KeyCode::Tab, KeyModifiers::CONTROL)]),
+            ),
+            (
+                KeyBindingAction::VariablePrev,
+                KeyBinding(vec![
+                    KeyEvent::new(KeyCode::Tab, KeyModifiers::SHIFT),
+                    KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT),
+                ]),
             ),
         ]))
     }

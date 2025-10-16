@@ -104,6 +104,8 @@ pub trait Component: Send {
                 KeyBindingAction::AI => self.prompt_ai().await?,
                 KeyBindingAction::SearchMode => self.toggle_search_mode()?,
                 KeyBindingAction::SearchUserOnly => self.toggle_search_user_only()?,
+                KeyBindingAction::VariableNext => self.move_next_variable()?,
+                KeyBindingAction::VariablePrev => self.move_prev_variable()?,
             }));
         }
 
@@ -244,6 +246,20 @@ pub trait Component: Send {
     /// This is often used for navigating forwards in a sequence (e.g., next tab, next item in a wizard) that may not
     /// map directly to simple directional moves.
     fn move_next(&mut self) -> Result<Action> {
+        Ok(Action::NoOp)
+    }
+
+    /// Handles a request to move to the previous variable in a template.
+    ///
+    /// This is used for navigating backwards through variables in commands, with wrapping from first to last variable.
+    fn move_prev_variable(&mut self) -> Result<Action> {
+        Ok(Action::NoOp)
+    }
+
+    /// Handles a request to move to the next variable in a template.
+    ///
+    /// This is used for navigating forwards through variables in commands, with wrapping from last to first variable.
+    fn move_next_variable(&mut self) -> Result<Action> {
         Ok(Action::NoOp)
     }
 
