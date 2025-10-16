@@ -172,5 +172,5 @@ information before sending the request to the AI:
 - **`##SHELL_HISTORY##`**: Replaced with the last few commands from the shell's history, this is only available for the
   `fix` prompt
 
-You can view the well-tuned default prompts in the [`default_config.toml`](https://github.com/lasantosr/intelli-shell/blob/main/default_config.toml)
+You can view the well-tuned default prompts in the [`default_config.toml`](https://github.com/lasantosr/intelli-shell/blob/main/default_config.toml#L264)
 file to use as a starting point for your own customizations.

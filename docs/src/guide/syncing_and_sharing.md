@@ -7,11 +7,23 @@ You can export your commands and completions to a local file, a remote HTTP endp
 them elsewhere. The tool automatically detects the location type (file, http, or gist) based on the provided string, but
 you can also specify it explicitly.
 
-Commands are stored in a simple, human-readable text format that supports commands, aliases, descriptions, and dynamic
-variable completions, making the files easy to edit by hand.
+## File Format
 
-Any commented line (`#`) directly preceding a command is treated as its description, and any line starting with a dollar
-sign (`$`) is treated as a completion.
+IntelliShell uses a simple, human-readable text format that makes it easy to view and edit your commands manually. The
+parser is designed to be flexible, allowing it to understand not only its official format but also variations found in
+sources like `tldr` pages or other shell script files.
+
+A command is any line that isn't a blank line or a comment. To add a **description**, simply place one or more comment
+lines directly above the command (comment lines can start with `#` or `//`). For better organization, you
+can also include an **alias** within the description by adding `[alias:your-alias]` at the beginning or end of the
+comment block.
+
+If you have a long command, you can split it across **multiple lines** by ending each line (except the last) with a
+backslash (`\`).
+
+**Dynamic completions** are also supported. Any line starting with a dollar sign (`$`) is treated as a completion
+definition. Use the format `$ (command) variable: provider` for command-specific completions, or `$ variable: provider`
+for global ones.
 
 ```sh
 # --------------------------------------------------------------
@@ -171,5 +183,5 @@ If you're not sure what a file or URL contains, use the `--dry-run` flag with th
 commands and completions that would be imported to the terminal without actually saving them to your library.
 
 ```sh
-intelli-shell import --dry-run https://example.com/some-commands.sh 
+intelli-shell import --dry-run https://example.com/some-commands.sh
 ```

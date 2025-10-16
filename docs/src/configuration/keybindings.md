@@ -45,7 +45,7 @@ You can change these bindings by modifying the `[keybindings]` block in your con
 These key bindings are **not configurable** and provide a standard way to navigate lists and edit text. They are always
 active unless overridden by a customizable action.
 
-### List & Tab Navigation
+### Navigation
 
 | Action                      | Key(s)               |
 | --------------------------- | -------------------- |

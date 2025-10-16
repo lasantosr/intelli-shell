@@ -10,9 +10,11 @@ The basic structure for any command is:
 intelli-shell [SUBCOMMAND] [OPTIONS] [ARGS]
 ```
 
+> 💡 **Tip**: Every subcommand supports the `-h` flag for a summarized view of its options and `--help` for a more
+> detailed explanation, including examples.
+
 ## Commands
 
-The commands can be thought of in three main categories: **core workflow**, **data management**, and **library expansion**.
 Here is a summary of all available commands, with each one detailed on its own page.
 
 | Command                                   | Description                                                                  |

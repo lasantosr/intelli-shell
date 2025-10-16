@@ -47,25 +47,6 @@ integration and user experience.
 - **Extensible Knowledge**: Instantly boost your library by fetching and importing command examples from the
   community-driven _tldr_ pages (or virtually any blog post or content with AI enabled).
 
-## How to Use This Book
-
-This documentation is structured into three main sections to help you find what you need quickly:
-
-- **Quick Start**: If you're new to IntelliShell, start here.
-  
-  The guide contains step-by-step tutorials that will take you from installation and basic usage to mastering advanced
-  workflows like shell integration and command syncing.
-
-- **Configuration**: This section is your reference for personalizing IntelliShell.
-  
-  Learn how to change keybindings, customize themes, configure AI providers, and even fine-tune the search-ranking
-  algorithms to make the tool truly your own.
-
-- **Command Line Tool**: Here you will find a detailed, technical breakdown of every command.
-  
-  It's the perfect place for quick lookups when you need to know exactly which flags are available or what a specific
-  option does.
-
 ---
 
 Ready to get started? Let's head over to the [**Installation**](./guide/installation.md) page.

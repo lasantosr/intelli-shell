@@ -83,7 +83,7 @@ By default, IntelliShell stores its database and configuration in platform-speci
 ### How can I sync commands between machines?
 
 Use the `export` and `import` commands. You can write your library to a file, back it up to a private GitHub Gist, or
-even serve it from a local HTTP endpoint. See the [Syncing and Sharing](./guide/syncing.md) guide for examples.
+even serve it from a local HTTP endpoint. See the [Syncing and Sharing](./guide/syncing_and_sharing.md) guide for examples.
 
 ### Imported commands are not appearing
 

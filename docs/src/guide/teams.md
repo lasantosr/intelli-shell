@@ -7,7 +7,7 @@ accelerates onboarding, and creates a more efficient development environment for
 
 ## Standardize Workflows within Workspaces
 
-Consistency is key in a team environment. The **workspace-aware** feature ensures that every developer is using the same
+Consistency is key in a team environment. The **workspace library** feature ensures that every developer is using the same
 tools in the same way.
 
 - **Version-Controlled Scripts**: By committing the `.intellishell` file to your repository, you version-control your
@@ -29,9 +29,8 @@ department.
 You can set up shared **Gists**, **files**, or **HTTP endpoints** to serve command templates for the common tools used
 within the department, such as Kubernetes, Terraform, or internal CLIs.
 
-Developers can then use the `import` command to
-pull these shared templates into their local IntelliShell library, ensuring everyone has access to the same set of
-approved, up-to-date commands.
+Developers can then use the `import` command to pull these shared templates into their local IntelliShell library,
+ensuring everyone has access to the same set of approved, up-to-date commands.
 
 This approach turns scattered information from wikis and tutorials into a structured, searchable, and shared resource,
 right in the command line.

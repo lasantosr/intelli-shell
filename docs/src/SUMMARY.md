@@ -7,11 +7,17 @@
 # Quick Start
 
 - [Installation](./guide/installation.md)
-- [Basic Usage](./guide/basic_usage.md)
-- [Using Variables](./guide/variables.md)
-- [Workspace File](./guide/workspace.md)
-- [Syncing and Sharing](./guide/syncing.md)
-- [Teams & Organizations](./guide/teams.md)
+- [Key Concepts](./guide/key_concepts.md)
+- [Your First Session](./guide/your_first_session.md)
+- [Introduction to AI](./guide/introduction_to_ai.md)
+- [Populating Your Library](./guide/populating_your_library.md)
+- [Using Variables and Completions](./guide/variables_and_completions.md)
+- [Workspace Library](./guide/workspace_library.md)
+- [Syncing and Sharing](./guide/syncing_and_sharing.md)
+
+# For Teams
+
+- [Collaboration & Onboarding](./guide/teams.md)
 
 # Reference
 

@@ -13,7 +13,7 @@ This guide covers the recommended automatic installation and alternative manual 
 This is the fastest and easiest way to get started. The installer script automatically detects your OS and architecture,
 downloads the correct binary, and sets up the shell integration for you.
 
-> **Note**: The installer script will attempt to update all detected shell profiles (e.g., for Bash, Zsh, PowerShell).
+> **Note**: The installer script will attempt to update all detected shell profiles.
 > If you prefer to handle shell configuration manually, you can set the `INTELLI_SKIP_PROFILE=1` environment variable
 > before running the script.
 
@@ -145,4 +145,4 @@ If the command is found and the hotkeys work, you are ready to go!
 
 ---
 
-Let's move on to [**Basic Usage**](./basic_usage.md).
+Let's move on to [**Key Concepts**](./key_concepts.md).
