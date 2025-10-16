@@ -1,6 +1,22 @@
+<!-- markdownlint-disable MD033 required for advanced formatting -->
+
 # IntelliShell
 
-_Like IntelliSense, but for shells!_
+<p align="center">
+  <em>Like IntelliSense, but for shells!</em>
+</p>
+
+<div align="center">
+
+[![Version](https://img.shields.io/github/v/release/lasantosr/intelli-shell?style=for-the-badge)](https://github.com/lasantosr/intelli-shell/releases/latest)&nbsp;
+[![Crates.io Total Downloads](https://img.shields.io/crates/d/intelli-shell?style=for-the-badge&label=crates.io)](https://crates.io/crates/intelli-shell)&nbsp;
+[![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/lasantosr/intelli-shell/total?style=for-the-badge&label=GitHub)](https://github.com/lasantosr/intelli-shell/releases)&nbsp;
+[![License](https://img.shields.io/crates/l/intelli-shell?style=for-the-badge)](https://github.com/lasantosr/intelli-shell/blob/main/LICENSE)&nbsp;
+[![GitHub Created At](https://img.shields.io/github/created-at/lasantosr/intelli-shell?style=for-the-badge&label=since)](https://github.com/lasantosr/intelli-shell)
+
+</div>
+
+<hr/>
 
 IntelliShell is a powerful command template and snippet manager for your shell. It goes far beyond a simple history search,
 transforming your terminal into a structured, searchable, and intelligent library of your commands.
@@ -23,6 +39,11 @@ Windows.
 - **Flexible Interface**: Choose between a non-intrusive (inline) or an immersive (full-screen) TUI
 
 ## Quick Start
+
+For a comprehensive guide on installation, configuration, and advanced features, please refer to the
+[**Quick Start**](https://lasantosr.github.io/intelli-shell/guide/installation.html) section of the book.
+
+Here’s a summary to get you started:
 
 1. Install or update the binary:
 
@@ -47,9 +68,9 @@ Windows.
 
 2. Bookmark your first command by typing it on a terminal and hitting `ctrl+b`
 
-3. _(optional)_ [Enable AI features](https://lasantosr.github.io/intelli-shell/configuration/ai.html#enabling-ai-features),
+3. _(optional)_ [Enable AI features](https://lasantosr.github.io/intelli-shell/guide/introduction_to_ai.html#how-to-enable-ai),
    import commands and completions from shared [gists](https://gist.github.com/search?q=intellishell+commands) or fetch
-   commands from [tldr](https://lasantosr.github.io/intelli-shell/guide/basic_usage.html#from-tldr-pages)
+   commands from [tldr](https://lasantosr.github.io/intelli-shell/guide/populating_your_library.html#from-tldr-pages)
 
 4. Hit `ctrl+space` to begin the journey and don't forget to checkout the [tips](#tips)!
 
@@ -68,7 +89,7 @@ These hotkeys work directly in your terminal line:
 - **`ctrl+x`**: Diagnose and try to fix a failing command (requires AI to be enabled)
 - **`esc`**: Clean the current line, this binding can be skipped by setting `INTELLI_SKIP_ESC_BIND=1`
 
-_These keybindings can be changed, see [Customizing Shell Integration](https://lasantosr.github.io/intelli-shell/guide/installation.html#customizing-shell-integration)
+_These keybindings can be changed, see [Customizing Keybindings](https://lasantosr.github.io/intelli-shell/guide/installation.html#customizing-keybindings)
 for details._
 
 ### Inside the Application
