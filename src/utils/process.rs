@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     cmp::Ordering,
     collections::BTreeMap,
     env,
@@ -124,6 +125,7 @@ fn get_shell_version(shell_kind: &ShellType, shell_path: impl AsRef<OsStr>) -> O
     let mut command = std::process::Command::new(shell_path);
     if matches!(shell_kind, ShellType::PowerShellCore | ShellType::WindowsPowerShell) {
         command.args([
+            "-NoProfile",
             "-Command",
             "'PowerShell {0} ({1} Edition)' -f $PSVersionTable.PSVersion, $PSVersionTable.PSEdition",
         ]);
@@ -375,6 +377,27 @@ fn build_tree_from_map(
             output.push_str(&format!("{prefix}{connector}{name}\n"));
         }
     }
+}
+
+/// Decodes the output of a shell command based on the OS and some heuristics
+pub fn decode_output(bytes: &[u8]) -> Cow<'_, str> {
+    // On Windows, PowerShell is known to have inconsistent output encoding
+    if cfg!(windows) {
+        // A UTF-8 BOM is a strong signal that the content is UTF-8
+        if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+            // It has a UTF-8 BOM, so treat as UTF-8 (after skipping the BOM)
+            return String::from_utf8_lossy(&bytes[3..]);
+        }
+
+        // If the byte stream contains NUL bytes, it is almost certainly UTF-16LE
+        if bytes.contains(&0) {
+            let (cow, _encoding_used, _had_errors) = encoding_rs::UTF_16LE.decode(bytes);
+            return cow;
+        }
+    }
+
+    // For all other cases (Linux, macOS, non-PowerShell on Windows, or PowerShell output without NUL bytes)
+    String::from_utf8_lossy(bytes)
 }
 
 /// Executes a shell command, inheriting the parent's `stdout` and `stderr`

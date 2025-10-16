@@ -1454,6 +1454,7 @@ dependencies = [
  "crossterm",
  "directories",
  "edit",
+ "encoding_rs",
  "enum_cycling",
  "futures-util",
  "git2",

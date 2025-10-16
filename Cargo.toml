@@ -43,6 +43,7 @@ crossbeam-channel  = "0.5"
 crossterm          = { version = "0.28.1", features = ["serde", "event-stream", "use-dev-tty", "libc"] }
 directories        = "6"
 edit               = "0.1.5"
+encoding_rs        = "0.8"
 enum_cycling       = { version = "0.2", features = ["derive"] }
 futures-util       = "0.3"
 heck               = "0.5"

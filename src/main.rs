@@ -9,7 +9,7 @@ use std::{
 use color_eyre::{Result, eyre::Context};
 use intelli_shell::{
     app::App,
-    cli::{Cli, CliProcess, LogsProcess, Shell},
+    cli::{Cli, CliProcess, ConfigProcess, LogsProcess, Shell},
     config::Config,
     errors::{self, AppError},
     format_error, logging,
@@ -49,48 +49,6 @@ async fn main() -> Result<()> {
             // Parse cli arguments
             let args = Cli::parse_extended();
 
-            // Check for logs process before tracing initialization, to avoid overwriting logs
-            if let CliProcess::Logs(LogsProcess { path }) = args.process {
-                if path {
-                    println!("{}", logs_path.display());
-                } else {
-                    match fs::read_to_string(&logs_path) {
-                        Ok(logs_content) if !logs_content.is_empty() => {
-                            println!("{logs_content}");
-                        }
-                        _ => {
-                            eprintln!(
-                                "{}",
-                                format_error!(
-                                    config.theme,
-                                    "No logs found on: {}\n\nMake sure logging is enabled in the config file: {}",
-                                    logs_path.display(),
-                                    stats.config_path.display()
-                                )
-                            )
-                        }
-                    }
-                }
-                return Ok(());
-            }
-
-            // Initialize logging
-            logging::init(logs_path, logs_filter)?;
-
-            // Initial logs
-            tracing::info!("intelli-shell v{}", env!("CARGO_PKG_VERSION"));
-            match (stats.config_loaded, stats.default_config_path) {
-                (true, true) => tracing::info!("Loaded config from default path: {}", stats.config_path.display()),
-                (true, false) => tracing::info!("Loaded config from custom path: {}", stats.config_path.display()),
-                (false, true) => tracing::info!("No config found at default path: {}", stats.config_path.display()),
-                (false, false) => tracing::warn!("No config found at custom path: {}", stats.config_path.display()),
-            }
-            if stats.default_data_dir {
-                tracing::info!("Using default data dir: {}", config.data_dir.display());
-            } else {
-                tracing::info!("Using custom data dir: {}", config.data_dir.display());
-            }
-
             // Create a cancellation token
             let cancellation_token = CancellationToken::new();
             let ctrl_c_token = cancellation_token.clone();
@@ -101,11 +59,9 @@ async fn main() -> Result<()> {
                 ctrl_c_token.cancel();
             });
 
-            // Check for init and config processes before service initialization, to avoid unnecessary overhead
+            // Check for static processes before initialization, to avoid unnecessary overhead
             match args.process {
                 CliProcess::Init(init) => {
-                    tracing::info!("Running 'init' process");
-                    tracing::debug!("Options: {:?}", init);
                     let script = match init.shell {
                         Shell::Bash => BASH_INIT,
                         Shell::Zsh => ZSH_INIT,
@@ -125,10 +81,8 @@ async fn main() -> Result<()> {
                     )
                     .await;
                 }
-                CliProcess::Config(c) => {
-                    tracing::info!("Running 'config' process");
-                    tracing::debug!("Options: {:?}", c);
-                    if c.path {
+                CliProcess::Config(ConfigProcess { path }) => {
+                    if path {
                         println!("{}", stats.config_path.display());
                     } else {
                         edit::edit_file(&stats.config_path)
@@ -136,7 +90,47 @@ async fn main() -> Result<()> {
                     }
                     return Ok(());
                 }
+                CliProcess::Logs(LogsProcess { path }) => {
+                    if path {
+                        println!("{}", logs_path.display());
+                    } else {
+                        match fs::read_to_string(&logs_path) {
+                            Ok(logs_content) if !logs_content.is_empty() => {
+                                println!("{logs_content}");
+                            }
+                            _ => {
+                                eprintln!(
+                                    "{}",
+                                    format_error!(
+                                        config.theme,
+                                        "No logs found on: {}\n\nMake sure logging is enabled in the config file: {}",
+                                        logs_path.display(),
+                                        stats.config_path.display()
+                                    )
+                                )
+                            }
+                        }
+                    }
+                    return Ok(());
+                }
                 _ => (),
+            }
+
+            // Initialize logging
+            logging::init(logs_path, logs_filter)?;
+
+            // Initial logs
+            tracing::info!("intelli-shell v{}", env!("CARGO_PKG_VERSION"));
+            match (stats.config_loaded, stats.default_config_path) {
+                (true, true) => tracing::info!("Loaded config from default path: {}", stats.config_path.display()),
+                (true, false) => tracing::info!("Loaded config from custom path: {}", stats.config_path.display()),
+                (false, true) => tracing::info!("No config found at default path: {}", stats.config_path.display()),
+                (false, false) => tracing::warn!("No config found at custom path: {}", stats.config_path.display()),
+            }
+            if stats.default_data_dir {
+                tracing::info!("Using default data dir: {}", config.data_dir.display());
+            } else {
+                tracing::info!("Using custom data dir: {}", config.data_dir.display());
             }
 
             // Initialize the storage and the service

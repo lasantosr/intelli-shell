@@ -14,7 +14,7 @@ use tracing::instrument;
 use crate::{
     errors::UserFacingError,
     model::VariableCompletion,
-    utils::{COMMAND_VARIABLE_REGEX, flatten_variable_name, prepare_command_execution},
+    utils::{COMMAND_VARIABLE_REGEX, decode_output, flatten_variable_name, prepare_command_execution},
 };
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
@@ -42,7 +42,7 @@ pub async fn resolve_completions(
 }
 
 /// Fetches suggestions from a variable completion by executing its provider command
-#[instrument(skip_all, fields(cmd = %completion.flat_root_cmd, var = %completion.flat_variable))]
+#[instrument(skip_all)]
 pub async fn resolve_completion(
     completion: &VariableCompletion,
     context: Option<Arc<BTreeMap<String, String>>>,
@@ -53,6 +53,16 @@ pub async fn resolve_completion(
         return Err(UserFacingError::CompletionEmptySuggestionsProvider.to_string());
     }
 
+    if completion.is_global() {
+        tracing::info!("Resolving completion for global {} variable", completion.flat_variable);
+    } else {
+        tracing::info!(
+            "Resolving completion for {} variable ({} command)",
+            completion.flat_variable,
+            completion.flat_root_cmd
+        );
+    }
+
     let mut cmd = prepare_command_execution(&command, false, false).expect("infallible");
     Ok(match tokio::time::timeout(COMMAND_TIMEOUT, cmd.output()).await {
         Err(_) => {
@@ -60,7 +70,8 @@ pub async fn resolve_completion(
             return Err(String::from("Timeout executing command provider"));
         }
         Ok(Ok(output)) if output.status.success() => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stdout = decode_output(&output.stdout);
+            tracing::trace!("Output:\n{stdout}");
             let suggestions = stdout
                 .lines()
                 .map(String::from)
@@ -70,7 +81,7 @@ pub async fn resolve_completion(
             suggestions
         }
         Ok(Ok(output)) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr = decode_output(&output.stderr);
             tracing::error!("Error executing dynamic completion command: '{command}':\n{stderr}");
             return Err(stderr.into());
         }
