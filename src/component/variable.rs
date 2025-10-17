@@ -300,7 +300,7 @@ impl Component for VariableReplacementComponent {
         }
 
         let total_vars = state.template.count_variables();
-        if total_vars == 0 {
+        if total_vars <= 1 {
             return Ok(Action::NoOp);
         }
 
@@ -328,7 +328,7 @@ impl Component for VariableReplacementComponent {
         }
 
         let total_vars = state.template.count_variables();
-        if total_vars == 0 {
+        if total_vars <= 1 {
             return Ok(Action::NoOp);
         }
 
