@@ -95,7 +95,7 @@ kubectl -n {{namespace}} delete pod {{pod}} --grace-period=0 --force
 kubectl apply -f {{filename.yml}}
 
 # Stream logs from a service #k8s #logs
-kubectl -n {{namespace}} logs {{service}} --follow --since {{10m}}
+kubectl -n {{namespace}} logs {{service}} --since {{10m}}
 
 # Execute a command in a container #k8s #exec
 kubectl -n {{namespace}} exec -it {{pod}} -- /bin/sh

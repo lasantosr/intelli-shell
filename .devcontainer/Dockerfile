@@ -11,12 +11,11 @@ RUN mkdir -p /etc/apt/keyrings && \
     echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | tee /etc/apt/sources.list.d/charm.list && \
     # GitHub CLI Repo
     curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list && \
-    # Update lists
-    apt-get update
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list
 
 # Install system dependencies
-RUN apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     # GitHub CLI
     gh \
     # Shells
@@ -41,7 +40,7 @@ RUN rustup component add clippy && \
     rustup component add rustfmt --toolchain nightly-x86_64-unknown-linux-gnu
 
 # Copy the ttyd binary from the first stage
-COPY --from=ttyd /usr/bin/ttyd /usr/bin/tty
+COPY --from=ttyd /usr/bin/ttyd /usr/bin/ttyd
 
 # Install cargo-binstall to quickly install pre-compiled Rust binaries
 RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
