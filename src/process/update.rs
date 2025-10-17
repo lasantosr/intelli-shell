@@ -20,7 +20,7 @@ impl Process for UpdateProcess {
     ) -> color_eyre::Result<ProcessOutput> {
         let current_version_str = env!("CARGO_PKG_VERSION");
         let current_version_tag = format!("v{current_version_str}");
-        let latest_version = match service.check_new_version().await {
+        let latest_version = match service.check_new_version(true).await {
             Ok(Some(v)) => v,
             Ok(None) => {
                 return Ok(ProcessOutput::success().stdout(format!(

@@ -63,7 +63,7 @@ impl IntelliShellService {
                 let state_clone = self.version_check_state.clone();
                 tokio::spawn(
                     async move {
-                        let result = fetch_latest_version(&storage).await;
+                        let result = fetch_latest_version(&storage, false).await;
 
                         // Once the check is done, lock the state and update it with the result
                         let mut state = state_clone.lock().expect("poisoned lock");
@@ -96,8 +96,8 @@ impl IntelliShellService {
     ///
     /// For a non-blocking alternative that spawns a background task, see [`poll_new_version`](Self::poll_new_version).
     #[instrument(skip_all)]
-    pub async fn check_new_version(&self) -> Result<Option<Version>> {
-        fetch_latest_version(&self.storage).await
+    pub async fn check_new_version(&self, force_fetch: bool) -> Result<Option<Version>> {
+        fetch_latest_version(&self.storage, force_fetch).await
     }
 }
 
@@ -108,16 +108,20 @@ impl IntelliShellService {
 /// timestamp, and returns the result.
 ///
 /// It will return `None` if the latest version is not newer than the actual one.
-async fn fetch_latest_version(storage: &SqliteStorage) -> Result<Option<Version>> {
-    // Get the current version and the last checked version
+async fn fetch_latest_version(storage: &SqliteStorage, force_fetch: bool) -> Result<Option<Version>> {
+    // Get the current version
     let now = Utc::now();
     let current = Version::parse(env!("CARGO_PKG_VERSION")).wrap_err("Failed to parse current version")?;
-    let (latest, checked_at) = storage.get_version_info().await?;
 
-    // If the latest version was checked recently, return whether it's newer than the current one
-    if (now - checked_at) < chrono::Duration::hours(16) {
-        tracing::debug!("Skipping version retrieval as it was checked recently, latest: v{latest}");
-        return Ok(Some(latest).filter(|v| v > &current));
+    // When not forcing a fetch, check the database cache for recent version info
+    if !force_fetch {
+        let (latest, checked_at) = storage.get_version_info().await?;
+
+        // If the latest version was checked recently, return whether it's newer than the current one
+        if (now - checked_at) < chrono::Duration::hours(16) {
+            tracing::debug!("Skipping version retrieval as it was checked recently, latest: v{latest}");
+            return Ok(Some(latest).filter(|v| v > &current));
+        }
     }
 
     // A simple struct to deserialize the relevant fields from the GitHub API response
