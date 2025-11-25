@@ -111,14 +111,20 @@ impl IntelliShellService {
             let items_stream = parse_import_items(file, vec![tag], CATEGORY_WORKSPACE, SOURCE_WORKSPACE);
 
             // Import items into the temp tables
-            let stats = self.storage.import_items(items_stream, false, true).await?;
-
-            tracing::info!(
-                "Loaded {} commands and {} completions from workspace file {}",
-                stats.commands_imported,
-                stats.completions_imported,
-                workspace_file.display()
-            );
+            match self.storage.import_items(items_stream, false, true).await {
+                Ok(stats) => {
+                    tracing::info!(
+                        "Loaded {} commands and {} completions from workspace file {}",
+                        stats.commands_imported,
+                        stats.completions_imported,
+                        workspace_file.display()
+                    );
+                }
+                Err(err) => {
+                    tracing::error!("Failed to load workspace file {}", workspace_file.display());
+                    return Err(err);
+                }
+            }
         }
 
         Ok(true)
