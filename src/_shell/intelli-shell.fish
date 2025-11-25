@@ -106,11 +106,20 @@ end
 
 # Helper function to set up IntelliShell key bindings
 function _intelli_shell_bindings --description "Setup IntelliShell key bindings"
+  set -l fish_major_version (string split . -- $version)[1]
+
   # Use defaults if environment variables are not set
   set -l search_key '-k nul'
   set -l bookmark_key \cb
   set -l variable_key \cl
   set -l fix_key \cx
+
+  if test -n "$fish_major_version" -a "$fish_major_version" -ge 4
+      set search_key ctrl-space
+      set bookmark_key ctrl-b
+      set variable_key ctrl-l
+      set fix_key ctrl-x
+  end
 
   # Override defaults if environment variables are set
   if set -q INTELLI_SEARCH_HOTKEY; and test -n "$INTELLI_SEARCH_HOTKEY"
@@ -132,8 +141,12 @@ function _intelli_shell_bindings --description "Setup IntelliShell key bindings"
   end
 
   # Bind the keys to the action functions
-  if string match -q -- '\c@' $search_key; or string match -q -- '-k nul' $search_key
-    bind -k nul _intelli_search
+  if contains -- $search_key '\c@' '-k nul' 'ctrl-space'
+      if test -n "$fish_major_version" -a "$fish_major_version" -ge 4
+          bind ctrl-space _intelli_search
+      else
+          bind -k nul _intelli_search
+      end
   else
     bind $search_key _intelli_search
   end

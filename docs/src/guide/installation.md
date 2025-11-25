@@ -130,7 +130,10 @@ line that sources the IntelliShell init command.
 - `INTELLI_SKIP_ESC_BIND=1`: Prevents IntelliShell from binding the `esc` key to clear the current line in the terminal.
 
 > For keybinding syntax, refer to your shell's documentation (`bindkey` for Zsh, `bind` for Bash). For example, to
-> change the search hotkey in Bash, add `export INTELLI_SEARCH_HOTKEY=\\C-t` to your `.bashrc`.
+> change the search hotkey in Bash, add `export INTELLI_SEARCH_HOTKEY=\C-t` to your `.bashrc`.
+>
+> **Note for Fish users**: The syntax differs depending on your Fish version. Fish 3.x uses escaped sequences (e.g.,
+> `\cb` or `\cl`), whereas Fish 4.x and newer require named keys (e.g., `ctrl-b` or `ctrl-l`).
 
 ## Verify Your Installation
 
