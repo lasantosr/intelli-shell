@@ -9,6 +9,7 @@ keywords = ["intellisense", "autocomplete", "cli", "shell", "bookmark"]
 categories = ["command-line-utilities", "development-tools"]
 repository = "https://github.com/lasantosr/intelli-shell"
 documentation = "https://lasantosr.github.io/intelli-shell"
+exclude = ["/.github", "/.devcontainer", "/.idx", "/.vscode", "/docs", "/vhs"]
 
 [[bin]]
 name = "intelli-shell"
