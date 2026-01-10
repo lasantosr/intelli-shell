@@ -268,15 +268,46 @@ impl Component for VariableReplacementComponent {
 
     fn move_right(&mut self, word: bool) -> Result<Action> {
         let mut state = self.state.write();
-        match state.suggestions.selected_mut() {
-            Some(VariableSuggestionItem::New { textarea, .. }) => {
-                textarea.move_cursor_right(word);
-            }
-            Some(VariableSuggestionItem::Existing { editing: Some(ta), .. }) => {
-                ta.move_cursor_right(word);
-            }
-            _ => (),
+
+        // If we are editing a value (New or Existing with edit mode), move the cursor
+        if let Some(item) = state.suggestions.selected_mut()
+            && let VariableSuggestionItem::New { textarea, .. }
+            | VariableSuggestionItem::Existing {
+                editing: Some(textarea),
+                ..
+            } = item
+        {
+            textarea.move_cursor_right(word);
+            return Ok(Action::NoOp);
         }
+
+        // Otherwise, check if we have a value to copy to the new field
+        let text_to_copy = match state.suggestions.selected() {
+            None | Some(VariableSuggestionItem::New { .. }) => None,
+            Some(VariableSuggestionItem::Existing { value, .. }) => Some(value.value.clone()),
+            Some(
+                VariableSuggestionItem::Previous { value, .. }
+                | VariableSuggestionItem::Environment { content: value, .. }
+                | VariableSuggestionItem::Completion { value, .. }
+                | VariableSuggestionItem::Derived { value, .. },
+            ) => Some(value.clone()),
+        };
+
+        if let Some(text) = text_to_copy
+            && !text.is_empty()
+            && let Some(VariableSuggestionItem::New { .. }) = state.suggestions.items().iter().next()
+        {
+            state.suggestions.select_first();
+            if let Some(VariableSuggestionItem::New { textarea, .. }) = state.suggestions.selected_mut() {
+                if !textarea.lines_as_string().is_empty() {
+                    textarea.select_all();
+                    textarea.cut();
+                }
+                textarea.insert_str(&text);
+                state.filter_suggestions(&text);
+            }
+        }
+
         Ok(Action::NoOp)
     }
 

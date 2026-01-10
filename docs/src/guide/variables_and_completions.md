@@ -85,19 +85,27 @@ This means:
 This system gives you fine-grained control over which commands share suggestion histories, helping you keep different
 contexts neatly organized.
 
-### Navigating Between Variables
+### Variable Selection and Navigation
 
-When filling in variables on the variable replacement TUI, you can navigate between them freely:
+When filling in variables on the variable replacement TUI, you can either enter a new value or select an existing
+suggestion from the list. Typing a value automatically filters the list of suggestions.
 
-- <kbd>Ctrl</kbd>+<kbd>Tab</kbd>: Move to next variable. After the last variable, cycles back to the first.
-- <kbd>Shift</kbd>+<kbd>Tab</kbd>: Move to previous variable. From the first variable, cycles to the last.
-- <kbd>Enter</kbd>: Confirm current value and move to next variable. After the last variable, exits and executes / outputs
-  the command if there are no pending variables.
+You can also use an existing suggestion as a template rather than using it directly. With a suggestion highlighted,
+press <kbd>&rarr;</kbd> (Right Arrow) to copy the value to the _new_ text input area, allowing you to use it as a
+starting point for a new value.
+
+**Confirming** a value (defaults to <kbd>Enter</kbd> or <kbd>Tab</kbd>) moves the focus to the next variable. Once the
+last variable is confirmed, the command is executed (or outputted) immediately.
+
+You can also move between variables without confirmation:
+
+- <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd>: Cycle to the next or previous variable, wrapping
+  around the list.
+- <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd>: Undo or redo your last selection. This navigates you back
+  to the previous variable to change your choice or forward again to re-apply it.
 
 Variables remember their values as you navigate. When you return to a variable you've already filled, its current value
 will be pre-selected in the suggestions list, making it easy to review or change values before executing the command.
-
-> 💡 **Tip**: You can also undo / redo the variable selection with <kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd>.
 
 ## Dynamic Completions
 
