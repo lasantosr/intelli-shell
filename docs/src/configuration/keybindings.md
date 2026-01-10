@@ -8,7 +8,7 @@ text editing, many of which follow common terminal and Emacs-like conventions.
 >
 > Your ability to use certain key combinations depends entirely on your terminal emulator. Some terminals may capture
 > specific hotkeys (like `ctrl-space` or `ctrl-enter`) for their own features and will not forward them to
-> IntelliShell. This is particularly common on Windows with terminals like Cmder or older versions of Windows Terminal.
+> IntelliShell. This is particularly common on IDEs or Cmder.
 > If a key binding doesn't work, try a different combination or consult your terminal's documentation.
 
 ## Customizable Actions

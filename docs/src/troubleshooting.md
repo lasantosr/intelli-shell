@@ -14,14 +14,28 @@ If hotkeys like <kbd>Ctrl</kbd>+<kbd>Space</kbd> or <kbd>Ctrl</kbd>+<kbd>B</kbd>
    should add it automatically, but it's good to check.
 
 3. **Check for Keybinding Issues**: If the steps above are correct, the key combination itself is likely the problem.
+
    - **Conflicts**: Another application might be intercepting the keys. For example, some desktop environments use
      <kbd>Ctrl</kbd>+<kbd>Space</kbd> to switch keyboard layouts or open a system search.
+
+   - **IDE & Integrated Terminals**: If you use IntelliShell inside an IDE (like VS Code or IntelliJ), the IDE often
+     captures shortcuts before they reach the terminal.
+     - **VS Code Example**: To force VS Code to forward <kbd>Ctrl</kbd>+<kbd>Space</kbd> to the integrated terminal
+         instead of triggering its own suggestions, add this to your `settings.json`:
+
+         ```json
+         "terminal.integrated.commandsToSkipShell": [
+             "-workbench.action.terminal.triggerSuggest"
+         ]
+         ```
+  
    - **Terminal Limitations**: Some terminal emulators do not forward all key combinations to the shell. For instance,
      <kbd>Ctrl</kbd>+<kbd>Enter</kbd> (the default "execute" hotkey) is not supported by many terminals.
-   - **Solution**: You can change any conflicting or unsupported hotkey. Set the appropriate environment variable in
-     your shell profile _before_ the IntelliShell `init` line. See the [Installation Guide](./guide/installation.md#customizing-keybindings)
-     for a full list of integration variables or the [Keybindings Configuration](./configuration/keybindings.md)
-     for in-app bindings.
+
+   - **Solution**: If you cannot configure your environment or IDE to forward the keys, simply change the conflicting
+     hotkey in IntelliShell. Set the appropriate environment variable in your shell profile _before_ the IntelliShell
+     `init` line. See the [Installation Guide](./guide/installation.md#customizing-keybindings) for integration variables
+     or the [Keybindings Configuration](./configuration/keybindings.md) for in-app bindings.
 
 ## Installation and Command Issues
 
