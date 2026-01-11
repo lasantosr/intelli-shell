@@ -132,6 +132,11 @@ impl App {
                 tracing::debug!("Options: {:?}", update);
                 self.run_non_interactive(update, config, service, extra_line).await
             }
+            CliProcess::Changelog(changelog) => {
+                tracing::info!("Running 'changelog' process");
+                tracing::debug!("Options: {:?}", changelog);
+                self.run_non_interactive(changelog, config, service, extra_line).await
+            }
         }
     }
 

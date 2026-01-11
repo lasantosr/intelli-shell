@@ -22,6 +22,7 @@ mod queries;
 mod command;
 mod completion;
 mod import_export;
+mod release;
 mod variable;
 mod version;
 

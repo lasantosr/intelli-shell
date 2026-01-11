@@ -12,6 +12,7 @@ use reqwest::{
     Method,
     header::{HeaderName, HeaderValue},
 };
+use semver::Version;
 use tracing::instrument;
 
 use crate::model::SearchMode;
@@ -120,6 +121,9 @@ pub enum CliProcess {
     #[cfg(feature = "self-update")]
     /// Updates intelli-shell to the latest version if possible, or shows update instructions
     Update(UpdateProcess),
+
+    /// Displays the changelog of the application
+    Changelog(ChangelogProcess),
 }
 
 #[cfg(feature = "tldr")]
@@ -491,8 +495,29 @@ pub struct CompletionListProcess {
 }
 
 #[cfg(feature = "self-update")]
+/// Self-update the application
 #[derive(Args, Debug)]
 pub struct UpdateProcess {}
+
+/// Displays the changelog of the application
+#[derive(Args, Debug)]
+pub struct ChangelogProcess {
+    /// Start version (inclusive)
+    #[arg(long, alias = "since", value_parser = parse_version, default_value = env!("CARGO_PKG_VERSION"))]
+    pub from: Version,
+
+    /// End version (inclusive)
+    #[arg(long, alias = "until", value_parser = parse_version)]
+    pub to: Option<Version>,
+
+    /// Display only major releases (X.0.0)
+    #[arg(long, conflicts_with = "minor")]
+    pub major: bool,
+
+    /// Display only major and minor releases (X.Y.0)
+    #[arg(long, conflicts_with = "major")]
+    pub minor: bool,
+}
 
 impl Cli {
     /// Parses the [Cli] command, with any runtime extension required
@@ -552,6 +577,7 @@ fn style_after_long_help(
     *command_ref = command;
 }
 
+/// Custom parser to handle environment variables with an optional value (e.g., "name=value" or "name")
 fn parse_env_var(env: &str) -> Result<(String, Option<String>)> {
     if let Some((var, value)) = env.split_once('=') {
         Ok((var.to_owned(), Some(value.to_owned())))
@@ -560,12 +586,22 @@ fn parse_env_var(env: &str) -> Result<(String, Option<String>)> {
     }
 }
 
+/// Custom parser to handle headers with a colon separator (e.g., "name:value")
 fn parse_header(env: &str) -> Result<(HeaderName, HeaderValue)> {
     if let Some((name, value)) = env.split_once(':') {
         Ok((HeaderName::from_str(name)?, HeaderValue::from_str(value.trim_start())?))
     } else {
         Err(eyre!("Missing a colon between the header name and value"))
     }
+}
+
+/// Custom parser to handle versions with an optional 'v' prefix (e.g., "v1.2.3" or "1.2.3")
+fn parse_version(s: &str) -> Result<Version, <Version as FromStr>::Err> {
+    // Strip the 'v' prefix if it exists, otherwise use the string as is
+    let version_str = s.strip_prefix('v').unwrap_or(s);
+
+    // Delegate to the standard semver Version parser
+    version_str.parse()
 }
 
 #[cfg(test)]

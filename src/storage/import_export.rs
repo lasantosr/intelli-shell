@@ -243,7 +243,7 @@ impl SqliteStorage {
                     }
                     query.push_str("\nORDER BY cmd ASC");
 
-                    tracing::trace!("Exporting commands: {query}");
+                    tracing::trace!("Exporting commands:\n{query}");
 
                     // Create an iterator over the rows
                     let mut stmt = conn.prepare(&query)?;
@@ -319,7 +319,7 @@ impl SqliteStorage {
                     WHERE t.rn = 1
                     ORDER BY t.root_cmd, t.variable"#
                 );
-                tracing::trace!("Exporting completions: {query}");
+                tracing::trace!("Exporting completions:\n{query}");
 
                 Ok(conn
                     .prepare(&query)?

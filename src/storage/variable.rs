@@ -153,7 +153,7 @@ impl SqliteStorage {
                 let query = r#"INSERT INTO variable_value (flat_root_cmd, flat_variable, value) 
                     VALUES (?1, ?2, ?3)
                     RETURNING id"#;
-                tracing::trace!("Inserting a variable value: {query}");
+                tracing::trace!("Inserting a variable value:\n{query}");
                 let res = conn.query_row(query, (&value.flat_root_cmd, &value.flat_variable, &value.value), |r| {
                     r.get(0)
                 });
@@ -189,7 +189,7 @@ impl SqliteStorage {
                         value = ?4
                     WHERE rowid = ?1
                     "#;
-                tracing::trace!("Updating a variable value: {query}");
+                tracing::trace!("Updating a variable value:\n{query}");
                 let res = conn.execute(
                     query,
                     (&value_id, &value.flat_root_cmd, &value.flat_variable, &value.value),
@@ -225,7 +225,7 @@ impl SqliteStorage {
                     ON CONFLICT(value_id, path, context_json) DO UPDATE SET
                         usage_count = usage_count + 1
                     RETURNING usage_count;"#;
-                tracing::trace!("Incrementing variable value usage: {query}");
+                tracing::trace!("Incrementing variable value usage:\n{query}");
                 Ok(conn.query_row(query, (&value_id, &path.as_ref(), &context), |r| r.get(0))?)
             })
             .await
@@ -239,7 +239,7 @@ impl SqliteStorage {
         self.client
             .conn_mut(move |conn| {
                 let query = "DELETE FROM variable_value WHERE rowid = ?1";
-                tracing::trace!("Deleting a variable value: {query}");
+                tracing::trace!("Deleting a variable value:\n{query}");
                 let res = conn.execute(query, (&value_id,));
                 match res {
                     Ok(0) => Err(eyre!("Variable value not found: {value_id}").into()),

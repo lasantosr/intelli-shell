@@ -12,7 +12,7 @@ impl SqliteStorage {
         self.client
             .conn(move |conn| {
                 let query = "SELECT latest_version, last_checked_at FROM version_info LIMIT 1";
-                tracing::trace!("Checking version info: {query}");
+                tracing::trace!("Checking version info:\n{query}");
                 Ok(conn.query_one(query, [], |r| {
                     Ok((
                         Version::parse(&r.get::<_, String>(0)?).expect("valid version"),
@@ -29,7 +29,7 @@ impl SqliteStorage {
         self.client
             .conn_mut(move |conn| {
                 let query = "UPDATE version_info SET latest_version = ?1, last_checked_at = ?2";
-                tracing::trace!("Updating version info: {query}");
+                tracing::trace!("Updating version info:\n{query}");
                 Ok(conn.execute(query, (latest_version.to_string(), last_checked_at))?)
             })
             .await?;

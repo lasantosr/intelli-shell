@@ -264,6 +264,20 @@ const MIGRATION_SLICE: &[M<'_>] = &[
             UNIQUE(flat_root_cmd, flat_variable)
         );"#,
     ),
+    // Migration 6: Create release_info table
+    M::up(
+        r#"CREATE TABLE release_info (
+            tag TEXT PRIMARY KEY NOT NULL,
+            version TEXT NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT,
+            published_at TEXT NOT NULL,
+            fetched_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_release_version ON release_info(version);
+        CREATE INDEX idx_release_published_at ON release_info(published_at);
+        "#,
+    ),
 ];
 
 #[cfg(test)]

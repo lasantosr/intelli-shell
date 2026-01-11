@@ -3,6 +3,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{component::Component, config::Config, service::IntelliShellService};
 
+pub mod changelog;
 pub mod completion_delete;
 pub mod completion_list;
 pub mod completion_new;

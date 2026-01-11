@@ -42,6 +42,18 @@ macro_rules! using {
     }
 }
 
+/// Extension trait to provide a consistent "tag" string representation for versions.
+pub trait VersionExt {
+    /// Returns a string representation of the version in the format "vX.Y.Z"
+    fn to_tag(&self) -> String;
+}
+
+impl VersionExt for semver::Version {
+    fn to_tag(&self) -> String {
+        format!("v{self}")
+    }
+}
+
 using! {
     pub process,
     pub string,
@@ -53,4 +65,5 @@ using! {
     pub completion,
     pub import_export,
     pub installation,
+    pub markdown,
 }

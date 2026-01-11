@@ -2,13 +2,25 @@ use std::{
     collections::HashSet,
     env,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{Arc, LazyLock, Mutex},
+    time::Duration,
 };
 
 use directories::BaseDirs;
+use semver::Version;
 use tokio::fs::File;
 use tracing::instrument;
 use walkdir::WalkDir;
+
+/// The timeout for GitHub related requests
+pub(super) const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The interval for fetching new versions and releases
+pub(super) const FETCH_INTERVAL: chrono::Duration = chrono::Duration::hours(16);
+
+/// The current version of the application
+pub(crate) static CURRENT_VERSION: LazyLock<Version> =
+    LazyLock::new(|| Version::parse(env!("CARGO_PKG_VERSION")).expect("valid version"));
 
 use crate::{
     config::{AiConfig, SearchTuning},
@@ -24,6 +36,7 @@ mod command;
 mod completion;
 mod export;
 mod import;
+mod release;
 mod variable;
 mod version;
 

@@ -241,6 +241,9 @@ pub enum UserFacingError {
     /// An HTTP request to fetch the latest version has failed
     #[strum(to_string = "Couldn't check for latest version: {0}")]
     LatestVersionRequestFailed(String),
+    /// An HTTP request to fetch releases has failed
+    #[strum(to_string = "Couldn't fetch GitHub releases: {0}")]
+    ReleaseRequestFailed(String),
 }
 
 impl AppError {
