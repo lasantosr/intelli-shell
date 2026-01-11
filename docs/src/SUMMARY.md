@@ -45,6 +45,7 @@
     - [list](./reference/completion_list.md)
     - [delete](./reference/completion_delete.md)
   - [update](./reference/update.md)
+  - [changelog](./reference/changelog.md)
 
 ---
 

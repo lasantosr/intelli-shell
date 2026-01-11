@@ -30,6 +30,7 @@ Here is a summary of all available commands, with each one detailed on its own p
 | [`tldr`](./tldr.md)                       | Manages integration with tldr pages, allowing you to fetch or clear examples |
 | [`completion`](./completion.md)           | Manages dynamic variable completions                                         |
 | [`update`](./update.md)                   | Updates intelli-shell to the latest version                                  |
+| [`changelog`](./changelog.md)             | Displays the changelog                                                       |
 
 ## Global Flags for Interactive Mode
 
