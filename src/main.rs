@@ -85,6 +85,10 @@ async fn main() -> Result<()> {
                     if path {
                         println!("{}", stats.config_path.display());
                     } else {
+                        if let Some(parent) = stats.config_path.parent() {
+                            fs::create_dir_all(parent)
+                                .wrap_err_with(|| format!("Failed to create config directory: {}", parent.display()))?;
+                        }
                         edit::edit_file(&stats.config_path)
                             .wrap_err_with(|| format!("Failed to open config file: {}", stats.config_path.display()))?;
                     }
