@@ -63,6 +63,10 @@ intelli-shell export my_commands.bak
 intelli-shell import my_commands.bak
 ```
 
+> 💡 **Tip**: If you want to save absolutely everything—from commands and completions to variables and usage
+> statistics—you can manually back up the SQLite database file (`storage.db3`). For details on where this file is
+> located on your system, see the [**Data Directory**](../configuration/general.md#data-directory) configuration.
+
 ## Syncing with a GitHub Gist
 
 Using a GitHub Gist is a flexible way to manage your library. You can use a **private** Gist for personal cloud sync
