@@ -6,8 +6,8 @@ By default, this command performs a non-interactive search and prints matching c
 interactive search TUI (the behavior of the <kbd>Ctrl</kbd>+<kbd>Space</kbd> hotkey), you must use the `-i` or
 `--interactive` flag.
 
->💡 **Tip**: Can't find what you're looking for? While in the interactive TUI, you can press <kbd>Ctrl</kbd>+<kbd>I</kbd>
-> or <kbd>Ctrl</kbd>+<kbd>X</kbd> with a natural language query to prompt AI for commands.
+>💡 **Tip**: Can't find what you're looking for? While in the interactive TUI, you can press <kbd>Ctrl</kbd>+<kbd>X</kbd>
+> with a natural language query to prompt AI for commands.
 
 ## Usage
 

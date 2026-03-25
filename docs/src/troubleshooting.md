@@ -30,7 +30,8 @@ If hotkeys like <kbd>Ctrl</kbd>+<kbd>Space</kbd> or <kbd>Ctrl</kbd>+<kbd>B</kbd>
          ```
   
    - **Terminal Limitations**: Some terminal emulators do not forward all key combinations to the shell. For instance,
-     <kbd>Ctrl</kbd>+<kbd>Enter</kbd> (the default "execute" hotkey) is not supported by many terminals.
+     <kbd>Ctrl</kbd>+<kbd>Enter</kbd> (the default "execute" hotkey) and <kbd>Ctrl</kbd>+<kbd>I</kbd> are not supported
+     by many terminals.
 
    - **Solution**: If you cannot configure your environment or IDE to forward the keys, simply change the conflicting
      hotkey in IntelliShell. Set the appropriate environment variable in your shell profile _before_ the IntelliShell

@@ -101,7 +101,7 @@ Once any interface is shown, you can use these keys:
 - **`ctrl+d`**: Delete the highlighted item
 - **`enter` / `tab`**: Confirm a selection or move to the next step
 - **`ctrl+enter` / `ctrl+r`**: Execute the highlighted command immediately
-- **`ctrl+i` / `ctrl+x`**: Prompt AI (when searching or creating commands)
+- **`ctrl+x` / `ctrl+i`**: Prompt AI (when searching or creating commands)
 
 _These keybindings are fully customizable; in fact, you can configure everything from themes to search behavior. See
 the [Keybindings Configuration](https://lasantosr.github.io/intelli-shell/configuration/keybindings.html) page for
@@ -114,7 +114,7 @@ available options._
   replacement UI will still appear if the command has variables.
 
 - **Learn Commands on the Fly**: Can't find the command you're looking for? Just describe it in natural language and
-  press `ctrl+i` while searching to let the AI write it for you.
+  press `ctrl+x` while searching to let the AI write it for you.
 
 - **Alias your favorites**: Use aliases to "pin" different sets of favorite values for the same command. For example,
   bookmark `cd {{path}}` with a `cd` alias and you can regularly use `cd` but if you hit `ctrl+space` it will show your
