@@ -10,6 +10,7 @@ These rules are non-negotiable. Violating them breaks the CI pipeline.
 4. **No `unwrap()`:** In `src/`, strictly avoid `.unwrap()` or `.expect()`. Use `?` propagation with the `AppError` type.
 5. **Compile-Time Verification:** Leverage the type system to make invalid states unrepresentable. Prefer parsing into strong types over validating loose types.
 6. **Atomic Commits:** When asked to implement a feature, keep changes minimal and focused. Do not refactor unrelated code unless explicitly asked to.
+7. **Semantic Commits & PRs:** You MUST format all Pull Request titles and commit messages following the Conventional Commits specification. Use standard prefixes: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, or `style:`.
 
 ## 1. Project Identity
 

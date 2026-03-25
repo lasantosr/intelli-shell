@@ -200,6 +200,14 @@ pub struct InitProcess {
     /// The shell to generate the script for
     #[arg(value_enum)]
     pub shell: Shell,
+
+    /// Generates only the completions script
+    #[arg(long, group = "output_type")]
+    pub completions: bool,
+
+    /// Generates only the shell integration script
+    #[arg(long, group = "output_type")]
+    pub integration: bool,
 }
 
 #[derive(ValueEnum, Copy, Clone, PartialEq, Eq, Debug)]

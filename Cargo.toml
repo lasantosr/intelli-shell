@@ -34,59 +34,61 @@ vendored-openssl = ["git2?/vendored-openssl"]
 vendored-libgit2 = ["git2?/vendored-libgit2"]
 
 [dependencies]
-async-stream       = "0.3"
-async-trait        = "0.1"
-chrono             = { version = "0.4", features = ["serde"] }
-clap               = { version = "4", features = ["derive"] }
-clap-stdin         = { version = "0.8", features = ["tokio"] }
-color-eyre         = "0.6"
-crossbeam-channel  = "0.5"
-crossterm          = { version = "0.28.1", features = ["serde", "event-stream", "use-dev-tty", "libc"] }
-directories        = "6"
-edit               = "0.1.5"
-encoding_rs        = "0.8"
-enum_cycling       = { version = "0.2", features = ["derive"] }
-futures-util       = "0.3"
-heck               = "0.5"
-ignore             = "0.4"
-indicatif          = "0.18"
-itertools          = "0.14"
-os_info            = "3"
-parking_lot        = "0.12"
-percent-encoding   = "2"
-prettytable-rs     = "0.10"
-pulldown-cmark     = "0.13"
-ratatui            = "0.29"
-rayon              = "1"
-regex              = { version = "1" }
-reqwest            = { version = "0.13", features = ["stream", "json", "query"] }
-rusqlite           = { version = "0.37", features = ["functions", "chrono", "uuid", "serde_json"] }
-rusqlite_migration = "2.3"
-schemars           = "1"
-sea-query          = { version = "1.0.0-rc.14", features = ["derive", "thread-safe", "backend-sqlite"] }
-sea-query-rusqlite = { version = "0.8.0-rc.8", features = ["with-chrono", "with-uuid", "with-json"] }
-semver             = "1"
-serde              = { version = "1", features = ["derive", "rc"] }
-serde_json         = "1"
-signal-hook        = "0.4"
-strip-ansi-escapes = "0.2"
-strum              = { version = "0.27", features = ["derive"] }
-sysinfo            = "0.37"
-tokio              = { version = "1", features = ["sync", "macros", "rt-multi-thread", "time", "process", "signal"] }
-tokio-stream       = "0.1"
-tokio-util         = "0.7"
-toml               = "0.9"
-tracing            = "0.1"
-tracing-error      = "0.2"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "serde"] }
-trait-variant      = "0.1"
-tui-textarea       = "0.7"
-tui-widget-list    = "0.13"
-unicode-width      = "0.2"
-unidecode          = "0.3"
-uuid               = { version = "1", features = ["serde", "v7"] }
-wait-timeout       = "0.2"
-walkdir            = "2"
+async-stream          = "0.3"
+async-trait           = "0.1"
+chrono                = { version = "0.4", features = ["serde"] }
+clap                  = { version = "4", features = ["derive"] }
+clap-stdin            = { version = "0.8", features = ["tokio"] }
+clap_complete         = "4.6"
+clap_complete_nushell = "4.6"
+color-eyre            = "0.6"
+crossbeam-channel     = "0.5"
+crossterm             = { version = "0.28.1", features = ["serde", "event-stream", "use-dev-tty", "libc"] }
+directories           = "6"
+edit                  = "0.1.5"
+encoding_rs           = "0.8"
+enum_cycling          = { version = "0.2", features = ["derive"] }
+futures-util          = "0.3"
+heck                  = "0.5"
+ignore                = "0.4"
+indicatif             = "0.18"
+itertools             = "0.14"
+os_info               = "3"
+parking_lot           = "0.12"
+percent-encoding      = "2"
+prettytable-rs        = "0.10"
+pulldown-cmark        = "0.13"
+ratatui               = "0.29"
+rayon                 = "1"
+regex                 = { version = "1" }
+reqwest               = { version = "0.13", features = ["stream", "json", "query"] }
+rusqlite              = { version = "0.37", features = ["functions", "chrono", "uuid", "serde_json"] }
+rusqlite_migration    = "2.3"
+schemars              = "1"
+sea-query             = { version = "1.0.0-rc.14", features = ["derive", "thread-safe", "backend-sqlite"] }
+sea-query-rusqlite    = { version = "0.8.0-rc.8", features = ["with-chrono", "with-uuid", "with-json"] }
+semver                = "1"
+serde                 = { version = "1", features = ["derive", "rc"] }
+serde_json            = "1"
+signal-hook           = "0.4"
+strip-ansi-escapes    = "0.2"
+strum                 = { version = "0.27", features = ["derive"] }
+sysinfo               = "0.37"
+tokio                 = { version = "1", features = ["sync", "macros", "rt-multi-thread", "time", "process", "signal"] }
+tokio-stream          = "0.1"
+tokio-util            = "0.7"
+toml                  = "0.9"
+tracing               = "0.1"
+tracing-error         = "0.2"
+tracing-subscriber    = { version = "0.3", features = ["env-filter", "serde"] }
+trait-variant         = "0.1"
+tui-textarea          = "0.7"
+tui-widget-list       = "0.13"
+unicode-width         = "0.2"
+unidecode             = "0.3"
+uuid                  = { version = "1", features = ["serde", "v7"] }
+wait-timeout          = "0.2"
+walkdir               = "2"
 
 [dependencies.git2]
 default-features = false

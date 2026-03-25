@@ -13,3 +13,9 @@ Examples:
 
   # Add the following to your PowerShell profile:
   intelli-shell init powershell | Out-String | Invoke-Expression
+  
+  # If you want to avoid completions and use only the integration
+  eval "$(intelli-shell init bash --integration)"
+
+  # Or to skip the shell integration and just add cli completions
+  eval "$(intelli-shell init bash --completions)"

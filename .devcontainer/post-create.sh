@@ -35,6 +35,10 @@ if ! grep -q "$BLOCK_MARKER" "$ZSHRC_FILE"; then
   echo "Updating $ZSHRC_FILE..."
   cat << EOF >> "$ZSHRC_FILE"
 
+# Completions
+autoload -Uz compinit
+compinit
+
 $BLOCK_MARKER
 alias intelli-shell="$INTELLI_SHELL_DEBUG_PATH"
 alias is="$INTELLI_SHELL_DEBUG_PATH"

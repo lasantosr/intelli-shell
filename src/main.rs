@@ -6,6 +6,7 @@ use std::{
     process,
 };
 
+use clap::CommandFactory;
 use color_eyre::{Result, eyre::Context};
 use intelli_shell::{
     app::App,
@@ -62,15 +63,68 @@ async fn main() -> Result<()> {
             // Check for static processes before initialization, to avoid unnecessary overhead
             match args.process {
                 CliProcess::Init(init) => {
-                    let script = match init.shell {
-                        Shell::Bash => BASH_INIT,
-                        Shell::Zsh => ZSH_INIT,
-                        Shell::Fish => FISH_INIT,
-                        Shell::Nushell => NUSHELL_INIT,
-                        Shell::Powershell => POWERSHELL_INIT,
-                    };
+                    let mut output = String::new();
+
+                    let include_integration = init.integration || !init.completions;
+                    let include_completions = init.completions || !init.integration;
+
+                    if include_integration {
+                        let script = match init.shell {
+                            Shell::Bash => BASH_INIT,
+                            Shell::Zsh => ZSH_INIT,
+                            Shell::Fish => FISH_INIT,
+                            Shell::Nushell => NUSHELL_INIT,
+                            Shell::Powershell => POWERSHELL_INIT,
+                        };
+                        output.push_str(script);
+                    }
+
+                    if include_completions {
+                        let mut cmd = Cli::command();
+                        let cmd_bin_name = cmd.get_name().to_string();
+                        let mut completions = Vec::new();
+
+                        match init.shell {
+                            Shell::Bash => clap_complete::generate(
+                                clap_complete::Shell::Bash,
+                                &mut cmd,
+                                cmd_bin_name,
+                                &mut completions,
+                            ),
+                            Shell::Zsh => clap_complete::generate(
+                                clap_complete::Shell::Zsh,
+                                &mut cmd,
+                                cmd_bin_name,
+                                &mut completions,
+                            ),
+                            Shell::Fish => clap_complete::generate(
+                                clap_complete::Shell::Fish,
+                                &mut cmd,
+                                cmd_bin_name,
+                                &mut completions,
+                            ),
+                            Shell::Powershell => clap_complete::generate(
+                                clap_complete::Shell::PowerShell,
+                                &mut cmd,
+                                cmd_bin_name,
+                                &mut completions,
+                            ),
+                            Shell::Nushell => clap_complete::generate(
+                                clap_complete_nushell::Nushell,
+                                &mut cmd,
+                                cmd_bin_name,
+                                &mut completions,
+                            ),
+                        }
+
+                        if include_integration {
+                            output.push('\n');
+                        }
+                        output.push_str(&String::from_utf8_lossy(&completions));
+                    }
+
                     let output_info = OutputInfo {
-                        stdout: Some(script.into()),
+                        stdout: Some(output),
                         ..Default::default()
                     };
                     return handle_output(
