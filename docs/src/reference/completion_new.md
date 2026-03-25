@@ -3,8 +3,8 @@
 The `new` subcommand adds a new dynamic completion for a variable. This allows you to specify a shell command that will
 be executed to generate a list of possible values for a variable.
 
->💡 **Tip**: Can't figure out the exact command details? While in the interactive TUI, you can press <kbd>Ctrl</kbd>+<kbd>I</kbd>
-> or <kbd>Ctrl</kbd>+<kbd>X</kbd> with a natural language description on the provider field to prompt AI for a command.
+>💡 **Tip**: Can't figure out the exact command details? While in the interactive TUI, you can press <kbd>Ctrl</kbd>+<kbd>X</kbd>
+> with a natural language description on the provider field to prompt AI for a command.
 
 ## Usage
 

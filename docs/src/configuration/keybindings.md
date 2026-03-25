@@ -26,7 +26,7 @@ The format and a list of available actions are detailed below. Note that if a de
 | `delete`           | Deletes the currently highlighted item (e.g., a bookmarked command)   | `ctrl-d`                  |
 | `confirm`          | Confirms a selection or moves to the next step (e.g., variable entry) | `tab`, `enter`            |
 | `execute`          | Executes the highlighted command instead of just selecting it         | `ctrl-enter`, `ctrl-r`    |
-| `ai`               | Prompts ai for suggestions                                            | `ctrl-i`, `ctrl-x`        |
+| `ai`               | Prompts ai for suggestions                                            | `ctrl-x`, `ctrl-i`        |
 | `search_mode`      | Cycles through the available search modes (auto, fuzzy, regex, etc.)  | `ctrl-s`                  |
 | `search_user_only` | Toggles whether to filter user commands only in the search results    | `ctrl-o`                  |
 | `variable_next`    | Moves to the next variable when replacing template variables          | `ctrl-tab`                |

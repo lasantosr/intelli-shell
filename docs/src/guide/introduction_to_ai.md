@@ -15,18 +15,18 @@ an expert assistant who knows the syntax for thousands of tools, ready to help y
 Enabling AI integration powers up several key workflows:
 
 - **Generate Commands from Search**: Can't find the command you're looking for? In the search UI (<kbd>Ctrl</kbd>+<kbd>Space</kbd>),
-  type a description of what you want to do (e.g., _"find all files larger than 10MB"_) and press <kbd>Ctrl</kbd>+<kbd>I</kbd>
+  type a description of what you want to do (e.g., _"find all files larger than 10MB"_) and press <kbd>Ctrl</kbd>+<kbd>X</kbd>
   to let the AI write the command for you.
 
 - **Fix Failing Commands**: When a command fails, recall it from your history and press <kbd>Ctrl</kbd>+<kbd>X</kbd>. The
   AI will analyze the command and the error message to suggest a working version or explain next steps.
 
 - **Create New Bookmarks from a Prompt**: When bookmarking (<kbd>Ctrl</kbd>+<kbd>B</kbd>), you can provide a
-  description instead of a command and press <kbd>Ctrl</kbd>+<kbd>I</kbd>. The AI will generate the command template
+  description instead of a command and press <kbd>Ctrl</kbd>+<kbd>X</kbd>. The AI will generate the command template
   for you, which you can then edit and save.
 
 - **Generate Dynamic Completions**: When creating a new completion provide the root command and variable, optionally
-  describing what you need (e.g., _"list all running docker containers"_) on the provider, then press <kbd>Ctrl</kbd>+<kbd>I</kbd>.
+  describing what you need (e.g., _"list all running docker containers"_) on the provider, then press <kbd>Ctrl</kbd>+<kbd>X</kbd>.
   The AI will generate the shell command to produce the suggestions.
 
 - **Import from Anywhere**: The `import` command gains the ability to parse unstructured text. You can point it at

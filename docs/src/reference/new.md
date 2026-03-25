@@ -6,8 +6,8 @@ While commands are typically bookmarked interactively using the <kbd>Ctrl</kbd>+
 a **non-interactive** way to add new entries. This is particularly useful for scripting, batch-importing from other tools,
 or when you want to add a command without breaking your terminal flow.
 
->💡 **Tip**: Can't remember the exact command details? While in the interactive TUI, you can press <kbd>Ctrl</kbd>+<kbd>I</kbd>
-> or <kbd>Ctrl</kbd>+<kbd>X</kbd> with a natural language description to prompt AI for a command.
+>💡 **Tip**: Can't remember the exact command details? While in the interactive TUI, you can press <kbd>Ctrl</kbd>+<kbd>X</kbd>
+> with a natural language description to prompt AI for a command.
 
 ## Usage
 
