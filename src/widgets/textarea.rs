@@ -10,8 +10,8 @@ use ratatui::{
     text::Text,
     widgets::{Block, Borders, Paragraph, Widget},
 };
+use ratatui_textarea::{CursorMove, TextArea};
 use regex::Regex;
-use tui_textarea::{CursorMove, TextArea};
 
 use crate::utils::remove_newlines;
 

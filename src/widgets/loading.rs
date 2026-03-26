@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use ratatui::{
+    backend::FromCrossterm,
     Frame,
     layout::Rect,
     style::Style,
@@ -27,7 +28,7 @@ impl<'a> LoadingSpinner<'a> {
     pub fn new(theme: &Theme) -> Self {
         Self {
             spinner_state: 0,
-            style: theme.primary.into(),
+            style: Style::from_crossterm(theme.primary),
             message: None,
         }
     }

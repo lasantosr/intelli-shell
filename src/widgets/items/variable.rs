@@ -1,4 +1,5 @@
 use ratatui::{
+    backend::FromCrossterm,
     buffer::Buffer,
     layout::{Rect, Size},
     style::Style,
@@ -203,7 +204,7 @@ impl<'i> CustomListItem for VariableSuggestionItem<'i> {
 
                 let mut ta_render = textarea.clone();
                 ta_render.set_focus(is_highlighted);
-                ta_render.set_style(style);
+                ta_render.set_style(Style::from_crossterm(style));
                 (
                     VariableSuggestionItemWidget(VariableSuggestionItemWidgetInner::TextArea(ta_render)),
                     Size::new(10, 1),

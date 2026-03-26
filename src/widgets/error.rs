@@ -1,4 +1,4 @@
-use ratatui::{Frame, layout::Rect, style::Style, text::Text, widgets::Clear};
+use ratatui::{backend::FromCrossterm, Frame, layout::Rect, style::Style, text::Text, widgets::Clear};
 
 use crate::config::Theme;
 
@@ -20,7 +20,7 @@ impl<'a> ErrorPopup<'a> {
     /// Creates a new, empty [`ErrorPopup`]
     pub fn empty(theme: &Theme) -> Self {
         Self {
-            style: theme.error.into(),
+            style: Style::from_crossterm(theme.error),
             message: None,
             timeout_ticks: None,
         }

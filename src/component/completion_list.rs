@@ -7,7 +7,9 @@ use itertools::Itertools;
 use parking_lot::RwLock;
 use ratatui::{
     Frame,
+    backend::FromCrossterm,
     layout::{Constraint, Layout, Rect},
+    style::Style,
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 use tokio_util::sync::CancellationToken;
@@ -151,10 +153,16 @@ impl Component for CompletionListComponent {
                 Ok(o) => (o, self.theme.secondary),
                 Err(err) => (err, self.theme.error),
             };
-            let mut preview_paragraph = Paragraph::new(output.as_str()).style(style).wrap(Wrap { trim: is_err });
+            let mut preview_paragraph = Paragraph::new(output.as_str())
+                .style(Style::from_crossterm(style))
+                .wrap(Wrap { trim: is_err });
             if !self.inline {
-                preview_paragraph =
-                    preview_paragraph.block(Block::default().borders(Borders::ALL).title(" Preview ").style(style));
+                preview_paragraph = preview_paragraph.block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(" Preview ")
+                        .style(Style::from_crossterm(style)),
+                );
             }
             frame.render_widget(preview_paragraph, preview_area);
         }

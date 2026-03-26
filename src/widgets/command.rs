@@ -1,7 +1,8 @@
 use ratatui::{
+    backend::FromCrossterm,
     buffer::Buffer,
     layout::{Rect, Size},
-    style::Style,
+    style::{Color, Style},
     text::{Line, Span, Text},
     widgets::Widget,
 };
@@ -32,7 +33,7 @@ impl<'a> CommandWidget<'a> {
     ) -> Self {
         let mut line_style = DEFAULT_STYLE;
         if is_highlighted && let Some(bg_color) = theme.highlight {
-            line_style = line_style.bg(bg_color.into());
+            line_style = line_style.bg(Color::from_crossterm(bg_color));
         }
         // Determine the right styles to use based on highlighted and discarded status
         let (primary_style, secondary_style, comment_style, accent_style) =
@@ -70,8 +71,10 @@ impl<'a> CommandWidget<'a> {
         let cmd_splitter = SplitCaptures::new(&COMMAND_VARIABLE_REGEX, &command.cmd);
         let cmd_spans = cmd_splitter
             .map(|e| match e {
-                SplitItem::Unmatched(t) => Span::styled(t, primary_style),
-                SplitItem::Captured(l) => Span::styled(l.get(0).unwrap().as_str(), secondary_style),
+                SplitItem::Unmatched(t) => Span::styled(t, Style::from_crossterm(primary_style)),
+                SplitItem::Captured(l) => {
+                    Span::styled(l.get(0).unwrap().as_str(), Style::from_crossterm(secondary_style))
+                }
             })
             .collect::<Vec<_>>();
 
@@ -79,16 +82,16 @@ impl<'a> CommandWidget<'a> {
             // When inline, display a single line with the command, alias and the first line of the description
             let mut description_spans = Vec::new();
             if command.description.is_some() || command.alias.is_some() {
-                description_spans.push(Span::styled(" # ", comment_style));
+                description_spans.push(Span::styled(" # ", Style::from_crossterm(comment_style)));
                 if let Some(ref alias) = command.alias {
-                    description_spans.push(Span::styled("[", accent_style));
-                    description_spans.push(Span::styled(alias, accent_style));
-                    description_spans.push(Span::styled("] ", accent_style));
+                    description_spans.push(Span::styled("[", Style::from_crossterm(accent_style)));
+                    description_spans.push(Span::styled(alias, Style::from_crossterm(accent_style)));
+                    description_spans.push(Span::styled("] ", Style::from_crossterm(accent_style)));
                 }
                 if let Some(ref description) = command.description
                     && let Some(line) = description.lines().next()
                 {
-                    description_spans.push(Span::styled(line, comment_style));
+                    description_spans.push(Span::styled(line, Style::from_crossterm(comment_style)));
                 }
             }
 
@@ -110,24 +113,27 @@ impl<'a> CommandWidget<'a> {
                 for line in description.lines() {
                     if !alias_included && let Some(ref alias) = command.alias {
                         let parts = vec![
-                            Span::styled("# ", comment_style),
-                            Span::styled("[", accent_style),
-                            Span::styled(alias, accent_style),
-                            Span::styled("] ", accent_style),
-                            Span::styled(line, comment_style),
+                            Span::styled("# ", Style::from_crossterm(comment_style)),
+                            Span::styled("[", Style::from_crossterm(accent_style)),
+                            Span::styled(alias, Style::from_crossterm(accent_style)),
+                            Span::styled("] ", Style::from_crossterm(accent_style)),
+                            Span::styled(line, Style::from_crossterm(comment_style)),
                         ];
                         lines.push(Line::from(parts));
                         alias_included = true;
                     } else {
-                        lines.push(Line::from(vec![Span::raw("# "), Span::raw(line)]).style(comment_style));
+                        lines.push(
+                            Line::from(vec![Span::raw("# "), Span::raw(line)])
+                                .style(Style::from_crossterm(comment_style)),
+                        );
                     }
                 }
             } else if let Some(ref alias) = command.alias {
                 let parts = vec![
-                    Span::styled("# ", comment_style),
-                    Span::styled("[", accent_style),
-                    Span::styled(alias, accent_style),
-                    Span::styled("]", accent_style),
+                    Span::styled("# ", Style::from_crossterm(comment_style)),
+                    Span::styled("[", Style::from_crossterm(accent_style)),
+                    Span::styled(alias, Style::from_crossterm(accent_style)),
+                    Span::styled("]", Style::from_crossterm(accent_style)),
                 ];
                 lines.push(Line::from(parts));
             }

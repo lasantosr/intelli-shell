@@ -4,6 +4,7 @@ use std::{
 };
 
 use ratatui::{
+    backend::FromCrossterm,
     buffer::Buffer,
     layout::Rect,
     style::Style,
@@ -37,7 +38,7 @@ impl CommandTemplateWidget {
             Some(
                 Block::default()
                     .borders(Borders::ALL)
-                    .style(theme.primary)
+                    .style(Style::from_crossterm(theme.primary))
                     .title(" Command "),
             )
         } else {
@@ -47,8 +48,8 @@ impl CommandTemplateWidget {
             template,
             current_variable_index: 0,
             block,
-            primary_style: theme.primary.into(),
-            secondary_style: theme.secondary.into(),
+            primary_style: Style::from_crossterm(theme.primary),
+            secondary_style: Style::from_crossterm(theme.secondary),
         }
     }
 }

@@ -1,4 +1,4 @@
-use ratatui::{prelude::*, style::Style, widgets::Clear};
+use ratatui::{backend::FromCrossterm, prelude::*, style::Style, widgets::Clear};
 use semver::Version;
 
 use crate::config::Theme;
@@ -14,7 +14,7 @@ impl NewVersionBanner {
     /// Creates a new [`NewVersionBanner`]
     pub fn new(theme: &Theme, new_version: Version) -> Self {
         Self {
-            style: theme.accent.into(),
+            style: Style::from_crossterm(theme.accent),
             new_version,
         }
     }

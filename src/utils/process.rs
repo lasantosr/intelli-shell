@@ -99,7 +99,7 @@ static PARENT_SHELL_INFO: LazyLock<ShellInfo> = LazyLock::new(|| {
             version: None,
         };
     } else {
-        ShellType::try_from(parent_name.as_str()).expect("infallible")
+        ShellType::from(parent_name.as_str())
     };
 
     tracing::info!("Detected shell: {kind}");

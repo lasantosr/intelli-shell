@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use ratatui::{layout::Size, text::Line};
+use ratatui::{backend::FromCrossterm, layout::Size, style::Style, text::Line};
 
 use crate::{config::Theme, widgets::CustomListItem};
 
@@ -24,7 +24,7 @@ impl CustomListItem for CommentString {
             (false, true) => theme.secondary,
             (false, false) => theme.comment,
         };
-        let line = Line::raw(&self.0).style(style);
+        let line = Line::raw(&self.0).style(Style::from_crossterm(style));
         let width = line.width() as u16;
         (line, Size::new(width, 1))
     }
@@ -46,7 +46,7 @@ impl CustomListItem for str {
             (false, true) => theme.secondary,
             (false, false) => theme.primary,
         };
-        let line = Line::raw(self).style(style);
+        let line = Line::raw(self).style(Style::from_crossterm(style));
         let width = line.width() as u16;
         (line, Size::new(width, 1))
     }

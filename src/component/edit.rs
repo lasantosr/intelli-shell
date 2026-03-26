@@ -6,7 +6,9 @@ use enum_cycling::EnumCycle;
 use parking_lot::RwLock;
 use ratatui::{
     Frame,
+    backend::FromCrossterm,
     layout::{Constraint, Layout, Rect},
+    style::Style,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
@@ -90,7 +92,7 @@ impl EditCommandComponent {
         cancellation_token: CancellationToken,
     ) -> Self {
         let alias = CustomTextArea::new(
-            theme.secondary,
+            Style::from_crossterm(theme.secondary),
             inline,
             false,
             command.alias.clone().unwrap_or_default(),
@@ -98,14 +100,14 @@ impl EditCommandComponent {
         .title(if inline { "Alias:" } else { " Alias " });
         let mut cmd = CustomTextArea::new(
             // Primary style
-            theme.primary,
+            Style::from_crossterm(theme.primary),
             inline,
             false,
             &command.cmd,
         )
         .title(if inline { "Command:" } else { " Command " });
         let mut description = CustomTextArea::new(
-            theme.primary,
+            Style::from_crossterm(theme.primary),
             inline,
             true,
             command.description.clone().unwrap_or_default(),

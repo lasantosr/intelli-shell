@@ -7,7 +7,9 @@ use itertools::Itertools;
 use parking_lot::RwLock;
 use ratatui::{
     Frame,
+    backend::FromCrossterm,
     layout::{Alignment, Constraint, Layout, Rect},
+    style::Style,
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 use tokio_util::sync::CancellationToken;
@@ -98,15 +100,15 @@ impl EditCompletionComponent {
         mode: EditCompletionComponentMode,
         cancellation_token: CancellationToken,
     ) -> Self {
-        let mut root_cmd = CustomTextArea::new(theme.secondary, inline, false, "")
+        let mut root_cmd = CustomTextArea::new(Style::from_crossterm(theme.secondary), inline, false, "")
             .title(if inline { "Command:" } else { " Command " })
             .forbidden_chars_regex(FORBIDDEN_COMPLETION_ROOT_CMD_CHARS.clone())
             .focused();
-        let mut variable = CustomTextArea::new(theme.primary, inline, false, "")
+        let mut variable = CustomTextArea::new(Style::from_crossterm(theme.primary), inline, false, "")
             .title(if inline { "Variable:" } else { " Variable " })
             .forbidden_chars_regex(FORBIDDEN_COMPLETION_VARIABLE_CHARS.clone())
             .focused();
-        let mut suggestions_provider = CustomTextArea::new(theme.primary, inline, false, "")
+        let mut suggestions_provider = CustomTextArea::new(Style::from_crossterm(theme.primary), inline, false, "")
             .title(if inline {
                 "Suggestions Provider:"
             } else {
@@ -242,13 +244,13 @@ impl Component for EditCompletionComponent {
                 Err(err) => (err, self.theme.error),
             };
             let output_paragraph = Paragraph::new(output.as_str())
-                .style(style)
+                .style(Style::from_crossterm(style))
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
                         .title(" Preview ")
                         .title_alignment(if self.inline { Alignment::Right } else { Alignment::Left })
-                        .style(style),
+                        .style(Style::from_crossterm(style)),
                 )
                 .wrap(Wrap { trim: is_err });
             frame.render_widget(output_paragraph, output_area);

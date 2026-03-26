@@ -1,6 +1,7 @@
 use std::{borrow::Cow, collections::HashSet};
 
 use ratatui::{
+    backend::FromCrossterm,
     buffer::Buffer,
     layout::{Rect, Size},
     prelude::StatefulWidget,
@@ -75,14 +76,15 @@ impl<'a, T: CustomListItem> CustomList<'a, T> {
             state.select(Some(0));
         }
         Self {
-            block: (!inline).then(|| Block::default().borders(Borders::ALL).style(theme.primary)),
+            block: (!inline)
+                .then(|| Block::default().borders(Borders::ALL).style(Style::from_crossterm(theme.primary))),
             axis: ScrollAxis::Vertical,
             items,
             focus: true,
             state,
             discarded_indices: HashSet::new(),
-            highlight_symbol_style: theme.primary.into(),
-            highlight_symbol_style_focused: theme.highlight_primary_full().into(),
+            highlight_symbol_style: Style::from_crossterm(theme.primary),
+            highlight_symbol_style_focused: Style::from_crossterm(theme.highlight_primary_full()),
             highlight_symbol: Some(theme.highlight_symbol.clone()).filter(|s| !s.trim().is_empty()),
             highlight_symbol_mode: HighlightSymbolMode::Last,
             theme,

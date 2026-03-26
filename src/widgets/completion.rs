@@ -1,7 +1,8 @@
 use ratatui::{
+    backend::FromCrossterm,
     buffer::Buffer,
     layout::{Rect, Size},
-    style::Style,
+    style::{Color, Style},
     text::{Line, Span, Text},
     widgets::Widget,
 };
@@ -25,7 +26,7 @@ impl<'a> VariableCompletionWidget<'a> {
     ) -> Self {
         let mut line_style = DEFAULT_STYLE;
         if is_highlighted && let Some(bg_color) = theme.highlight {
-            line_style = line_style.bg(bg_color.into());
+            line_style = line_style.bg(Color::from_crossterm(bg_color));
         }
         // Determine the right styles to use based on highlighted and discarded status
         let (primary_style, secondary_style) = match (plain_style, is_discarded, is_highlighted) {
@@ -45,20 +46,23 @@ impl<'a> VariableCompletionWidget<'a> {
 
         // Setup the parts always present: variable and provider
         let mut parts = vec![
-            Span::styled(&completion.variable, primary_style),
-            Span::styled(": ", primary_style),
-            Span::styled(&completion.suggestions_provider, secondary_style),
+            Span::styled(&completion.variable, Style::from_crossterm(primary_style)),
+            Span::styled(": ", Style::from_crossterm(primary_style)),
+            Span::styled(&completion.suggestions_provider, Style::from_crossterm(secondary_style)),
         ];
 
         // If the full content has to be rendered
         if full_content {
             // Include the prefix
-            parts.insert(0, Span::styled("$ ", primary_style));
+            parts.insert(0, Span::styled("$ ", Style::from_crossterm(primary_style)));
             // And the root command for non-global completions
             if !completion.is_global() {
-                parts.insert(1, Span::styled("(", primary_style));
-                parts.insert(2, Span::styled(&completion.root_cmd, primary_style));
-                parts.insert(3, Span::styled(") ", primary_style));
+                parts.insert(1, Span::styled("(", Style::from_crossterm(primary_style)));
+                parts.insert(
+                    2,
+                    Span::styled(&completion.root_cmd, Style::from_crossterm(primary_style)),
+                );
+                parts.insert(3, Span::styled(") ", Style::from_crossterm(primary_style)));
             }
         }
 

@@ -10,11 +10,13 @@ use enum_cycling::EnumCycle;
 use parking_lot::RwLock;
 use ratatui::{
     Frame,
+    backend::FromCrossterm,
     layout::{Constraint, Layout, Rect},
+    style::Style,
 };
+use ratatui_textarea::CursorMove;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
-use tui_textarea::CursorMove;
 
 use super::Component;
 use crate::{
@@ -89,7 +91,8 @@ impl SearchCommandsComponent {
         initialize_with_ai: bool,
         cancellation_token: CancellationToken,
     ) -> Self {
-        let query = CustomTextArea::new(config.theme.primary, inline, false, query.into()).focused();
+        let query =
+            CustomTextArea::new(Style::from_crossterm(config.theme.primary), inline, false, query.into()).focused();
 
         let commands = CustomList::new(config.theme.clone(), inline, Vec::new());
 
