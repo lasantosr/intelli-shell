@@ -39,17 +39,19 @@ Here is a breakdown of each available key in the `[theme]` section.
 | `accent`             | Used to draw attention to specific parts of the text, like aliases             |
 | `comment`            | The style for descriptions and explanatory text                                |
 | `error`              | The style used to display error messages                                       |
+| `destructive`        | The style used for destructive command text, such as `rm`-like commands        |
 | `highlight`          | The background color for the highlighted item in a list (use `"none"` to skip) |
 | `highlight_symbol`   | The character(s) displayed to the left of the highlighted item                 |
 | `highlight_primary`  | Overrides the `primary` style for the highlighted item only                    |
 | `highlight_secondary`| Overrides the `secondary` style for the highlighted item only                  |
 | `highlight_accent`   | Overrides the `accent` style for the highlighted item only                     |
 | `highlight_comment`  | Overrides the `comment` style for the highlighted item only                    |
+| `highlight_destructive` | Overrides the `destructive` style for highlighted destructive commands      |
 
 ### Default Configuration
 
 ```toml
-{{#include ../../../default_config.toml:138:173}}
+{{#include ../../../default_config.toml:138:177}}
 ```
 
 ## Sample Themes

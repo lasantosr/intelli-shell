@@ -130,21 +130,26 @@ impl EditCommandComponent {
             Layout::vertical([Constraint::Length(3), Constraint::Length(3), Constraint::Min(5)]).margin(1)
         };
 
-        Self {
+        let state = Arc::new(RwLock::new(EditCommandComponentState {
+            command,
+            active_field,
+            alias,
+            cmd,
+            description,
+            error,
+        }));
+
+        let ret = Self {
             theme,
             service,
             layout,
             mode,
             global_cancellation_token: cancellation_token,
-            state: Arc::new(RwLock::new(EditCommandComponentState {
-                command,
-                active_field,
-                alias,
-                cmd,
-                description,
-                error,
-            })),
-        }
+            state,
+        };
+
+        ret.state.write().refresh_cmd_style(&ret.theme);
+        ret
     }
 }
 impl<'a> EditCommandComponentState<'a> {
@@ -164,6 +169,16 @@ impl<'a> EditCommandComponentState<'a> {
         self.description.set_focus(false);
 
         self.active_input().set_focus(true);
+    }
+
+    fn refresh_cmd_style(&mut self, theme: &Theme) {
+        let style = if Command::is_destructive_command(&self.cmd.lines_as_string()) {
+            theme.destructive
+        } else {
+            theme.primary
+        };
+
+        self.cmd.set_style(Style::from_crossterm(style));
     }
 }
 
@@ -314,6 +329,7 @@ impl Component for EditCommandComponent {
     fn undo(&mut self) -> Result<Action> {
         let mut state = self.state.write();
         state.active_input().undo();
+        state.refresh_cmd_style(&self.theme);
 
         Ok(Action::NoOp)
     }
@@ -321,6 +337,7 @@ impl Component for EditCommandComponent {
     fn redo(&mut self) -> Result<Action> {
         let mut state = self.state.write();
         state.active_input().redo();
+        state.refresh_cmd_style(&self.theme);
 
         Ok(Action::NoOp)
     }
@@ -328,6 +345,7 @@ impl Component for EditCommandComponent {
     fn insert_text(&mut self, text: String) -> Result<Action> {
         let mut state = self.state.write();
         state.active_input().insert_str(text);
+        state.refresh_cmd_style(&self.theme);
 
         Ok(Action::NoOp)
     }
@@ -335,6 +353,7 @@ impl Component for EditCommandComponent {
     fn insert_char(&mut self, c: char) -> Result<Action> {
         let mut state = self.state.write();
         state.active_input().insert_char(c);
+        state.refresh_cmd_style(&self.theme);
 
         Ok(Action::NoOp)
     }
@@ -349,6 +368,7 @@ impl Component for EditCommandComponent {
     fn delete(&mut self, backspace: bool, word: bool) -> Result<Action> {
         let mut state = self.state.write();
         state.active_input().delete(backspace, word);
+        state.refresh_cmd_style(&self.theme);
 
         Ok(Action::NoOp)
     }
@@ -459,6 +479,7 @@ impl Component for EditCommandComponent {
         let cloned_service = self.service.clone();
         let cloned_state = self.state.clone();
         let cloned_token = self.global_cancellation_token.clone();
+        let theme = self.theme.clone();
         tokio::spawn(async move {
             let res = cloned_service.suggest_command(&cmd, &description, cloned_token).await;
             let mut state = cloned_state.write();
@@ -480,6 +501,7 @@ impl Component for EditCommandComponent {
                         }
                         state.description.insert_str(suggested_description);
                     }
+                    state.refresh_cmd_style(&theme);
                 }
                 Ok(None) => {
                     state

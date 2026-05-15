@@ -35,6 +35,7 @@ impl<'a> CommandWidget<'a> {
         if is_highlighted && let Some(bg_color) = theme.highlight {
             line_style = line_style.bg(Color::from_crossterm(bg_color));
         }
+
         // Determine the right styles to use based on highlighted and discarded status
         let (primary_style, secondary_style, comment_style, accent_style) =
             match (plain_style, is_discarded, is_highlighted) {
@@ -67,13 +68,25 @@ impl<'a> CommandWidget<'a> {
                 ),
             };
 
+        let destructive_style = if is_highlighted {
+            theme.highlight_destructive
+        } else {
+            theme.destructive
+        };
+        let cmd_style = command.is_destructive().then_some(destructive_style);
+
         // Build command spans
         let cmd_splitter = SplitCaptures::new(&COMMAND_VARIABLE_REGEX, &command.cmd);
         let cmd_spans = cmd_splitter
             .map(|e| match e {
-                SplitItem::Unmatched(t) => Span::styled(t, Style::from_crossterm(primary_style)),
+                SplitItem::Unmatched(t) => {
+                    Span::styled(t, Style::from_crossterm(cmd_style.unwrap_or(primary_style)))
+                }
                 SplitItem::Captured(l) => {
-                    Span::styled(l.get(0).unwrap().as_str(), Style::from_crossterm(secondary_style))
+                    Span::styled(
+                        l.get(0).unwrap().as_str(),
+                        Style::from_crossterm(cmd_style.unwrap_or(secondary_style)),
+                    )
                 }
             })
             .collect::<Vec<_>>();

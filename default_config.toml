@@ -159,6 +159,8 @@ accent = "yellow"
 comment = "italic green"
 # The style used for errors
 error = "dark red"
+# The style used for destructive commands
+destructive = "red"
 # The background color for the highlighted item in a list. Use "none" for no background color
 highlight = "darkgrey"
 # The string symbol displayed next to the highlighted item
@@ -171,6 +173,8 @@ highlight_secondary = "default"
 highlight_accent = "yellow"
 # The comments style applied specifically to a highlighted item
 highlight_comment = "italic green"
+# The destructive style applied specifically to a highlighted item
+highlight_destructive = "red"
 
 # --------------------------------------------------------------
 #   Search Tuning
