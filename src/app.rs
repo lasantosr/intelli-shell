@@ -172,6 +172,7 @@ impl App {
         // Converts the process into the renderable component and initializes it
         let inline = it.opts.inline || (!it.opts.full_screen && config.inline);
         let keybindings = config.keybindings.clone();
+        let keyboard_enhancement = config.tui.keyboard_enhancement;
         self.active_component = it
             .process
             .into_component(config, service, inline, self.cancellation_token.clone())?;
@@ -184,7 +185,10 @@ impl App {
         }
 
         // Enter the TUI (inline or fullscreen)
-        let mut tui = Tui::new(self.cancellation_token.clone())?.paste(true).mouse(true);
+        let mut tui = Tui::new(self.cancellation_token.clone())?
+            .paste(true)
+            .mouse(true)
+            .keyboard_enhancement(keyboard_enhancement);
         if inline {
             tracing::debug!("Displaying inline {} interactively", self.active_component.name());
             tui.enter_inline(extra_line, self.active_component.min_inline_height())?;

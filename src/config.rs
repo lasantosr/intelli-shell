@@ -35,6 +35,8 @@ pub struct Config {
     pub check_updates: bool,
     /// Whether the TUI must be rendered "inline" below the shell prompt
     pub inline: bool,
+    /// Configuration for the Terminal User Interface (TUI)
+    pub tui: TuiConfig,
     /// Configuration for the search command
     pub search: SearchConfig,
     /// Configuration settings for application logging
@@ -175,6 +177,15 @@ pub struct GistConfig {
     pub id: String,
     /// Authentication token to use when writing to the gist
     pub token: String,
+}
+
+/// Configuration for the Terminal User Interface (TUI)
+#[derive(Clone, Copy, Deserialize)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+#[cfg_attr(not(test), serde(default))]
+pub struct TuiConfig {
+    /// Whether to enable keyboard enhancement
+    pub keyboard_enhancement: bool,
 }
 
 /// Holds all tunable parameters for the command and variable search ranking algorithms
@@ -711,6 +722,7 @@ impl Default for Config {
             data_dir: PathBuf::new(),
             check_updates: true,
             inline: true,
+            tui: TuiConfig::default(),
             search: SearchConfig::default(),
             logs: LogsConfig::default(),
             keybindings: KeyBindingsConfig::default(),
@@ -718,6 +730,13 @@ impl Default for Config {
             gist: GistConfig::default(),
             tuning: SearchTuning::default(),
             ai: AiConfig::default(),
+        }
+    }
+}
+impl Default for TuiConfig {
+    fn default() -> Self {
+        Self {
+            keyboard_enhancement: !cfg!(target_os = "macos"),
         }
     }
 }

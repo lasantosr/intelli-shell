@@ -61,6 +61,7 @@ pub struct Tui {
     tick_rate: f64,
     mouse: bool,
     paste: bool,
+    keyboard_enhancement: bool,
     state: Option<State>,
 }
 
@@ -96,6 +97,7 @@ impl Tui {
             tick_rate: 10.0,
             mouse: false,
             paste: false,
+            keyboard_enhancement: false,
             state: None,
         })
     }
@@ -136,6 +138,13 @@ impl Tui {
         self
     }
 
+    /// Enables or disables keyboard enhancement flags.
+    pub fn keyboard_enhancement(mut self, keyboard_enhancement: bool) -> Self {
+        self.state.is_some().then(|| panic!("Can't updated an entered TUI"));
+        self.keyboard_enhancement = keyboard_enhancement;
+        self
+    }
+
     /// Asynchronously retrieves the next event from the event queue.
     ///
     /// Returns `None` if the event channel has been closed (e.g., the event loop has stopped).
@@ -150,10 +159,10 @@ impl Tui {
         tracing::trace!(mouse = self.mouse, paste = self.paste, "Entering a full-screen TUI");
 
         // Enter raw mode and set up the terminal
-        let keyboard_enhancement_supported = self.enter_raw_mode(true)?;
+        let keyboard_enhancement_enabled = self.enter_raw_mode(true)?;
 
         // Store the state and start the event loop
-        self.state = Some(State::FullScreen(keyboard_enhancement_supported));
+        self.state = Some(State::FullScreen(keyboard_enhancement_enabled));
         self.start();
 
         Ok(())
@@ -193,11 +202,11 @@ impl Tui {
         tracing::trace!("Cursor shall be restored at: ({restore_cursor_x},{restore_cursor_y})");
 
         // Enter raw mode and set up the terminal
-        let keyboard_enhancement_supported = self.enter_raw_mode(false)?;
+        let keyboard_enhancement_enabled = self.enter_raw_mode(false)?;
 
         // Store the state and start the event loop
         self.state = Some(State::Inline(
-            keyboard_enhancement_supported,
+            keyboard_enhancement_enabled,
             InlineTuiContext {
                 min_height,
                 x: cursor_x,
@@ -250,15 +259,15 @@ impl Tui {
     fn restore_terminal(&mut self) -> Result<()> {
         match self.state.take() {
             None => (),
-            Some(State::FullScreen(keyboard_enhancement_supported)) => {
+            Some(State::FullScreen(keyboard_enhancement_enabled)) => {
                 tracing::trace!("Leaving the full-screen TUI");
                 self.flush()?;
-                self.exit_raw_mode(true, keyboard_enhancement_supported)?;
+                self.exit_raw_mode(true, keyboard_enhancement_enabled)?;
             }
-            Some(State::Inline(keyboard_enhancement_supported, ctx)) => {
+            Some(State::Inline(keyboard_enhancement_enabled, ctx)) => {
                 tracing::trace!("Leaving the inline TUI");
                 self.flush()?;
-                self.exit_raw_mode(false, keyboard_enhancement_supported)?;
+                self.exit_raw_mode(false, keyboard_enhancement_enabled)?;
                 crossterm::execute!(
                     self.stdout,
                     cursor::MoveTo(ctx.restore_cursor_x, ctx.restore_cursor_y),
@@ -283,30 +292,36 @@ impl Tui {
             crossterm::execute!(self.stdout, event::EnableBracketedPaste)?;
         }
 
-        tracing::trace!("Checking keyboard enhancement support");
-        let keyboard_enhancement_supported = supports_keyboard_enhancement()
-            .inspect_err(|err| tracing::error!("{err}"))
-            .unwrap_or(false);
+        let mut ke_enabled = false;
+        if self.keyboard_enhancement {
+            tracing::trace!("Checking keyboard enhancement support");
+            let keyboard_enhancement_supported = supports_keyboard_enhancement()
+                .inspect_err(|err| tracing::error!("{err}"))
+                .unwrap_or(false);
 
-        if keyboard_enhancement_supported {
-            tracing::trace!("Keyboard enhancement flags enabled");
-            crossterm::execute!(
-                self.stdout,
-                event::PushKeyboardEnhancementFlags(
-                    KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-                        | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
-                        | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
-                ),
-            )?;
+            if keyboard_enhancement_supported {
+                tracing::trace!("Keyboard enhancement flags enabled");
+                crossterm::execute!(
+                    self.stdout,
+                    event::PushKeyboardEnhancementFlags(
+                        KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                            | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+                            | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+                    ),
+                )?;
+                ke_enabled = true;
+            } else {
+                tracing::debug!("Keyboard enhancement not supported");
+            }
         } else {
             tracing::trace!("Keyboard enhancement flags not enabled");
         }
 
-        Ok(keyboard_enhancement_supported)
+        Ok(ke_enabled)
     }
 
-    fn exit_raw_mode(&mut self, alt_screen: bool, keyboard_enhancement_supported: bool) -> Result<()> {
-        if keyboard_enhancement_supported {
+    fn exit_raw_mode(&mut self, alt_screen: bool, keyboard_enhancement_enabled: bool) -> Result<()> {
+        if keyboard_enhancement_enabled {
             crossterm::execute!(self.stdout, event::PopKeyboardEnhancementFlags)?;
         }
 

@@ -63,6 +63,18 @@ a compact, inline view or an immersive, full-screen experience.
 {{#include ../../../default_config.toml:26:29}}
 ```
 
+## TUI Settings
+
+The `[tui]` section configures the underlying interactive Terminal User Interface (TUI) options.
+
+- **`keyboard_enhancement`**: If set to `true`, the application requests the terminal for advanced keyboard events (like detecting key releases or complex combinations like `Ctrl+Enter`) if the emulator supports the Kitty Protocol.
+  - This defaults to `false` on macOS because the Kitty protocol bypasses macOS's Option-key composition, which breaks `AltGr`/`Option` dead keys.
+  - On other platforms, it defaults to `true`.
+
+```toml
+{{#include ../../../default_config.toml:35:46}}
+```
+
 ## Gist Integration
 
 The `[gist]` section allows you to configure default settings for importing from and exporting to GitHub Gists.
@@ -73,7 +85,7 @@ This is useful if you frequently use the same Gist to back up or share your comm
     Gists.
 
 ```toml
-{{#include ../../../default_config.toml:35:41}}
+{{#include ../../../default_config.toml:52:58}}
 ```
 
 ## Search
@@ -89,7 +101,7 @@ The `[search]` section lets you fine-tune the default behavior of the interactiv
 These settings can be toggled on-the-fly within the search UI using the default keybindings `ctrl+s` and `ctrl+o`.
 
 ```toml
-{{#include ../../../default_config.toml:47:62}}
+{{#include ../../../default_config.toml:64:79}}
 ```
 
 ## Logging
@@ -101,7 +113,7 @@ Note that if the `INTELLI_LOG` environment variable is set, it will override the
 - **`filter`**: Controls the verbosity of the logs using `tracing-subscriber` syntax
 
 ```toml
-{{#include ../../../default_config.toml:68:80}}
+{{#include ../../../default_config.toml:85:97}}
 ```
 
 ---

@@ -49,7 +49,7 @@ Here is a breakdown of each available key in the `[theme]` section.
 ### Default Configuration
 
 ```toml
-{{#include ../../../default_config.toml:121:156}}
+{{#include ../../../default_config.toml:138:173}}
 ```
 
 ## Sample Themes

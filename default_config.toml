@@ -10,7 +10,7 @@
 # Any setting not present on the file will inherit the default value displayed here.
 
 # --------------------------------------------------------------
-#   General 
+#   General
 # --------------------------------------------------------------
 
 # The default directory for application data, such as the stored commands database.
@@ -29,6 +29,23 @@ check_updates = true
 inline = true
 
 # --------------------------------------------------------------
+#   TUI
+# --------------------------------------------------------------
+
+[tui]
+# Whether to request the terminal for advanced keyboard events.
+#
+# Setting this to `true` allows the application to respond to advanced combinations
+# (e.g. key releases or Ctrl+Enter) if the terminal emulator supports the Kitty Protocol.
+#
+# Kitty protocol bypasses macOS's Option-key composition, breaking AltGr/Option + dead
+# keys (e.g. Opt+´ → {). Disabling it restores OS-level composition at the cost of
+# advanced keybindings.
+#
+# It defaults to `false` on macOS, and `true` otherwise.
+keyboard_enhancement = true
+
+# --------------------------------------------------------------
 #   Gist Integration
 # --------------------------------------------------------------
 
@@ -41,7 +58,7 @@ id = ""
 token = ""
 
 # --------------------------------------------------------------
-#   Search Command 
+#   Search Command
 # --------------------------------------------------------------
 
 # Configuration for the search command
@@ -62,7 +79,7 @@ user_only = false
 exec_on_alias_match = false
 
 # --------------------------------------------------------------
-#   Logs 
+#   Logs
 # --------------------------------------------------------------
 
 # Configuration settings for application logging.
