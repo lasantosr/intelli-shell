@@ -150,6 +150,9 @@ pub struct Theme {
     /// Style for errors
     #[serde(deserialize_with = "deserialize_style")]
     pub error: ContentStyle,
+    /// Style for destructive commands
+    #[serde(deserialize_with = "deserialize_style")]
+    pub destructive: ContentStyle,
     /// Optional background color for highlighted items
     #[serde(deserialize_with = "deserialize_color")]
     pub highlight: Option<Color>,
@@ -167,6 +170,9 @@ pub struct Theme {
     /// Comments style applied when an item is highlighted
     #[serde(deserialize_with = "deserialize_style")]
     pub highlight_comment: ContentStyle,
+    /// Destructive style applied when an item is highlighted
+    #[serde(deserialize_with = "deserialize_style")]
+    pub highlight_destructive: ContentStyle,
 }
 
 /// Configuration settings for the default gist
@@ -835,18 +841,24 @@ impl Default for Theme {
         let mut error = ContentStyle::new();
         error.foreground_color = Some(Color::DarkRed);
 
+        let mut destructive = ContentStyle::new();
+        destructive.foreground_color = Some(Color::Red);
+        let highlight_destructive = destructive;
+
         Self {
             primary,
             secondary,
             accent,
             comment,
             error,
+            destructive,
             highlight: Some(Color::DarkGrey),
             highlight_symbol: String::from("» "),
             highlight_primary,
             highlight_secondary,
             highlight_accent,
             highlight_comment,
+            highlight_destructive,
         }
     }
 }

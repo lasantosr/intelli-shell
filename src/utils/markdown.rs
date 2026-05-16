@@ -46,13 +46,11 @@ pub fn render_markdown_to_ansi(markdown: &str, theme: &Theme) -> String {
                     }
                     style_stack.push(style);
                 }
-                Tag::Paragraph => {
+                Tag::Paragraph if output.ends_with('\n') || output.is_empty() => {
                     // Only enforce newlines if the buffer ends in a newline (previous block ended)
                     // or is empty. If the buffer ends in text/whitespace (like a list bullet),
                     // we want this paragraph to continue on the same line.
-                    if output.ends_with('\n') || output.is_empty() {
-                        ensure_newlines(&mut output, 2);
-                    }
+                    ensure_newlines(&mut output, 2);
                 }
                 Tag::Emphasis => {
                     let mut style = style_stack.last().cloned().unwrap_or_default();
