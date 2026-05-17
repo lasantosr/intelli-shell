@@ -172,7 +172,7 @@ impl<'a> EditCommandComponentState<'a> {
     }
 
     fn refresh_cmd_style(&mut self, theme: &Theme) {
-        let style = if Command::is_destructive_command(&self.cmd.lines_as_string()) {
+        let style = if crate::utils::is_destructive_command(&self.cmd.lines_as_string()) {
             theme.destructive
         } else {
             theme.primary

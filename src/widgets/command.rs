@@ -73,20 +73,26 @@ impl<'a> CommandWidget<'a> {
         } else {
             theme.destructive
         };
-        let cmd_style = command.is_destructive().then_some(destructive_style);
+        let destructive_secondary_style = if is_highlighted {
+            theme.highlight_destructive_secondary
+        } else {
+            theme.destructive_secondary
+        };
+
+        let is_destructive = crate::utils::is_destructive_command(&command.cmd);
+        let (cmd_style, cmd_secondary_style) = if is_destructive {
+            (destructive_style, destructive_secondary_style)
+        } else {
+            (primary_style, secondary_style)
+        };
 
         // Build command spans
         let cmd_splitter = SplitCaptures::new(&COMMAND_VARIABLE_REGEX, &command.cmd);
         let cmd_spans = cmd_splitter
             .map(|e| match e {
-                SplitItem::Unmatched(t) => {
-                    Span::styled(t, Style::from_crossterm(cmd_style.unwrap_or(primary_style)))
-                }
+                SplitItem::Unmatched(t) => Span::styled(t, Style::from_crossterm(cmd_style)),
                 SplitItem::Captured(l) => {
-                    Span::styled(
-                        l.get(0).unwrap().as_str(),
-                        Style::from_crossterm(cmd_style.unwrap_or(secondary_style)),
-                    )
+                    Span::styled(l.get(0).unwrap().as_str(), Style::from_crossterm(cmd_secondary_style))
                 }
             })
             .collect::<Vec<_>>();

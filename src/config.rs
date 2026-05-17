@@ -153,6 +153,9 @@ pub struct Theme {
     /// Style for destructive commands
     #[serde(deserialize_with = "deserialize_style")]
     pub destructive: ContentStyle,
+    /// Style for secondary parts of destructive commands
+    #[serde(deserialize_with = "deserialize_style")]
+    pub destructive_secondary: ContentStyle,
     /// Optional background color for highlighted items
     #[serde(deserialize_with = "deserialize_color")]
     pub highlight: Option<Color>,
@@ -173,6 +176,9 @@ pub struct Theme {
     /// Destructive style applied when an item is highlighted
     #[serde(deserialize_with = "deserialize_style")]
     pub highlight_destructive: ContentStyle,
+    /// Secondary destructive style applied when an item is highlighted
+    #[serde(deserialize_with = "deserialize_style")]
+    pub highlight_destructive_secondary: ContentStyle,
 }
 
 /// Configuration settings for the default gist
@@ -842,8 +848,15 @@ impl Default for Theme {
         error.foreground_color = Some(Color::DarkRed);
 
         let mut destructive = ContentStyle::new();
-        destructive.foreground_color = Some(Color::Red);
-        let highlight_destructive = destructive;
+        destructive.foreground_color = Some(Color::DarkRed);
+        let mut destructive_secondary = ContentStyle::new();
+        destructive_secondary.foreground_color = Some(Color::DarkRed);
+        destructive_secondary.attributes.set(Attribute::Dim);
+        let mut highlight_destructive = ContentStyle::new();
+        highlight_destructive.foreground_color = Some(Color::Red);
+        let mut highlight_destructive_secondary = ContentStyle::new();
+        highlight_destructive_secondary.foreground_color = Some(Color::Red);
+        highlight_destructive_secondary.attributes.set(Attribute::Dim);
 
         Self {
             primary,
@@ -852,6 +865,7 @@ impl Default for Theme {
             comment,
             error,
             destructive,
+            destructive_secondary,
             highlight: Some(Color::DarkGrey),
             highlight_symbol: String::from("» "),
             highlight_primary,
@@ -859,6 +873,7 @@ impl Default for Theme {
             highlight_accent,
             highlight_comment,
             highlight_destructive,
+            highlight_destructive_secondary,
         }
     }
 }
