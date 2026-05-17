@@ -848,12 +848,15 @@ impl Default for Theme {
         error.foreground_color = Some(Color::DarkRed);
 
         let mut destructive = ContentStyle::new();
-        destructive.foreground_color = Some(Color::Red);
-        let highlight_destructive = destructive;
+        destructive.foreground_color = Some(Color::DarkRed);
         let mut destructive_secondary = ContentStyle::new();
-        destructive_secondary.foreground_color = Some(Color::Red);
+        destructive_secondary.foreground_color = Some(Color::DarkRed);
         destructive_secondary.attributes.set(Attribute::Dim);
-        let highlight_destructive_secondary = destructive_secondary;
+        let mut highlight_destructive = ContentStyle::new();
+        highlight_destructive.foreground_color = Some(Color::Red);
+        let mut highlight_destructive_secondary = ContentStyle::new();
+        highlight_destructive_secondary.foreground_color = Some(Color::Red);
+        highlight_destructive_secondary.attributes.set(Attribute::Dim);
 
         Self {
             primary,

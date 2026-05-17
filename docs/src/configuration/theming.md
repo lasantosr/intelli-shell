@@ -32,13 +32,13 @@ Colors can be specified in several formats:
 
 Here is a breakdown of each available key in the `[theme]` section.
 
-| Key                     | Description                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------ |
-| `primary`               | The main style for elements like selected items or important text              |
-| `secondary`             | A less prominent style, often used for unselected items                        |
-| `accent`                | Used to draw attention to specific parts of the text, like aliases             |
-| `comment`               | The style for descriptions and explanatory text                                |
-| `error`                 | The style used to display error messages                                       |
+| Key                               | Description                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| `primary`                         | The main style for elements like selected items or important text              |
+| `secondary`                       | A less prominent style, often used for unselected items                        |
+| `accent`                          | Used to draw attention to specific parts of the text, like aliases             |
+| `comment`                         | The style for descriptions and explanatory text                                |
+| `error`                           | The style used to display error messages                                       |
 | `destructive`                     | The style used for destructive command text, such as `rm`-like commands        |
 | `destructive_secondary`           | The style used for secondary parts of destructive commands (like variables)    |
 | `highlight`                       | The background color for the highlighted item in a list (use `"none"` to skip) |
