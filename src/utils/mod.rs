@@ -66,4 +66,5 @@ using! {
     pub import_export,
     pub installation,
     pub markdown,
+    pub destructive,
 }
