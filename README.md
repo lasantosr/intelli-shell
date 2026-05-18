@@ -64,6 +64,13 @@ Here’s a summary to get you started:
    > is required for the application to run
    </details>
 
+   <details>
+   <summary>`cargo install`</summary>
+   ```sh
+   cargo install --path . --locked
+   ```
+   </details>
+
    _To skip profile updates, set `INTELLI_SKIP_PROFILE` environment variable to `1` before installing._
 
 2. Bookmark your first command by typing it on a terminal and hitting `ctrl+b`
