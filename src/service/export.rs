@@ -24,7 +24,7 @@ use crate::{
     utils::{
         ShellType,
         dto::{GIST_README_FILENAME, GIST_README_FILENAME_UPPER, GistDto, GistFileDto, ImportExportItemDto},
-        extract_gist_data, extract_variables, flatten_str, get_export_gist_token, get_shell_type,
+        extract_gist_data, extract_root_cmd, extract_variables, flatten_str, get_export_gist_token, get_shell_type,
     },
 };
 
@@ -52,7 +52,7 @@ impl IntelliShellService {
 
                 // Extract all variables from the command and accumulate them for later
                 if is_filtered {
-                    let flat_root_cmd = flatten_str(command.cmd.split_whitespace().next().unwrap_or(""));
+                    let flat_root_cmd = flatten_str(extract_root_cmd(&command.cmd).as_deref().unwrap_or(""));
                     if !flat_root_cmd.is_empty() {
                         let variables = extract_variables(&command.cmd);
                         for variable in variables {

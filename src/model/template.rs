@@ -13,6 +13,7 @@ use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, percent_decode_str, utf8_perc
 use super::VariableValue;
 use crate::utils::{
     COMMAND_VARIABLE_REGEX, COMMAND_VARIABLE_REGEX_ALT, SplitCaptures, SplitItem, flatten_str, flatten_variable_name,
+    extract_root_cmd,
 };
 
 /// A command containing variables
@@ -44,7 +45,7 @@ impl CommandTemplate {
             .collect::<Vec<_>>();
 
         CommandTemplate {
-            flat_root_cmd: flatten_str(cmd.split_whitespace().next().unwrap_or(cmd)),
+            flat_root_cmd: flatten_str(extract_root_cmd(cmd).as_deref().unwrap_or(cmd)),
             parts,
         }
     }

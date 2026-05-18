@@ -109,3 +109,142 @@ fn flatten(s: impl AsRef<str>, forbidden_chars: &Regex) -> String {
         .trim()
         .to_string()
 }
+
+/// Extracts the root command from a shell command string, skipping environment variables and common prefixes
+/// like `sudo`, `time`, etc., as well as shell operators like `&&` or `;`.
+pub fn extract_root_cmd(command: &str) -> Option<String> {
+    fn is_env_var(s: &str) -> bool {
+        // Handle PowerShell: `$env:VAR=val`, Nushell `$env.VAR=val`
+        let s = s.trim_start_matches("$env:").trim_start_matches("$env.");
+
+        let mut parts = s.splitn(2, '=');
+        let name = parts.next().unwrap_or("");
+
+        if name.is_empty() || parts.next().is_none() {
+            return false;
+        }
+
+        // Allow basic alphanumeric, underscore, and dots/colons from some shells
+        name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == ':')
+    }
+
+    let parts = match shell_words::split(command) {
+        Ok(p) => p,
+        Err(_) => command.split_whitespace().map(|s| s.to_string()).collect(),
+    };
+
+    let mut skip_next_n = 0;
+
+    for (i, part) in parts.iter().enumerate() {
+        if skip_next_n > 0 {
+            skip_next_n -= 1;
+            continue;
+        }
+
+        let p = part.as_str();
+
+        // Strip trailing semicolons or other separators that might have attached to the word in fallback parsing
+        let p = p.strip_suffix(';').unwrap_or(p);
+
+        if is_env_var(p) {
+            continue;
+        }
+
+        match p {
+            "&&" | "||" | ";" | "|" | "sudo" | "doas" | "time" | "env" | "function" | "def" | "def-env" | "export" => {
+                continue;
+            }
+            // Nushell assignment like: `let-env VAR = "val"` or `$env.VAR = "val"`
+            "let-env" | "let" | "mut" => {
+                // Skips variable name, `=`, and value (e.g. `let-env VAR = val`)
+                // In some cases it's just `let VAR = val`
+                if parts.get(i + 2).map(|s| s.as_str()) == Some("=") {
+                    skip_next_n = 3;
+                } else if parts.get(i + 1).map(|s| s.as_str()) == Some("=") {
+                    // maybe `let-env = val` ?
+                    skip_next_n = 2;
+                } else {
+                    // let VAR val (unlikely in Nushell, but just to be safe)
+                    skip_next_n = 2;
+                }
+                continue;
+            }
+            // Fish assignment like `set -x VAR val` or `set VAR val`
+            "set" => {
+                // Skip everything in `parts` until we hit a delimiter, then let the loop resume from there.
+                let mut skipped = 0;
+                for next_part in parts.iter().skip(i + 1) {
+                    let next_part_stripped = next_part.as_str().strip_suffix(';').unwrap_or(next_part.as_str());
+                    if matches!(next_part_stripped, ";" | "&&" | "||" | "|") {
+                        break;
+                    }
+                    skipped += 1;
+                    if next_part.as_str().ends_with(';') {
+                        // The token has `;` attached to it (e.g. `val;`).
+                        break;
+                    }
+                }
+                skip_next_n = skipped;
+                continue;
+            }
+            _ => {}
+        }
+
+        // if the part itself is `$env.VAR` and the next part is `=`
+        if p.starts_with("$env.") || p.starts_with("$env:") {
+            if parts.get(i + 1).map(|s| s.as_str()) == Some("=") {
+                skip_next_n = 2; // skip `=` and `val`
+                continue;
+            }
+        }
+
+        if p.starts_with('-') {
+            continue;
+        }
+
+        let trimmed = p.strip_suffix("()").unwrap_or(p).to_string();
+        if !trimmed.is_empty() {
+            return Some(trimmed);
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_root_cmd() {
+        assert_eq!(extract_root_cmd("VAR1=val1 VAR2=\"val2\" root argument").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd("VAR4='value 4' && root argument").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd("VAR5=val\\ 5 ; root argument").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd("sudo root arg1 arg2").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd("time sudo root arg1 arg2").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd("env VAR=1 root arg1").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd("root arg1").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd(""), None);
+        assert_eq!(extract_root_cmd("VAR=val"), None);
+        assert_eq!(extract_root_cmd("my_fn() { echo a; }").as_deref(), Some("my_fn"));
+        assert_eq!(extract_root_cmd("function my_fn() { echo a; }").as_deref(), Some("my_fn"));
+        assert_eq!(extract_root_cmd("function my_fn { echo a; }").as_deref(), Some("my_fn"));
+        assert_eq!(extract_root_cmd("ENV={{variable-name:kebab}} function my_fn() { echo a; }").as_deref(), Some("my_fn"));
+
+        // PowerShell
+        assert_eq!(extract_root_cmd("$env:VAR=\"val\"; root argument").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd("$env:VAR=val; root argument").as_deref(), Some("root"));
+
+        // Nushell
+        assert_eq!(extract_root_cmd("let-env VAR = \"val\"; root argument").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd("let VAR = \"val\"; root argument").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd("$env.VAR = \"val\"; root argument").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd("def my_fn [] { echo a }").as_deref(), Some("my_fn"));
+        assert_eq!(extract_root_cmd("def-env my_fn [] { echo a }").as_deref(), Some("my_fn"));
+
+        // Fish
+        assert_eq!(extract_root_cmd("env VAR=val root argument").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd("function my_fn; echo a; end").as_deref(), Some("my_fn"));
+        assert_eq!(extract_root_cmd("export VAR=val; root argument").as_deref(), Some("root"));
+        assert_eq!(extract_root_cmd("set -x VAR val; root argument").as_deref(), Some("root"));
+    }
+}
