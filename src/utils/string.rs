@@ -191,12 +191,11 @@ pub fn extract_root_cmd(command: &str) -> Option<String> {
         }
 
         // if the part itself is `$env.VAR` and the next part is `=`
-        if p.starts_with("$env.") || p.starts_with("$env:") {
-            if parts.get(i + 1).map(|s| s.as_str()) == Some("=") {
+        if (p.starts_with("$env.") || p.starts_with("$env:"))
+            && parts.get(i + 1).map(|s| s.as_str()) == Some("=") {
                 skip_next_n = 2; // skip `=` and `val`
                 continue;
             }
-        }
 
         if p.starts_with('-') {
             continue;
