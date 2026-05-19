@@ -13,7 +13,7 @@ use crate::{
     errors::{AppError, Result, UserFacingError},
     model::{CATEGORY_USER, Command, SOURCE_AI, SearchMode},
     utils::{
-        ShellType, add_tags_to_description, execute_shell_command_capture, generate_working_dir_tree,
+        ShellType, add_tags_to_description, execute_shell_command_capture, extract_root_cmd, generate_working_dir_tree,
         get_executable_version, get_os_info, get_shell_info,
     },
 };
@@ -74,8 +74,8 @@ impl IntelliShellService {
         on_progress(AiFixProgress::Thinking);
 
         // Prepare prompts and call the AI provider
-        let root_cmd = command.split_whitespace().next();
-        let sys_prompt = replace_prompt_placeholders(&self.ai.prompts.fix, root_cmd, history);
+        let root_cmd = extract_root_cmd(command);
+        let sys_prompt = replace_prompt_placeholders(&self.ai.prompts.fix, root_cmd.as_deref(), history);
         let user_prompt = format!(
             "I've run a command but it failed, help me fix it.\n\ncommand: \
              {command}\n{status}\noutput:\n```\n{output}\n```"
