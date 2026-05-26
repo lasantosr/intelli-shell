@@ -13,10 +13,11 @@ if (-not (Get-Module -Name PSReadLine -ListAvailable)) {
 # Import the module if it's not already loaded
 Import-Module PSReadLine -ErrorAction SilentlyContinue
 
-# Polyfill for $IsWindows on older PowerShell versions
+# Polyfill for $IsWindows and $IsLinux on older PowerShell versions
 if (-not (Test-Path 'variable:IsWindows')) {
   # In Windows PowerShell (<= 5.1), we are always on Windows
   New-Variable -Name 'IsWindows' -Value $true -Scope Script
+  New-Variable -Name 'IsLinux' -Value $false -Scope Script
 }
 
 # --- Configuration ---
