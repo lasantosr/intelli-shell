@@ -45,7 +45,7 @@ impl Process for TldrFetchProcess {
 
         let service_handle = tokio::spawn(async move {
             service
-                .fetch_tldr_commands(self.category, commands, tx, cancellation_token)
+                .fetch_tldr_commands(self.category, self.connection, commands, tx, cancellation_token)
                 .await
         });
 

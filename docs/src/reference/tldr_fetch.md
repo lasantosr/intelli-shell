@@ -38,6 +38,11 @@ intelli-shell tldr fetch [OPTIONS] [CATEGORY]
   Fetches examples only for commands listed in a file or from standard input. If no path is provided, it reads from
   `stdin`. Command names should be separated by newlines.
 
+- `--connection <CONNECTION>`
+  
+  Selects how IntelliShell connects to the upstream `tldr` git repository. Supported values are `https` (default) and
+  `ssh`. Use `ssh` when you want to fetch through your local SSH git configuration.
+
 ## Examples
 
 ### Fetch Default Pages for Your System
@@ -63,4 +68,12 @@ If you only need examples for a particular command, use the `--command` flag.
 
 ```sh
 intelli-shell tldr fetch --command git --command docker
+```
+
+### Fetch Using SSH
+
+If your environment is configured to access GitHub over SSH, switch the transport explicitly:
+
+```sh
+intelli-shell tldr fetch --connection ssh
 ```

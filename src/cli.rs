@@ -15,7 +15,7 @@ use reqwest::{
 use semver::Version;
 use tracing::instrument;
 
-use crate::model::SearchMode;
+use crate::model::{SearchMode, TldrConnectionMode};
 
 /// Like IntelliSense, but for shells
 ///
@@ -444,6 +444,10 @@ pub struct TldrFetchProcess {
     /// For a full list of available categories, see: https://github.com/tldr-pages/tldr/tree/main/pages
     pub category: Option<String>,
 
+    /// Connection protocol used to reach the upstream tldr git repository
+    #[arg(long, value_enum, default_value_t = TldrConnectionMode::Https)]
+    pub connection: TldrConnectionMode,
+
     /// Fetches examples only for the specified command(s) (e.g., `git`, `docker`, `tar`)
     ///
     /// Command names should match their corresponding filenames (without the `.md` extension)
@@ -619,5 +623,27 @@ mod tests {
     #[test]
     fn test_cli_asserts() {
         Cli::command().debug_assert()
+    }
+
+    #[test]
+    fn test_tldr_fetch_defaults_to_https_connection() -> Result<()> {
+        let cli = Cli::try_parse_from(["intelli-shell", "tldr", "fetch"])?;
+        let CliProcess::Tldr(TldrProcess::Fetch(process)) = cli.process else {
+            return Err(eyre!("Expected tldr fetch process"));
+        };
+
+        assert_eq!(process.connection, TldrConnectionMode::Https);
+        Ok(())
+    }
+
+    #[test]
+    fn test_tldr_fetch_parses_ssh_connection() -> Result<()> {
+        let cli = Cli::try_parse_from(["intelli-shell", "tldr", "fetch", "--connection", "ssh"])?;
+        let CliProcess::Tldr(TldrProcess::Fetch(process)) = cli.process else {
+            return Err(eyre!("Expected tldr fetch process"));
+        };
+
+        assert_eq!(process.connection, TldrConnectionMode::Ssh);
+        Ok(())
     }
 }
