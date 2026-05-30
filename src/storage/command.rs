@@ -469,6 +469,7 @@ impl<'a> TryFrom<&'a Row<'a>> for Command {
                 .map_err(|e| rusqlite::Error::FromSqlConversionFailure(9, Type::Text, Box::new(e)))?,
             created_at: row.get(10)?,
             updated_at: row.get(11)?,
+            is_destructive: false,
         })
     }
 }

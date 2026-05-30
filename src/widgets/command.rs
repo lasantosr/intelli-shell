@@ -79,7 +79,7 @@ impl<'a> CommandWidget<'a> {
             theme.destructive_secondary
         };
 
-        let is_destructive = crate::utils::is_destructive_command(&command.cmd);
+        let is_destructive = command.is_destructive;
         let (cmd_style, cmd_secondary_style) = if is_destructive {
             (destructive_style, destructive_secondary_style)
         } else {

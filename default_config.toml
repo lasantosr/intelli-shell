@@ -97,6 +97,16 @@ enabled = false
 filter = "info"
 
 # --------------------------------------------------------------
+#   Destructive Commands Detection
+# --------------------------------------------------------------
+
+# Configuration for identifying destructive commands.
+# You can define a list of regular expressions to automatically identify dangerous commands.
+[destructive]
+# A list of regular expressions to identify destructive commands
+patterns = []
+
+# --------------------------------------------------------------
 #   Key Bindings
 # --------------------------------------------------------------
 

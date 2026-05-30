@@ -41,6 +41,8 @@ pub struct Config {
     pub search: SearchConfig,
     /// Configuration settings for application logging
     pub logs: LogsConfig,
+    /// Configuration for identifying destructive commands
+    pub destructive: DestructiveConfig,
     /// Configuration for the key bindings used within the TUI
     pub keybindings: KeyBindingsConfig,
     /// Configuration for the visual theme of the TUI
@@ -79,6 +81,47 @@ pub struct LogsConfig {
     ///
     /// This string supports the `tracing-subscriber`'s environment filter syntax.
     pub filter: String,
+}
+
+/// Configuration for identifying destructive commands
+#[derive(Clone, Deserialize, Default)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+#[cfg_attr(not(test), serde(default))]
+pub struct DestructiveConfig {
+    /// A list of regular expressions to identify destructive commands
+    pub patterns: Vec<RegexWrapper>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RegexWrapper(regex::Regex);
+
+impl RegexWrapper {
+    /// Creates a new `RegexWrapper` from a compiled `Regex`
+    pub fn new(re: regex::Regex) -> Self {
+        Self(re)
+    }
+
+    /// Returns `true` if the pattern matches the given text
+    pub fn is_match(&self, text: &str) -> bool {
+        self.0.is_match(text)
+    }
+}
+
+impl PartialEq for RegexWrapper {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_str() == other.0.as_str()
+    }
+}
+
+impl<'de> Deserialize<'de> for RegexWrapper {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let re = regex::Regex::new(&s).map_err(Error::custom)?;
+        Ok(RegexWrapper::new(re))
+    }
 }
 
 /// Configuration for the key bindings used in the Terminal User Interface (TUI).
@@ -737,6 +780,7 @@ impl Default for Config {
             tui: TuiConfig::default(),
             search: SearchConfig::default(),
             logs: LogsConfig::default(),
+            destructive: DestructiveConfig::default(),
             keybindings: KeyBindingsConfig::default(),
             theme: Theme::default(),
             gist: GistConfig::default(),

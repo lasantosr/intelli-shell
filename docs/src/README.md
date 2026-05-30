@@ -47,6 +47,9 @@ integration and user experience.
 - **Extensible Knowledge**: Instantly boost your library by fetching and importing command examples from the
   community-driven _tldr_ pages (or virtually any blog post or content with AI enabled).
 
+- **Visual Destructive Feedback**: Highlight potentially destructive commands in warning colors before execution,
+  configurable via tags (`#destructive`) or regex patterns (`[destructive].patterns`).
+
 ---
 
 Ready to get started? Let's head over to the [**Installation**](./guide/installation.md) page.

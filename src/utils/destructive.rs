@@ -1,55 +1,28 @@
-const DESTRUCTIVE_COMMANDS: &[&str] = &["rm", "rmdir", "del", "erase", "rd", "remove-item"];
-const PRIVILEGE_WRAPPERS: &[&str] = &["sudo", "doas"];
+use crate::config::RegexWrapper;
 
-/// Checks whether a command string contains a destructive shell action.
-pub fn is_destructive_command(command: &str) -> bool {
-    split_shell_segments(command).into_iter().any(is_destructive_segment)
-}
+/// Checks whether a command string is destructive based on its tags and regex patterns.
+pub fn is_destructive(command: &str, tags: &[String], patterns: &[RegexWrapper]) -> bool {
+    // 1. Tag-Based Detection (Always-On)
+    if tags.iter().any(|t| t == "#destructive") {
+        return true;
+    }
 
-fn is_destructive_segment(segment: &str) -> bool {
-    let mut words = ShellWordIter::new(segment);
+    // 2. Config-Based Regex Detection
+    if patterns.is_empty() {
+        return false;
+    }
 
-    for word in words.by_ref() {
-        if is_env_assignment(word) || is_privilege_wrapper(word) {
-            continue;
+    let segments = split_shell_segments(command);
+    for pattern in patterns {
+        for segment in &segments {
+            let trimmed = segment.trim();
+            if !trimmed.is_empty() && pattern.is_match(trimmed) {
+                return true;
+            }
         }
-
-        return is_destructive_verb(word) || is_destructive_subcommand(word, &mut words);
     }
 
     false
-}
-
-fn is_destructive_verb(word: &str) -> bool {
-    DESTRUCTIVE_COMMANDS.iter().any(|verb| word.eq_ignore_ascii_case(verb))
-}
-
-fn is_privilege_wrapper(word: &str) -> bool {
-    PRIVILEGE_WRAPPERS.iter().any(|wrapper| word.eq_ignore_ascii_case(wrapper))
-}
-
-fn is_destructive_subcommand(command: &str, remaining_words: &mut ShellWordIter<'_>) -> bool {
-    if !command.eq_ignore_ascii_case("git") {
-        return false;
-    }
-
-    remaining_words
-        .next()
-        .is_some_and(is_destructive_verb)
-}
-
-fn is_env_assignment(word: &str) -> bool {
-    let Some((name, _)) = word.split_once('=') else {
-        return false;
-    };
-
-    let mut chars = name.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-
-    (first.is_ascii_alphabetic() || first == '_')
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
 fn split_shell_segments(command: &str) -> Vec<&str> {
@@ -116,117 +89,46 @@ fn split_shell_segments(command: &str) -> Vec<&str> {
     segments
 }
 
-struct ShellWordIter<'a> {
-    segment: &'a str,
-    cursor: usize,
-}
-
-impl<'a> ShellWordIter<'a> {
-    fn new(segment: &'a str) -> Self {
-        Self { segment, cursor: 0 }
-    }
-}
-
-impl<'a> Iterator for ShellWordIter<'a> {
-    type Item = &'a str;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let bytes = self.segment.as_bytes();
-
-        while let Some(byte) = bytes.get(self.cursor) {
-            if byte.is_ascii_whitespace() {
-                self.cursor += 1;
-            } else {
-                break;
-            }
-        }
-
-        if self.cursor >= bytes.len() {
-            return None;
-        }
-
-        let start = self.cursor;
-        let mut index = self.cursor;
-        let mut quote: Option<u8> = None;
-        let mut escaped = false;
-
-        while index < bytes.len() {
-            let byte = bytes[index];
-
-            if escaped {
-                escaped = false;
-                index += 1;
-                continue;
-            }
-
-            if let Some(active_quote) = quote {
-                if byte == b'\\' && active_quote == b'"' {
-                    escaped = true;
-                } else if byte == active_quote {
-                    quote = None;
-                }
-                index += 1;
-                continue;
-            }
-
-            match byte {
-                b'\\' => {
-                    escaped = true;
-                    index += 1;
-                }
-                b'\'' | b'"' => {
-                    quote = Some(byte);
-                    index += 1;
-                }
-                _ if byte.is_ascii_whitespace() => break,
-                _ => index += 1,
-            }
-        }
-
-        self.cursor = index;
-        Some(&self.segment[start..index])
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::is_destructive_command;
+    use super::is_destructive;
+    use crate::config::RegexWrapper;
+    use regex::Regex;
 
-    #[test]
-    fn test_is_destructive_command_positive_cases() {
-        for command in [
-            "rm file",
-            "sudo rm -rf /tmp/x",
-            "VAR=1 rm file",
-            "echo ok && rm file",
-            "git rm file",
-            "Remove-Item foo",
-            "del foo",
-        ] {
-            assert!(is_destructive_command(command), "expected destructive: {command}");
-        }
+    fn make_patterns(pats: &[&str]) -> Vec<RegexWrapper> {
+        pats.iter()
+            .map(|p| RegexWrapper::new(Regex::new(p).unwrap()))
+            .collect()
     }
 
     #[test]
-    fn test_is_destructive_command_negative_cases() {
-        for command in [
-            "docker run --rm image",
-            "echo rm file",
-            "printf 'rm file'",
-            "git status",
-            "rmdir_backup",
-            "trash-put foo",
-        ] {
-            assert!(
-                !is_destructive_command(command),
-                "expected non-destructive: {command}"
-            );
-        }
+    fn test_tag_based_detection() {
+        // Tag-based check is always-on and triggers if '#destructive' tag is present
+        assert!(is_destructive("echo safe", &["#destructive".to_string()], &[]));
+        assert!(is_destructive("rm -rf /", &["#destructive".to_string()], &[]));
+        assert!(is_destructive(
+            "some-command",
+            &["#other".to_string(), "#destructive".to_string()],
+            &[]
+        ));
+
+        // If '#destructive' is not present, it should not trigger without patterns
+        assert!(!is_destructive("rm -rf /", &["#safe".to_string()], &[]));
     }
 
     #[test]
-    fn test_command_is_destructive_uses_command_text() {
-        let command = "doas erase temp.txt";
-        assert!(is_destructive_command(command));
+    fn test_regex_patterns_detection() {
+        let patterns = make_patterns(&["^rm\\b", "^del\\b"]);
+
+        // Matches segment starting with rm or del
+        assert!(is_destructive("rm -rf /", &[], &patterns));
+        assert!(is_destructive("del file.txt", &[], &patterns));
+        assert!(is_destructive("echo ok && rm -rf /", &[], &patterns));
+        assert!(is_destructive("rm -rf / | echo", &[], &patterns));
+
+        // Negative cases that should not match
+        assert!(!is_destructive("echo rm file", &[], &patterns));
+        assert!(!is_destructive("docker run --rm image", &[], &patterns));
+        assert!(!is_destructive("rmdir_backup", &[], &patterns));
     }
 }

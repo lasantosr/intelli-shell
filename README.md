@@ -37,6 +37,8 @@ Windows.
 - **Import / Export**: Share your command library using files, HTTP endpoints, or even Gists
 - **TLDR Integration**: Fetch and import command examples from [tldr](https://github.com/tldr-pages/tldr) pages
 - **Flexible Interface**: Choose between a non-intrusive (inline) or an immersive (full-screen) TUI
+- **Visual Destructive Feedback**: Highlight potentially destructive commands (configurable via tags or custom regexes) to prevent accidental executions
+
 
 ## Quick Start
 

@@ -116,6 +116,24 @@ Note that if the `INTELLI_LOG` environment variable is set, it will override the
 {{#include ../../../default_config.toml:85:97}}
 ```
 
+## Destructive Commands
+
+The `[destructive]` section configures how IntelliShell detects potentially dangerous or destructive commands to provide visual warning feedback (such as highlighting them in warning colors) before execution.
+
+IntelliShell uses a dual-layer approach for detecting destructive commands:
+
+1. **Tag-Based Detection (Always-On):** Any command containing the hashtag `#destructive` is always identified as destructive. This represents explicit user intent and has near-zero performance cost.
+2. **Config-Based Regex Detection:** If the command does not have the `#destructive` tag, its trimmed shell segments are matched against the regular expressions configured under `patterns`.
+
+> [!WARNING]
+> Regular expression patterns operate on the command text structure. Be careful when writing regex patterns, as overly broad rules might lead to false positive highlights on harmless commands.
+
+- **`patterns`**: A list of regular expressions (strings) used to match against the trimmed command. For example, `["^rm -rf", "^dd if="]`.
+
+```toml
+{{#include ../../../default_config.toml:103:107}}
+```
+
 ---
 
 Now that you've configured the application's basic behavior, you can tailor how you interact with it. Let's move on to

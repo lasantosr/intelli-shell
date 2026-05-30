@@ -69,6 +69,15 @@ command that runs in the background to generate a list of suggestions on the fly
 - Showing running Docker containers for `docker exec -it {{container}} bash`
 - Fetching Kubernetes services for `kubectl logs {{service}}`
 
+### 4. Destructive Command Warnings
+
+To help prevent accidental execution of dangerous commands, IntelliShell visually highlights commands identified as potentially destructive (e.g., rendering them in red warning styles).
+
+This identification is performed via a dual-layer approach:
+
+- **Tag-Based Detection**: Any command tagged with `#destructive` is always flagged. This represents explicit user intent and has near-zero overhead.
+- **Config-Based Regex Detection**: As a fallback, commands can be matched against user-defined regular expression patterns in the configuration file under `[destructive].patterns`.
+
 ---
 
 Now that you understand the core concepts, let's walk through [**Your First Session**](./your_first_session.md).

@@ -122,6 +122,7 @@ impl InteractiveProcess for BookmarkCommandProcess {
         Ok(Box::new(EditCommandComponent::new(
             service,
             config.theme,
+            config.destructive,
             inline,
             command,
             EditCommandComponentMode::New { ai },

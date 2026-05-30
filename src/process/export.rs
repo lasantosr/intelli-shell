@@ -46,7 +46,9 @@ impl InteractiveProcess for ExportItemsProcess {
     ) -> Result<Box<dyn Component>> {
         Ok(Box::new(ImportExportPickerComponent::new(
             service,
-            config,
+            config.theme,
+            config.destructive,
+            config.gist,
             inline,
             ImportExportPickerComponentMode::Export { input: self },
             cancellation_token,

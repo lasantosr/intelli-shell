@@ -20,7 +20,7 @@ use crate::{
         completion_edit::{EditCompletionComponent, EditCompletionComponentMode},
         edit::{EditCommandComponent, EditCommandComponentMode},
     },
-    config::{Config, KeyBindingsConfig},
+    config::{DestructiveConfig, GistConfig, KeyBindingsConfig, Theme},
     errors::{AppError, UserFacingError},
     format_error,
     model::{Command, ImportExportItem, VariableCompletion},
@@ -41,8 +41,12 @@ pub enum ImportExportPickerComponentMode {
 /// A component for interactive picking [`ImportExportItem`]
 #[derive(Clone)]
 pub struct ImportExportPickerComponent {
-    /// The app config
-    config: Config,
+    /// Visual theme
+    theme: Theme,
+    /// Destructive commands configuration
+    destructive: DestructiveConfig,
+    /// Gist configuration
+    gist: GistConfig,
     /// Service for interacting with storage
     service: IntelliShellService,
     /// Whether the component is displayed inline
@@ -75,7 +79,9 @@ impl ImportExportPickerComponent {
     /// Creates a new [`ImportExportPickerComponent`]
     pub fn new(
         service: IntelliShellService,
-        config: Config,
+        theme: Theme,
+        destructive: DestructiveConfig,
+        gist: GistConfig,
         inline: bool,
         mode: ImportExportPickerComponentMode,
         cancellation_token: CancellationToken,
@@ -84,10 +90,10 @@ impl ImportExportPickerComponent {
             ImportExportPickerComponentMode::Import { .. } => " Import (Space to discard, Enter to continue) ",
             ImportExportPickerComponentMode::Export { .. } => " Export (Space to discard, Enter to continue) ",
         };
-        let items = CustomList::new(config.theme.clone(), inline, Vec::new()).title(title);
+        let items = CustomList::new(theme.clone(), inline, Vec::new()).title(title);
 
-        let error = ErrorPopup::empty(&config.theme);
-        let loading_spinner = LoadingSpinner::new(&config.theme).with_message("Loading");
+        let error = ErrorPopup::empty(&theme);
+        let loading_spinner = LoadingSpinner::new(&theme).with_message("Loading");
 
         let layout = if inline {
             Layout::vertical([Constraint::Min(1)])
@@ -96,7 +102,9 @@ impl ImportExportPickerComponent {
         };
 
         Self {
-            config,
+            theme,
+            destructive,
+            gist,
             service,
             inline,
             layout,
@@ -144,11 +152,7 @@ impl Component for ImportExportPickerComponent {
                     // Fetch items from the given import location
                     let items: Result<Vec<ImportExportItem>, AppError> = match this
                         .service
-                        .get_items_from_location(
-                            input,
-                            this.config.gist.clone(),
-                            this.global_cancellation_token.clone(),
-                        )
+                        .get_items_from_location(input, this.gist.clone(), this.global_cancellation_token.clone())
                         .await
                     {
                         Ok(c) => c.try_collect().await,
@@ -159,15 +163,20 @@ impl Component for ImportExportPickerComponent {
                             // If items were fetched successfully, update the state
                             let mut state = this.state.write();
                             if items.is_empty() {
-                                state.loading_result = Some(Ok(ProcessOutput::fail().stderr(format_error!(
-                                    this.config.theme,
-                                    "No commands or completions were found"
-                                ))));
+                                state.loading_result = Some(Ok(ProcessOutput::fail()
+                                    .stderr(format_error!(this.theme, "No commands or completions were found"))));
                             } else {
-                                state.items.update_items(
-                                    items.into_iter().map(PlainStyleImportExportItem::from).collect(),
-                                    false,
-                                );
+                                let plain_items = items
+                                    .into_iter()
+                                    .map(|item| {
+                                        let mut plain_item = PlainStyleImportExportItem::from(item);
+                                        if let PlainStyleImportExportItem::Command(ref mut cmd) = plain_item {
+                                            cmd.update_is_destructive(&this.destructive.patterns);
+                                        }
+                                        plain_item
+                                    })
+                                    .collect();
+                                state.items.update_items(plain_items, false);
                             }
                             state.is_loading = false;
                         }
@@ -190,22 +199,29 @@ impl Component for ImportExportPickerComponent {
                     Ok(c) => c,
                     Err(AppError::UserFacing(err)) => {
                         return Ok(Action::Quit(
-                            ProcessOutput::fail().stderr(format_error!(self.config.theme, "{err}")),
+                            ProcessOutput::fail().stderr(format_error!(self.theme, "{err}")),
                         ));
                     }
                     Err(AppError::Unexpected(report)) => return Err(report),
                 };
 
                 if items.is_empty() {
-                    return Ok(Action::Quit(ProcessOutput::fail().stderr(format_error!(
-                        self.config.theme,
-                        "No commands or completions to export"
-                    ))));
+                    return Ok(Action::Quit(
+                        ProcessOutput::fail().stderr(format_error!(self.theme, "No commands or completions to export")),
+                    ));
                 } else {
                     let mut state = self.state.write();
-                    state
-                        .items
-                        .update_items(items.into_iter().map(PlainStyleImportExportItem::from).collect(), false);
+                    let plain_items = items
+                        .into_iter()
+                        .map(|item| {
+                            let mut plain_item = PlainStyleImportExportItem::from(item);
+                            if let PlainStyleImportExportItem::Command(ref mut cmd) = plain_item {
+                                cmd.update_is_destructive(&self.destructive.patterns);
+                            }
+                            plain_item
+                        })
+                        .collect();
+                    state.items.update_items(plain_items, false);
                 }
             }
         }
@@ -232,7 +248,7 @@ impl Component for ImportExportPickerComponent {
 
         // Render the new version banner and error message as an overlay
         if let Some(new_version) = self.service.poll_new_version() {
-            NewVersionBanner::new(&self.config.theme, new_version).render_in(frame, area);
+            NewVersionBanner::new(&self.theme, new_version).render_in(frame, area);
         }
         state.error.render_in(frame, area);
     }
@@ -245,7 +261,7 @@ impl Component for ImportExportPickerComponent {
             return match res {
                 Ok(output) => Ok(Action::Quit(output)),
                 Err(AppError::UserFacing(err)) => Ok(Action::Quit(
-                    ProcessOutput::fail().stderr(format_error!(&self.config.theme, "{err}")),
+                    ProcessOutput::fail().stderr(format_error!(&self.theme, "{err}")),
                 )),
                 Err(AppError::Unexpected(err)) => Err(err),
             };
@@ -358,7 +374,11 @@ impl Component for ImportExportPickerComponent {
 
                         // Replace the old widget with the new one at the same position in the list
                         if let Some(widget_ref) = state.items.items_mut().get_mut(index) {
-                            *widget_ref = PlainStyleImportExportItem::Command(updated_command.into());
+                            let mut plain_item = PlainStyleImportExportItem::Command(updated_command.into());
+                            if let PlainStyleImportExportItem::Command(ref mut cmd) = plain_item {
+                                cmd.update_is_destructive(&this.destructive.patterns);
+                            }
+                            *widget_ref = plain_item;
                         }
 
                         Ok(())
@@ -367,7 +387,8 @@ impl Component for ImportExportPickerComponent {
                     // Switch to the editor component
                     Ok(Action::SwitchComponent(Box::new(EditCommandComponent::new(
                         self.service.clone(),
-                        self.config.theme.clone(),
+                        self.theme.clone(),
+                        self.destructive.clone(),
                         self.inline,
                         command,
                         EditCommandComponentMode::EditMemory {
@@ -393,7 +414,7 @@ impl Component for ImportExportPickerComponent {
                     // Switch to the editor component
                     Ok(Action::SwitchComponent(Box::new(EditCompletionComponent::new(
                         self.service.clone(),
-                        self.config.theme.clone(),
+                        self.theme.clone(),
                         self.inline,
                         completion,
                         EditCompletionComponentMode::EditMemory {
@@ -436,10 +457,8 @@ impl Component for ImportExportPickerComponent {
                         items += "\n";
                     }
                     if items.is_empty() {
-                        ProcessOutput::fail().stderr(format_error!(
-                            &self.config.theme,
-                            "No commands or completions were found"
-                        ))
+                        ProcessOutput::fail()
+                            .stderr(format_error!(&self.theme, "No commands or completions were found"))
                     } else {
                         ProcessOutput::success().stdout(items)
                     }
@@ -450,9 +469,9 @@ impl Component for ImportExportPickerComponent {
                         .import_items(stream::iter(non_discarded_items.into_iter().map(Ok)).boxed(), false)
                         .await
                     {
-                        Ok(stats) => stats.into_output(&self.config.theme),
+                        Ok(stats) => stats.into_output(&self.theme),
                         Err(AppError::UserFacing(err)) => {
-                            ProcessOutput::fail().stderr(format_error!(&self.config.theme, "{err}"))
+                            ProcessOutput::fail().stderr(format_error!(&self.theme, "{err}"))
                         }
                         Err(AppError::Unexpected(report)) => return Err(report),
                     }
@@ -466,16 +485,16 @@ impl Component for ImportExportPickerComponent {
                     .export_items(
                         stream::iter(non_discarded_items.into_iter().map(Ok)).boxed(),
                         input.clone(),
-                        self.config.gist.clone(),
+                        self.gist.clone(),
                     )
                     .await
                 {
-                    Ok(stats) => Ok(Action::Quit(stats.into_output(&self.config.theme))),
+                    Ok(stats) => Ok(Action::Quit(stats.into_output(&self.theme))),
                     Err(AppError::UserFacing(UserFacingError::FileBrokenPipe)) => {
                         Ok(Action::Quit(ProcessOutput::success()))
                     }
                     Err(AppError::UserFacing(err)) => Ok(Action::Quit(
-                        ProcessOutput::fail().stderr(format_error!(&self.config.theme, "{err}")),
+                        ProcessOutput::fail().stderr(format_error!(&self.theme, "{err}")),
                     )),
                     Err(AppError::Unexpected(report)) => Err(report),
                 }

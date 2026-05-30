@@ -143,6 +143,8 @@ pub struct Command {
     pub created_at: DateTime<Utc>,
     /// The date and time when the command was last updated
     pub updated_at: Option<DateTime<Utc>>,
+    /// Whether the command is destructive (computed at runtime, not persisted)
+    pub is_destructive: bool,
 }
 
 impl Command {
@@ -161,6 +163,7 @@ impl Command {
             tags: None,
             created_at: Utc::now(),
             updated_at: None,
+            is_destructive: false,
         }
     }
 
@@ -191,6 +194,12 @@ impl Command {
     pub fn with_tags(mut self, tags: Option<Vec<String>>) -> Self {
         self.tags = tags.filter(|t| !t.is_empty());
         self
+    }
+
+    /// Computes and updates the `is_destructive` field using the provided destructive regex patterns
+    pub fn update_is_destructive(&mut self, patterns: &[crate::config::RegexWrapper]) {
+        let tags = self.tags.as_deref().unwrap_or(&[]);
+        self.is_destructive = crate::utils::is_destructive(&self.cmd, tags, patterns);
     }
 
     /// Checks whether a command matches a regex filter

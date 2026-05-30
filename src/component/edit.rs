@@ -16,7 +16,7 @@ use tracing::instrument;
 use super::Component;
 use crate::{
     app::Action,
-    config::Theme,
+    config::{DestructiveConfig, Theme},
     errors::AppError,
     format_msg,
     model::Command,
@@ -47,6 +47,8 @@ pub enum EditCommandComponentMode {
 pub struct EditCommandComponent {
     /// The visual theme for styling the component
     theme: Theme,
+    /// The configuration for identifying destructive commands
+    destructive: DestructiveConfig,
     /// Service for interacting with command storage
     service: IntelliShellService,
     /// The layout for arranging the input fields
@@ -86,6 +88,7 @@ impl EditCommandComponent {
     pub fn new(
         service: IntelliShellService,
         theme: Theme,
+        destructive: DestructiveConfig,
         inline: bool,
         command: Command,
         mode: EditCommandComponentMode,
@@ -141,6 +144,7 @@ impl EditCommandComponent {
 
         let ret = Self {
             theme,
+            destructive,
             service,
             layout,
             mode,
@@ -148,7 +152,7 @@ impl EditCommandComponent {
             state,
         };
 
-        ret.state.write().refresh_cmd_style(&ret.theme);
+        ret.state.write().refresh_cmd_style(&ret.theme, &ret.destructive);
         ret
     }
 }
@@ -171,8 +175,10 @@ impl<'a> EditCommandComponentState<'a> {
         self.active_input().set_focus(true);
     }
 
-    fn refresh_cmd_style(&mut self, theme: &Theme) {
-        let style = if crate::utils::is_destructive_command(&self.cmd.lines_as_string()) {
+    fn refresh_cmd_style(&mut self, theme: &Theme, destructive: &DestructiveConfig) {
+        let tags =
+            crate::utils::extract_tags_from_description(Some(&self.description.lines_as_string())).unwrap_or_default();
+        let style = if crate::utils::is_destructive(&self.cmd.lines_as_string(), &tags, &destructive.patterns) {
             theme.destructive
         } else {
             theme.primary
@@ -329,7 +335,7 @@ impl Component for EditCommandComponent {
     fn undo(&mut self) -> Result<Action> {
         let mut state = self.state.write();
         state.active_input().undo();
-        state.refresh_cmd_style(&self.theme);
+        state.refresh_cmd_style(&self.theme, &self.destructive);
 
         Ok(Action::NoOp)
     }
@@ -337,7 +343,7 @@ impl Component for EditCommandComponent {
     fn redo(&mut self) -> Result<Action> {
         let mut state = self.state.write();
         state.active_input().redo();
-        state.refresh_cmd_style(&self.theme);
+        state.refresh_cmd_style(&self.theme, &self.destructive);
 
         Ok(Action::NoOp)
     }
@@ -345,7 +351,7 @@ impl Component for EditCommandComponent {
     fn insert_text(&mut self, text: String) -> Result<Action> {
         let mut state = self.state.write();
         state.active_input().insert_str(text);
-        state.refresh_cmd_style(&self.theme);
+        state.refresh_cmd_style(&self.theme, &self.destructive);
 
         Ok(Action::NoOp)
     }
@@ -353,7 +359,7 @@ impl Component for EditCommandComponent {
     fn insert_char(&mut self, c: char) -> Result<Action> {
         let mut state = self.state.write();
         state.active_input().insert_char(c);
-        state.refresh_cmd_style(&self.theme);
+        state.refresh_cmd_style(&self.theme, &self.destructive);
 
         Ok(Action::NoOp)
     }
@@ -368,7 +374,7 @@ impl Component for EditCommandComponent {
     fn delete(&mut self, backspace: bool, word: bool) -> Result<Action> {
         let mut state = self.state.write();
         state.active_input().delete(backspace, word);
-        state.refresh_cmd_style(&self.theme);
+        state.refresh_cmd_style(&self.theme, &self.destructive);
 
         Ok(Action::NoOp)
     }
@@ -480,6 +486,7 @@ impl Component for EditCommandComponent {
         let cloned_state = self.state.clone();
         let cloned_token = self.global_cancellation_token.clone();
         let theme = self.theme.clone();
+        let destructive = self.destructive.clone();
         tokio::spawn(async move {
             let res = cloned_service.suggest_command(&cmd, &description, cloned_token).await;
             let mut state = cloned_state.write();
@@ -501,7 +508,7 @@ impl Component for EditCommandComponent {
                         }
                         state.description.insert_str(suggested_description);
                     }
-                    state.refresh_cmd_style(&theme);
+                    state.refresh_cmd_style(&theme, &destructive);
                 }
                 Ok(None) => {
                     state

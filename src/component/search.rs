@@ -25,7 +25,7 @@ use crate::{
         edit::{EditCommandComponent, EditCommandComponentMode},
         variable::VariableReplacementComponent,
     },
-    config::{Config, KeyBindingsConfig, SearchConfig, Theme},
+    config::{Config, DestructiveConfig, KeyBindingsConfig, SearchConfig, Theme},
     errors::AppError,
     format_msg,
     model::{Command, CommandTemplate, SOURCE_WORKSPACE, SearchMode},
@@ -43,6 +43,8 @@ const EMPTY_STORAGE_MESSAGE: &str = r#"There are no stored commands yet!
 pub struct SearchCommandsComponent {
     /// The visual theme for styling the component
     theme: Theme,
+    /// The configuration for identifying destructive commands
+    destructive: DestructiveConfig,
     /// Whether the TUI is in inline mode or not
     inline: bool,
     /// Whether to directly execute the command if it matches an alias exactly
@@ -112,7 +114,8 @@ impl SearchCommandsComponent {
         } = config.search;
 
         let ret = Self {
-            theme: config.theme,
+            theme: config.theme.clone(),
+            destructive: config.destructive,
             inline,
             exec_on_alias_match,
             service,
@@ -516,6 +519,7 @@ impl Component for SearchCommandsComponent {
                 Ok(Action::SwitchComponent(Box::new(EditCommandComponent::new(
                     self.service.clone(),
                     self.theme.clone(),
+                    self.destructive.clone(),
                     self.inline,
                     command,
                     EditCommandComponentMode::Edit {
@@ -597,7 +601,7 @@ impl Component for SearchCommandsComponent {
                     .suggest_commands(&query, this.global_cancellation_token.clone())
                     .await;
                 let mut state = this.state.write();
-                let commands = match res {
+                let mut commands = match res {
                     Ok(suggestions) => {
                         if !suggestions.is_empty() {
                             state.error.clear_message();
@@ -617,6 +621,9 @@ impl Component for SearchCommandsComponent {
                     }
                     Err(AppError::Unexpected(err)) => panic!("Error prompting for command suggestions: {err:?}"),
                 };
+                for cmd in &mut commands {
+                    cmd.update_is_destructive(&this.destructive.patterns);
+                }
                 state.commands.update_items(commands, true);
                 state.query.set_ai_loading(false);
             });
@@ -681,7 +688,7 @@ impl SearchCommandsComponent {
 
         // Update the command list or display an error
         let mut state = self.state.write();
-        let commands = match res {
+        let mut commands = match res {
             Ok((commands, alias_match)) => {
                 state.error.clear_message();
                 state.alias_match = alias_match;
@@ -694,6 +701,9 @@ impl SearchCommandsComponent {
             }
             Err(AppError::Unexpected(err)) => return Err(err),
         };
+        for cmd in &mut commands {
+            cmd.update_is_destructive(&self.destructive.patterns);
+        }
         state.commands.update_items(commands, true);
 
         Ok(())
