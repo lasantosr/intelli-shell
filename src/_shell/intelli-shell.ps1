@@ -13,14 +13,18 @@ if (-not (Get-Module -Name PSReadLine -ListAvailable)) {
 # Import the module if it's not already loaded
 Import-Module PSReadLine -ErrorAction SilentlyContinue
 
-# Polyfill for $IsWindows on older PowerShell versions
+# Polyfill for $IsWindows and $IsLinux on older PowerShell versions
 if (-not (Test-Path 'variable:IsWindows')) {
   # In Windows PowerShell (<= 5.1), we are always on Windows
   New-Variable -Name 'IsWindows' -Value $true -Scope Script
+  New-Variable -Name 'IsLinux' -Value $false -Scope Script
 }
 
 # --- Configuration ---
-$IntelliSearchChord = if ([string]::IsNullOrEmpty($env:INTELLI_SEARCH_HOTKEY)) { 'Ctrl+Spacebar' } else { $env:INTELLI_SEARCH_HOTKEY }
+$IntelliSearchChord = if ([string]::IsNullOrEmpty($env:INTELLI_SEARCH_HOTKEY)) { 
+  # PowerShell's key handling is different on Linux: https://learn.microsoft.com/en-us/powershell/scripting/learn/shell/using-keyhandlers?view=powershell-7.6#linux
+  if ($IsLinux) { 'Ctrl+D2' } else { 'Ctrl+space' }
+} else { $env:INTELLI_SEARCH_HOTKEY }
 $IntelliBookmarkChord = if ([string]::IsNullOrEmpty($env:INTELLI_BOOKMARK_HOTKEY)) { 'Ctrl+b' } else { $env:INTELLI_BOOKMARK_HOTKEY }
 $IntelliVariableChord = if ([string]::IsNullOrEmpty($env:INTELLI_VARIABLE_HOTKEY)) { 'Ctrl+l' } else { $env:INTELLI_VARIABLE_HOTKEY }
 $IntelliFixChord = if ([string]::IsNullOrEmpty($env:INTELLI_FIX_HOTKEY)) { 'Ctrl+x' } else { $env:INTELLI_FIX_HOTKEY }
