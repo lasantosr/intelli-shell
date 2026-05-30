@@ -1,11 +1,12 @@
-use std::{path::Path, process::Command};
-
 use color_eyre::{
     Report,
     eyre::{Context, OptionExt, eyre},
 };
 use futures_util::{FutureExt, StreamExt, TryStreamExt, stream};
-use git2::{Remote, Repository, build::CheckoutBuilder};
+use git2::{
+    FetchOptions, ProxyOptions, RemoteCallbacks, Repository,
+    build::{CheckoutBuilder, RepoBuilder},
+};
 use tokio::{fs::File, sync::mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
@@ -235,6 +236,10 @@ impl IntelliShellService {
         cancellation_token: CancellationToken,
     ) -> Result<bool> {
         const BRANCH: &str = "main";
+        let repo_url = match connection_mode {
+            TldrConnectionMode::Https => "https://github.com/tldr-pages/tldr.git",
+            TldrConnectionMode::Ssh => "git@github.com:tldr-pages/tldr.git",
+        };
 
         let tldr_repo_path = self.tldr_repo_path.clone();
 
@@ -244,7 +249,21 @@ impl IntelliShellService {
                 // Use blocking_send as we are in a sync context
                 progress.blocking_send(TldrFetchProgress::Repository(status)).ok();
             };
-            let repo_url = tldr_repo_url(connection_mode);
+            // Setup git callbacks to enable cancellation
+            let mut callbacks = RemoteCallbacks::new();
+            callbacks.transfer_progress(move |_| !cancellation_token.is_cancelled());
+            if connection_mode == TldrConnectionMode::Ssh {
+                callbacks.credentials(|_url, username_from_url, _allowed_types| {
+                    git2::Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
+                });
+            }
+            // Setup git fetch options for a swallow copy with auto proxy config
+            let mut proxy_opts = ProxyOptions::new();
+            proxy_opts.auto();
+            let mut fetch_options = FetchOptions::new();
+            fetch_options.proxy_options(proxy_opts);
+            fetch_options.remote_callbacks(callbacks);
+            fetch_options.depth(1);
             // Fetch latest repo changes or clone it if it doesn't exist yet
             if tldr_repo_path.exists() {
                 tracing::info!("Fetching latest tldr changes ...");
@@ -253,13 +272,25 @@ impl IntelliShellService {
                 // Open the existing repository.
                 let repo = Repository::open(&tldr_repo_path).wrap_err("Failed to open existing tldr repository")?;
 
-                // Ensure the 'origin' remote uses the requested transport.
-                let _remote = ensure_tldr_remote(&repo, connection_mode)?;
-
-                if cancellation_token.is_cancelled() {
-                    return Err(UserFacingError::Cancelled.into());
+                // Update 'origin' URL if it doesn't match `repo_url`
+                let current_url = repo.find_remote("origin")?.url().map(|s| s.to_owned());
+                if current_url.as_deref() != Some(repo_url) {
+                    repo.remote_set_url("origin", repo_url)
+                        .wrap_err("Failed to update remote URL")?;
                 }
-                run_git_fetch(&tldr_repo_path, BRANCH)?;
+
+                // Get the 'origin' remote
+                let mut remote = repo.find_remote("origin")?;
+
+                // Fetch the latest changes from the remote 'main' branch
+                let refspec = format!("refs/heads/{BRANCH}:refs/remotes/origin/{BRANCH}");
+                if let Err(err) = remote.fetch(&[refspec], Some(&mut fetch_options), None) {
+                    // Check if the error was a user-initiated cancellation
+                    if err.code() == git2::ErrorCode::User && err.class() == git2::ErrorClass::Callback {
+                        return Err(UserFacingError::Cancelled.into());
+                    }
+                    return Err(Report::from(err).wrap_err("Failed to fetch from tldr remote").into());
+                }
 
                 // Get the commit OID from the fetched data (FETCH_HEAD)
                 let fetch_head = repo.find_reference("FETCH_HEAD")?;
@@ -302,10 +333,17 @@ impl IntelliShellService {
                 tracing::info!("Performing a shallow clone of '{repo_url}' ...");
                 send_progress(RepoStatus::Cloning);
 
-                if cancellation_token.is_cancelled() {
-                    return Err(UserFacingError::Cancelled.into());
+                // Clone the repository
+                if let Err(err) = RepoBuilder::new()
+                    .branch(BRANCH)
+                    .fetch_options(fetch_options)
+                    .clone(repo_url, &tldr_repo_path)
+                {
+                    if err.code() == git2::ErrorCode::User && err.class() == git2::ErrorClass::Callback {
+                        return Err(UserFacingError::Cancelled.into());
+                    }
+                    return Err(Report::from(err).wrap_err("Failed to clone tldr repository").into());
                 }
-                run_git_clone(repo_url, BRANCH, &tldr_repo_path)?;
 
                 tracing::info!("Repository successfully cloned");
                 send_progress(RepoStatus::DoneCloning);
@@ -314,153 +352,5 @@ impl IntelliShellService {
         })
         .await
         .wrap_err("tldr repository task failed")?
-    }
-}
-
-fn tldr_repo_url(connection_mode: TldrConnectionMode) -> &'static str {
-    match connection_mode {
-        TldrConnectionMode::Https => "https://github.com/tldr-pages/tldr.git",
-        TldrConnectionMode::Ssh => "git@github.com:tldr-pages/tldr.git",
-    }
-}
-
-fn ensure_tldr_remote<'repo>(repo: &'repo Repository, connection_mode: TldrConnectionMode) -> Result<Remote<'repo>> {
-    let repo_url = tldr_repo_url(connection_mode);
-    let current_url = current_tldr_origin_url(repo)?;
-
-    match current_url.as_deref() {
-        Some(url) if url == repo_url => {}
-        Some(_) => repo
-            .remote_set_url("origin", repo_url)
-            .wrap_err("Failed to update tldr origin remote URL")?,
-        None => {
-            repo.remote("origin", repo_url)
-                .wrap_err("Failed to create tldr origin remote")?;
-        }
-    }
-
-    repo.find_remote("origin")
-        .wrap_err("Failed to open tldr origin remote")
-        .map_err(Into::into)
-}
-
-fn run_git_clone(repo_url: &str, branch: &str, repo_path: &Path) -> Result<()> {
-    run_git_command(
-        Command::new("git")
-            .args(["clone", "--depth", "1", "--branch", branch, repo_url])
-            .arg(repo_path),
-    )
-}
-
-fn run_git_fetch(repo_path: &Path, branch: &str) -> Result<()> {
-    let refspec = format!("refs/heads/{branch}:refs/remotes/origin/{branch}");
-    run_git_command(
-        Command::new("git")
-            .arg("-C")
-            .arg(repo_path)
-            .args(["fetch", "--depth", "1", "origin"])
-            .arg(refspec),
-    )
-}
-
-fn run_git_command(command: &mut Command) -> Result<()> {
-    let output = command.output().wrap_err("Failed to execute git command")?;
-    if output.status.success() {
-        return Ok(());
-    }
-
-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-    let message = if stderr.is_empty() {
-        stdout
-    } else if stdout.is_empty() {
-        stderr
-    } else {
-        format!("{stderr}\n{stdout}")
-    };
-
-    Err(eyre!("git command failed: {message}").into())
-}
-
-fn current_tldr_origin_url(repo: &Repository) -> Result<Option<String>> {
-    let config = repo.config().wrap_err("Failed to read tldr repository git config")?;
-
-    match config.get_string("remote.origin.url") {
-        Ok(url) => Ok(Some(url)),
-        Err(err) if err.code() == git2::ErrorCode::NotFound => Ok(None),
-        Err(err) => Err(Report::from(err)
-            .wrap_err("Failed to read tldr origin remote URL")
-            .into()),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{
-        env, fs,
-        path::{Path, PathBuf},
-    };
-
-    use uuid::Uuid;
-
-    use super::*;
-
-    #[test]
-    fn test_tldr_repo_url_for_ssh() {
-        assert_eq!(
-            tldr_repo_url(TldrConnectionMode::Ssh),
-            "git@github.com:tldr-pages/tldr.git"
-        );
-    }
-
-    #[test]
-    fn test_ensure_tldr_remote_creates_origin() -> Result<()> {
-        let temp_dir = TempRepoDir::new();
-        let repo = Repository::init(temp_dir.path())?;
-
-        let _remote = ensure_tldr_remote(&repo, TldrConnectionMode::Https)?;
-        assert_eq!(
-            current_tldr_origin_url(&repo)?,
-            Some(tldr_repo_url(TldrConnectionMode::Https).to_string())
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_ensure_tldr_remote_updates_existing_origin_url() -> Result<()> {
-        let temp_dir = TempRepoDir::new();
-        let repo = Repository::init(temp_dir.path())?;
-        repo.remote("origin", tldr_repo_url(TldrConnectionMode::Https))?;
-
-        let _remote = ensure_tldr_remote(&repo, TldrConnectionMode::Ssh)?;
-        assert_eq!(
-            current_tldr_origin_url(&repo)?,
-            Some(tldr_repo_url(TldrConnectionMode::Ssh).to_string())
-        );
-
-        Ok(())
-    }
-
-    struct TempRepoDir {
-        path: PathBuf,
-    }
-
-    impl TempRepoDir {
-        fn new() -> Self {
-            Self {
-                path: env::temp_dir().join(format!("intelli-shell-tldr-test-{}", Uuid::now_v7())),
-            }
-        }
-
-        fn path(&self) -> &Path {
-            &self.path
-        }
-    }
-
-    impl Drop for TempRepoDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.path);
-        }
     }
 }
