@@ -40,8 +40,15 @@ intelli-shell tldr fetch [OPTIONS] [CATEGORY]
 
 - `--connection <CONNECTION>`
   
-  Selects how IntelliShell connects to the upstream `tldr` git repository. Supported values are `https` (default) and
-  `ssh`. Use `ssh` when you want to fetch through your local SSH git configuration.
+  Selects which git transport IntelliShell uses to reach the upstream `tldr` repository. Supported values:
+
+  - `auto` (default): detect the transport automatically. It reuses the transport of an existing local clone (also
+    honoring any git `insteadOf` rewrites), and falls back to `https` for a fresh clone.
+  - `https`: always connect over HTTPS. No authentication is required for the public repository.
+  - `ssh`: connect over SSH, using your local SSH agent and git configuration.
+
+  In most cases `auto` is all you need. Pass `ssh` explicitly to use SSH for the *first* clone (when there is no
+  existing remote to detect), or `https` to force HTTPS regardless of your local git configuration.
 
 ## Examples
 
@@ -72,7 +79,9 @@ intelli-shell tldr fetch --command git --command docker
 
 ### Fetch Using SSH
 
-If your environment is configured to access GitHub over SSH, switch the transport explicitly:
+With the default `auto` connection, an existing clone that already uses SSH (or a git `insteadOf` rule that rewrites
+HTTPS to SSH) is reused automatically. To force SSH explicitly—for example on the very first fetch, before a local
+clone exists—pass `--connection ssh`:
 
 ```sh
 intelli-shell tldr fetch --connection ssh
