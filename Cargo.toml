@@ -93,7 +93,7 @@ walkdir               = "2"
 
 [dependencies.git2]
 default-features = false
-features         = ["https"]
+features         = ["https", "ssh"]
 optional         = true
 version          = "0.20"
 

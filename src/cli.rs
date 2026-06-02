@@ -445,7 +445,7 @@ pub struct TldrFetchProcess {
     pub category: Option<String>,
 
     /// Connection protocol used to reach the upstream tldr git repository
-    #[arg(long, value_enum, default_value_t = TldrConnectionMode::Https)]
+    #[arg(long, value_enum, default_value_t = TldrConnectionMode::Auto)]
     pub connection: TldrConnectionMode,
 
     /// Fetches examples only for the specified command(s) (e.g., `git`, `docker`, `tar`)
@@ -626,8 +626,19 @@ mod tests {
     }
 
     #[test]
-    fn test_tldr_fetch_defaults_to_https_connection() -> Result<()> {
+    fn test_tldr_fetch_defaults_to_auto_connection() -> Result<()> {
         let cli = Cli::try_parse_from(["intelli-shell", "tldr", "fetch"])?;
+        let CliProcess::Tldr(TldrProcess::Fetch(process)) = cli.process else {
+            return Err(eyre!("Expected tldr fetch process"));
+        };
+
+        assert_eq!(process.connection, TldrConnectionMode::Auto);
+        Ok(())
+    }
+
+    #[test]
+    fn test_tldr_fetch_parses_https_connection() -> Result<()> {
+        let cli = Cli::try_parse_from(["intelli-shell", "tldr", "fetch", "--connection", "https"])?;
         let CliProcess::Tldr(TldrProcess::Fetch(process)) = cli.process else {
             return Err(eyre!("Expected tldr fetch process"));
         };
