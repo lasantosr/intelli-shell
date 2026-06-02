@@ -15,7 +15,7 @@ use walkdir::WalkDir;
 use super::{IntelliShellService, import::parse_import_items};
 use crate::{
     errors::{Result, UserFacingError},
-    model::{ImportStats, SOURCE_TLDR},
+    model::{ImportStats, SOURCE_TLDR, TldrConnectionMode},
 };
 
 /// Progress events for the `tldr fetch` operation
@@ -66,6 +66,7 @@ impl IntelliShellService {
     pub async fn fetch_tldr_commands(
         &self,
         category: Option<String>,
+        connection_mode: TldrConnectionMode,
         commands: Vec<String>,
         progress: mpsc::Sender<TldrFetchProgress>,
         cancellation_token: CancellationToken,
@@ -77,7 +78,7 @@ impl IntelliShellService {
         }
 
         // Setup repository
-        self.setup_tldr_repo(progress.clone(), cancellation_token.clone())
+        self.setup_tldr_repo(connection_mode, progress.clone(), cancellation_token.clone())
             .await?;
 
         // Determine which categories to import
@@ -230,11 +231,13 @@ impl IntelliShellService {
     #[instrument(skip_all)]
     async fn setup_tldr_repo(
         &self,
+        connection_mode: TldrConnectionMode,
         progress: mpsc::Sender<TldrFetchProgress>,
         cancellation_token: CancellationToken,
     ) -> Result<bool> {
         const BRANCH: &str = "main";
-        const REPO_URL: &str = "https://github.com/tldr-pages/tldr.git";
+        const HTTPS_URL: &str = "https://github.com/tldr-pages/tldr.git";
+        const SSH_URL: &str = "git@github.com:tldr-pages/tldr.git";
 
         let tldr_repo_path = self.tldr_repo_path.clone();
 
@@ -244,9 +247,51 @@ impl IntelliShellService {
                 // Use blocking_send as we are in a sync context
                 progress.blocking_send(TldrFetchProgress::Repository(status)).ok();
             };
+
+            // Open the repository upfront when it already exists, so the connection mode can be resolved from it
+            let repo = if tldr_repo_path.exists() {
+                Some(Repository::open(&tldr_repo_path).wrap_err("Failed to open existing tldr repository")?)
+            } else {
+                None
+            };
+
+            // Resolve the effective repository URL from the requested connection mode:
+            // - `Https`/`Ssh` force the matching transport
+            // - `Auto` reuses the transport of an existing clone (this also honors git `insteadOf` rewrites), falling
+            //   back to HTTPS for a fresh clone
+            let repo_url = match connection_mode {
+                TldrConnectionMode::Https => HTTPS_URL.to_owned(),
+                TldrConnectionMode::Ssh => SSH_URL.to_owned(),
+                TldrConnectionMode::Auto => repo
+                    .as_ref()
+                    .and_then(|repo| repo.find_remote("origin").ok())
+                    .and_then(|remote| remote.url().map(ToOwned::to_owned))
+                    .unwrap_or_else(|| HTTPS_URL.to_owned()),
+            };
             // Setup git callbacks to enable cancellation
             let mut callbacks = RemoteCallbacks::new();
             callbacks.transfer_progress(move |_| !cancellation_token.is_cancelled());
+            // Always register the SSH credentials callback: libgit2 only invokes it when the resolved transport
+            // is SSH, which can happen via an explicit `ssh` mode, a reused SSH remote, or a git `insteadOf`
+            // rewrite of an HTTPS URL (so sniffing the configured scheme isn't reliable). SSH auth is negotiated
+            // in steps: libgit2 first asks for the username (when it isn't part of the URL), then for the
+            // credentials, so the returned credential type must match the requested `allowed_types`, otherwise
+            // git2 passes through and libgit2 reports it as a missing callback. The agent is only offered once to
+            // avoid looping forever when authentication fails.
+            let mut agent_offered = false;
+            callbacks.credentials(move |_url, username_from_url, allowed_types| {
+                let username = username_from_url.unwrap_or("git");
+                if allowed_types.contains(git2::CredentialType::USERNAME) {
+                    git2::Cred::username(username)
+                } else if allowed_types.contains(git2::CredentialType::SSH_KEY) && !agent_offered {
+                    agent_offered = true;
+                    git2::Cred::ssh_key_from_agent(username)
+                } else {
+                    Err(git2::Error::from_str(
+                        "SSH authentication failed: no usable identity found in the SSH agent",
+                    ))
+                }
+            });
             // Setup git fetch options for a swallow copy with auto proxy config
             let mut proxy_opts = ProxyOptions::new();
             proxy_opts.auto();
@@ -255,12 +300,17 @@ impl IntelliShellService {
             fetch_options.remote_callbacks(callbacks);
             fetch_options.depth(1);
             // Fetch latest repo changes or clone it if it doesn't exist yet
-            if tldr_repo_path.exists() {
+            if let Some(repo) = repo {
                 tracing::info!("Fetching latest tldr changes ...");
                 send_progress(RepoStatus::Fetching);
 
-                // Open the existing repository.
-                let repo = Repository::open(&tldr_repo_path).wrap_err("Failed to open existing tldr repository")?;
+                // Update 'origin' URL if it doesn't match `repo_url` (no-op in `Auto` mode, which already
+                // derives the URL from the existing remote)
+                let current_url = repo.find_remote("origin")?.url().map(|s| s.to_owned());
+                if current_url.as_deref() != Some(repo_url.as_str()) {
+                    repo.remote_set_url("origin", &repo_url)
+                        .wrap_err("Failed to update remote URL")?;
+                }
 
                 // Get the 'origin' remote
                 let mut remote = repo.find_remote("origin")?;
@@ -313,14 +363,14 @@ impl IntelliShellService {
                 send_progress(RepoStatus::DoneUpdating);
                 Ok(true)
             } else {
-                tracing::info!("Performing a shallow clone of '{REPO_URL}' ...");
+                tracing::info!("Performing a shallow clone of '{repo_url}' ...");
                 send_progress(RepoStatus::Cloning);
 
                 // Clone the repository
                 if let Err(err) = RepoBuilder::new()
                     .branch(BRANCH)
                     .fetch_options(fetch_options)
-                    .clone(REPO_URL, &tldr_repo_path)
+                    .clone(&repo_url, &tldr_repo_path)
                 {
                     if err.code() == git2::ErrorCode::User && err.class() == git2::ErrorClass::Callback {
                         return Err(UserFacingError::Cancelled.into());

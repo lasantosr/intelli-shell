@@ -17,3 +17,6 @@ Examples:
     tar
     find
   EOF
+
+  # Fetch and import pages using an SSH git connection
+  intelli-shell tldr fetch --connection ssh

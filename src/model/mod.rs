@@ -5,4 +5,5 @@ crate::using! {
     pub release,
     pub completion,
     pub import_export,
+    pub tldr,
 }

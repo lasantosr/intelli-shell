@@ -38,6 +38,18 @@ intelli-shell tldr fetch [OPTIONS] [CATEGORY]
   Fetches examples only for commands listed in a file or from standard input. If no path is provided, it reads from
   `stdin`. Command names should be separated by newlines.
 
+- `--connection <CONNECTION>`
+  
+  Selects which git transport IntelliShell uses to reach the upstream `tldr` repository. Supported values:
+
+  - `auto` (default): detect the transport automatically. It reuses the transport of an existing local clone (also
+    honoring any git `insteadOf` rewrites), and falls back to `https` for a fresh clone.
+  - `https`: always connect over HTTPS. No authentication is required for the public repository.
+  - `ssh`: connect over SSH, using your local SSH agent and git configuration.
+
+  In most cases `auto` is all you need. Pass `ssh` explicitly to use SSH for the *first* clone (when there is no
+  existing remote to detect), or `https` to force HTTPS regardless of your local git configuration.
+
 ## Examples
 
 ### Fetch Default Pages for Your System
@@ -63,4 +75,14 @@ If you only need examples for a particular command, use the `--command` flag.
 
 ```sh
 intelli-shell tldr fetch --command git --command docker
+```
+
+### Fetch Using SSH
+
+With the default `auto` connection, an existing clone that already uses SSH (or a git `insteadOf` rule that rewrites
+HTTPS to SSH) is reused automatically. To force SSH explicitly—for example on the very first fetch, before a local
+clone exists—pass `--connection ssh`:
+
+```sh
+intelli-shell tldr fetch --connection ssh
 ```
