@@ -257,8 +257,8 @@ impl IntelliShellService {
 
             // Resolve the effective repository URL from the requested connection mode:
             // - `Https`/`Ssh` force the matching transport
-            // - `Auto` reuses the transport of an existing clone (this also honors git `insteadOf` rewrites),
-            //   falling back to HTTPS for a fresh clone
+            // - `Auto` reuses the transport of an existing clone (this also honors git `insteadOf` rewrites), falling
+            //   back to HTTPS for a fresh clone
             let repo_url = match connection_mode {
                 TldrConnectionMode::Https => HTTPS_URL.to_owned(),
                 TldrConnectionMode::Ssh => SSH_URL.to_owned(),
