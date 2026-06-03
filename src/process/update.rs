@@ -149,6 +149,11 @@ fn get_manual_update_instructions(method: InstallationMethod, theme: &Theme) -> 
             "It looks like you installed with {}. Consider updating it via your Nix configuration.",
             theme.secondary.apply("Nix")
         ),
+        InstallationMethod::Homebrew => format!(
+            "It looks like you installed with {}. To update, please run:\n\n{}\n",
+            theme.secondary.apply("Homebrew"),
+            theme.accent.apply("  brew upgrade intelli-shell")
+        ),
         InstallationMethod::Source => format!(
             "It looks like you installed from {}. You might need to run:\n\n{}\n",
             theme.secondary.apply("source"),
