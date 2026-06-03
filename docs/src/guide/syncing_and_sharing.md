@@ -39,6 +39,12 @@ git log --oneline --graph --decorate
 terraform plan \
     -var-file="envs/{{env}}.tfvars"
 
+# Run a temporary inline function
+my_function() { printf "arg: %s\n" "$1"; }; my_function {{arg}}
+
+# Or a local shell script
+./my-script.sh {{param}}
+
 # --------------------------------------------------------------
 #   Completions
 # --------------------------------------------------------------
@@ -48,7 +54,18 @@ $ branch: git branch --format='%(refname:short)'
 
 # A command-specific completion for the `{{env}}` variable when using `terraform`.
 $ (terraform) env: find envs -type f -name "*.tfvars" -printf "%P\n" | sort | sed 's/\.tfvars$//'
+
+# A completion for the temporary function variable
+$ (my_function) arg: printf "value1\nvalue2"
+
+# A completion for the script parameter.
+$ (my-script.sh) param: printf "value"
 ```
+
+> 💡 **Choice Placeholders**: If a command template uses a choice placeholder like `git reset {{--soft|--hard}}`,
+> IntelliShell automatically suggests the choices (`--soft` and `--hard`) directly in the TUI without needing any
+> completion definition. If you want a dynamic completion provider for a choice placeholder, define the completion
+> using one of the individual options (e.g., `$ (git) --soft: ...`), rather than the joined string.
 
 ## Local Backup & Restore
 

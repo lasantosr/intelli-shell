@@ -552,7 +552,8 @@ pub(super) fn parse_import_items(
                 // Regex for completions, with an optional command part
                 // It matches both `$ (cmd) var: provider` and `$ var: provider`
                 static COMPLETION_RE: LazyLock<Regex> = LazyLock::new(|| {
-                    Regex::new(r"^\$\s*(?:\((?P<cmd>[\w-]+)\)\s*)?(?P<var>[^:|{}]+):\s*(?P<provider>.+)$").unwrap()
+                    Regex::new(r"^\$\s*(?:\((?P<cmd>[\w./\\:~-]+)\)\s*)?(?P<var>[^:|{}]+):\s*(?P<provider>.+)$")
+                        .unwrap()
                 });
 
                 let item = if let Some(caps) = COMPLETION_RE.captures(trimmed_line) {
@@ -1048,6 +1049,10 @@ mod tests {
             $(git) branch: git branch --all
             $ file: ls -F
             $ (az) group: az group list --output tsv
+            $ (my_script.sh) arg: printf 'value'
+            $ (./my_script.sh) arg2: printf 'value2'
+            $ (C:\tools\my_script.bat) win_arg: printf 'win'
+            $ (~/bin/my_script.sh) tilde_arg: printf 'tilde'
             "#;
 
         let items = parse_import_items(input.as_bytes(), Vec::new(), CATEGORY_USER, SOURCE_IMPORT)
@@ -1055,7 +1060,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(items.len(), 4);
+        assert_eq!(items.len(), 8);
 
         let cmd = get_command(&items[0]);
         assert_eq!(cmd.cmd, "ls -l");
@@ -1083,6 +1088,38 @@ mod tests {
             assert_eq!(c.suggestions_provider, "az group list --output tsv");
         } else {
             panic!("Expected a Completion at index 3");
+        }
+
+        if let ImportExportItem::Completion(c) = &items[4] {
+            assert_eq!(c.flat_root_cmd, "myscriptsh");
+            assert_eq!(c.flat_variable, "arg");
+            assert_eq!(c.suggestions_provider, "printf 'value'");
+        } else {
+            panic!("Expected a Completion at index 4");
+        }
+
+        if let ImportExportItem::Completion(c) = &items[5] {
+            assert_eq!(c.flat_root_cmd, "myscriptsh");
+            assert_eq!(c.flat_variable, "arg2");
+            assert_eq!(c.suggestions_provider, "printf 'value2'");
+        } else {
+            panic!("Expected a Completion at index 5");
+        }
+
+        if let ImportExportItem::Completion(c) = &items[6] {
+            assert_eq!(c.flat_root_cmd, "ctoolsmyscriptbat");
+            assert_eq!(c.flat_variable, "win_arg");
+            assert_eq!(c.suggestions_provider, "printf 'win'");
+        } else {
+            panic!("Expected a Completion at index 6");
+        }
+
+        if let ImportExportItem::Completion(c) = &items[7] {
+            assert_eq!(c.flat_root_cmd, "binmyscriptsh");
+            assert_eq!(c.flat_variable, "tilde_arg");
+            assert_eq!(c.suggestions_provider, "printf 'tilde'");
+        } else {
+            panic!("Expected a Completion at index 7");
         }
     }
 
