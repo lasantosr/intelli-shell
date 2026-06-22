@@ -68,17 +68,6 @@ async fn main() -> Result<()> {
                     let include_integration = init.integration || !init.completions;
                     let include_completions = init.completions || !init.integration;
 
-                    if include_integration {
-                        let script = match init.shell {
-                            Shell::Bash => BASH_INIT,
-                            Shell::Zsh => ZSH_INIT,
-                            Shell::Fish => FISH_INIT,
-                            Shell::Nushell => NUSHELL_INIT,
-                            Shell::Powershell => POWERSHELL_INIT,
-                        };
-                        output.push_str(script);
-                    }
-
                     if include_completions {
                         let mut cmd = Cli::command();
                         let cmd_bin_name = cmd.get_name().to_string();
@@ -117,10 +106,21 @@ async fn main() -> Result<()> {
                             ),
                         }
 
-                        if include_integration {
+                        output.push_str(&String::from_utf8_lossy(&completions));
+                    }
+
+                    if include_integration {
+                        if include_completions {
                             output.push('\n');
                         }
-                        output.push_str(&String::from_utf8_lossy(&completions));
+                        let script = match init.shell {
+                            Shell::Bash => BASH_INIT,
+                            Shell::Zsh => ZSH_INIT,
+                            Shell::Fish => FISH_INIT,
+                            Shell::Nushell => NUSHELL_INIT,
+                            Shell::Powershell => POWERSHELL_INIT,
+                        };
+                        output.push_str(script);
                     }
 
                     let output_info = OutputInfo {
