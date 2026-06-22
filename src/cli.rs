@@ -509,7 +509,12 @@ pub struct CompletionListProcess {
 #[cfg(feature = "self-update")]
 /// Self-update the application
 #[derive(Args, Debug)]
-pub struct UpdateProcess {}
+pub struct UpdateProcess {
+    /// Specific version to update/downgrade to (e.g., "1.2.3" or "v1.2.3"). If not specified, updates to the latest
+    /// version.
+    #[arg(long, value_parser = parse_version)]
+    pub to: Option<Version>,
+}
 
 /// Displays the changelog of the application
 #[derive(Args, Debug)]
@@ -623,6 +628,18 @@ mod tests {
     #[test]
     fn test_cli_asserts() {
         Cli::command().debug_assert()
+    }
+
+    #[test]
+    #[cfg(feature = "self-update")]
+    fn test_update_parses_to_version() -> Result<()> {
+        let cli = Cli::try_parse_from(["intelli-shell", "update", "--to", "1.2.3"])?;
+        let CliProcess::Update(process) = cli.process else {
+            return Err(eyre!("Expected update process"));
+        };
+
+        assert_eq!(process.to, Some(Version::parse("1.2.3").unwrap()));
+        Ok(())
     }
 
     #[test]

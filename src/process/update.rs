@@ -34,23 +34,55 @@ impl Process for UpdateProcess {
             Err(AppError::Unexpected(report)) => return Err(report),
         };
 
-        // Check if latest is newer than current
-        let latest_version = match releases.first() {
-            Some(r) if r.version > current_version => r.version.clone(),
-            _ => {
-                return Ok(ProcessOutput::success().stdout(format!(
-                    "You're all set! You are running the latest version of intelli-shell ({}).",
-                    config.theme.accent.apply(current_version_tag)
+        let latest_release = releases.first().map(|r| r.version.clone());
+
+        let target_version = if let Some(target) = &self.to {
+            // Find the release matching the target version
+            if !releases.iter().any(|r| &r.version == target) {
+                return Ok(ProcessOutput::fail().stderr(format_error!(
+                    config.theme,
+                    "Requested version {} was not found in the list of releases.",
+                    config.theme.accent.apply(target)
                 )));
+            }
+            target.clone()
+        } else {
+            // Check if latest is newer than current
+            match releases.first() {
+                Some(r) if r.version > current_version => r.version.clone(),
+                _ => {
+                    return Ok(ProcessOutput::success().stdout(format!(
+                        "You're all set! You are running the latest version of intelli-shell ({}).",
+                        config.theme.accent.apply(current_version_tag)
+                    )));
+                }
             }
         };
 
         // Common header for all update-needed messages
-        let header = format!(
-            "🚀 A new version is available! ({} -> {})",
-            config.theme.secondary.apply(current_version_tag),
-            config.theme.accent.apply(latest_version.to_tag()),
-        );
+        let header = if let Some(target) = &self.to {
+            if target > &current_version {
+                format!(
+                    "🚀 Updating to version {} (from {})",
+                    config.theme.accent.apply(target),
+                    config.theme.secondary.apply(&current_version_tag)
+                )
+            } else if target < &current_version {
+                format!(
+                    "⏬ Downgrading to version {} (from {})",
+                    config.theme.accent.apply(target),
+                    config.theme.secondary.apply(&current_version_tag)
+                )
+            } else {
+                format!("🔄 Reinstalling version {}", config.theme.accent.apply(target))
+            }
+        } else {
+            format!(
+                "🚀 A new version is available! ({} -> {})",
+                config.theme.secondary.apply(&current_version_tag),
+                config.theme.accent.apply(target_version.to_tag()),
+            )
+        };
 
         // Detect the installation method to provide tailored instructions
         match detect_installation_method(&config.data_dir) {
@@ -58,7 +90,7 @@ impl Process for UpdateProcess {
             InstallationMethod::Installer => {
                 println!("{header}\n\nDownloading ...");
 
-                let target_version_tag = latest_version.to_tag();
+                let target_version_tag = target_version.to_tag();
                 let status = tokio::task::spawn_blocking(move || {
                     self_update::backends::github::Update::configure()
                         .repo_owner("lasantosr")
@@ -81,16 +113,18 @@ impl Process for UpdateProcess {
                     Ok(self_update::Status::UpToDate(_)) => unreachable!(),
                     Ok(self_update::Status::Updated(_)) => {
                         // If the current version is not present, there has been a gap
-                        let gap = !releases.iter().any(|r| r.version == current_version);
-                        // We don't need considerations for the current version or older
-                        releases.retain(|r| r.version > current_version);
+                        let gap =
+                            target_version > current_version && !releases.iter().any(|r| r.version == current_version);
+                        // We don't need considerations for the current version or older, or versions beyond
+                        // target_version
+                        releases.retain(|r| r.version > current_version && r.version <= target_version);
                         // Build aggregated considerations message
-                        let considerations = build_considerations_message(&releases, &latest_version);
+                        let considerations = build_considerations_message(&releases, &target_version);
 
                         // Build the final message
                         let mut msg = format!(
                             "✅ You're all set! You are now on intelli-shell {}.\n\n",
-                            config.theme.accent.apply(latest_version.to_tag())
+                            config.theme.accent.apply(target_version.to_tag())
                         );
                         if !considerations.is_empty() {
                             if gap {
@@ -111,12 +145,31 @@ impl Process for UpdateProcess {
                             msg.push_str(&render_markdown_to_ansi(&considerations, &config.theme));
                             msg.push_str("\n\n");
                         }
+                        let is_latest = latest_release.as_ref() == Some(&target_version);
+                        let changelog_cmd = if target_version > current_version {
+                            if is_latest {
+                                format!("intelli-shell changelog --from {}", current_version_str)
+                            } else {
+                                format!(
+                                    "intelli-shell changelog --from {} --to {}",
+                                    current_version_str, target_version
+                                )
+                            }
+                        } else if target_version < current_version {
+                            format!(
+                                "intelli-shell changelog --from {} --to {}",
+                                target_version, current_version_str
+                            )
+                        } else {
+                            format!(
+                                "intelli-shell changelog --from {} --to {}",
+                                target_version, target_version
+                            )
+                        };
+
                         msg.push_str(&format!(
                             "📄 To view the full changelog, run: {}",
-                            config
-                                .theme
-                                .accent
-                                .apply(format!("intelli-shell changelog --from {}", current_version_str))
+                            config.theme.accent.apply(changelog_cmd)
                         ));
                         Ok(ProcessOutput::success().stdout(msg))
                     }
