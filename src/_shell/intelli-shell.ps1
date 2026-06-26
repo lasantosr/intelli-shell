@@ -23,7 +23,7 @@ if (-not (Test-Path 'variable:IsWindows')) {
 # --- Configuration ---
 $IntelliSearchChord = if ([string]::IsNullOrEmpty($env:INTELLI_SEARCH_HOTKEY)) { 
   # PowerShell's key handling is different on Linux: https://learn.microsoft.com/en-us/powershell/scripting/learn/shell/using-keyhandlers?view=powershell-7.6#linux
-  if ($IsLinux) { 'Ctrl+D2' } else { 'Ctrl+space' }
+  if ($IsLinux) { 'Ctrl+D2' } else { 'Ctrl+Spacebar' }
 } else { $env:INTELLI_SEARCH_HOTKEY }
 $IntelliBookmarkChord = if ([string]::IsNullOrEmpty($env:INTELLI_BOOKMARK_HOTKEY)) { 'Ctrl+b' } else { $env:INTELLI_BOOKMARK_HOTKEY }
 $IntelliVariableChord = if ([string]::IsNullOrEmpty($env:INTELLI_VARIABLE_HOTKEY)) { 'Ctrl+l' } else { $env:INTELLI_VARIABLE_HOTKEY }
