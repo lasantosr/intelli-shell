@@ -11,7 +11,7 @@ through configuring these features.
 AI integration is disabled by default. To turn on all AI-powered functionality, you must first enable it:
 
 ```toml
-{{#include ../../../default_config.toml:264:266}}
+{{#include ../../../default_config.toml:268:270}}
 ```
 
 > 📝 **Note**: By default, IntelliShell is configured to use **Google Gemini**, given that it has a generous free tier.
@@ -39,7 +39,7 @@ Let's look at each part in detail.
 In the `[ai.models]` section, you tell IntelliShell which model from your catalog to use for each specific AI-powered task.
 
 ```toml
-{{#include ../../../default_config.toml:269:280}}
+{{#include ../../../default_config.toml:273:284}}
 ```
 
 ### 2. Model Catalog
@@ -48,7 +48,7 @@ The `[ai.catalog]` section is where you define the connection details for every 
 you to configure multiple models from different providers and easily switch between them in the Task Assignment section.
 
 ```toml
-{{#include ../../../default_config.toml:291:297}}
+{{#include ../../../default_config.toml:295:301}}
 ```
 
 #### Supported Providers
@@ -172,5 +172,5 @@ information before sending the request to the AI:
 - **`##SHELL_HISTORY##`**: Replaced with the last few commands from the shell's history, this is only available for the
   `fix` prompt
 
-You can view the well-tuned default prompts in the [`default_config.toml`](https://github.com/lasantosr/intelli-shell/blob/main/default_config.toml#L299)
+You can view the well-tuned default prompts in the [`default_config.toml`](https://github.com/lasantosr/intelli-shell/blob/main/default_config.toml#L303)
 file to use as a starting point for your own customizations.

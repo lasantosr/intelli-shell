@@ -104,6 +104,8 @@ pub trait Component: Send {
                 KeyBindingAction::AI => self.prompt_ai().await?,
                 KeyBindingAction::SearchMode => self.toggle_search_mode()?,
                 KeyBindingAction::SearchUserOnly => self.toggle_search_user_only()?,
+                KeyBindingAction::MoveNext => self.move_next()?,
+                KeyBindingAction::MovePrev => self.move_prev()?,
                 KeyBindingAction::VariableNext => self.move_next_variable()?,
                 KeyBindingAction::VariablePrev => self.move_prev_variable()?,
             }));
@@ -115,8 +117,6 @@ pub trait Component: Send {
             // Debug
             KeyCode::Char('p') if key.modifiers == KeyModifiers::ALT => panic!("Debug panic!"),
             // Selection / Movement
-            KeyCode::Char('k') if key.modifiers == KeyModifiers::CONTROL => Some(self.move_prev()?),
-            KeyCode::Char('j') if key.modifiers == KeyModifiers::CONTROL => Some(self.move_next()?),
             KeyCode::Home => Some(self.move_home(key.modifiers == KeyModifiers::CONTROL)?),
             KeyCode::Char('a') if key.modifiers == KeyModifiers::CONTROL => Some(self.move_home(false)?),
             KeyCode::End => Some(self.move_end(key.modifiers == KeyModifiers::CONTROL)?),

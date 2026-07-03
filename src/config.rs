@@ -157,6 +157,10 @@ pub enum KeyBindingAction {
     SearchMode,
     /// Toggle whether to search for user commands only or include tldr's
     SearchUserOnly,
+    /// Move the selection to the next item in the list (e.g., scrolling past a multi-line entry)
+    MoveNext,
+    /// Move the selection to the previous item in the list (e.g., scrolling past a multi-line entry)
+    MovePrev,
     /// Move to the next variable when replacing variables
     VariableNext,
     /// Move to the previous variable when replacing variables
@@ -855,6 +859,14 @@ impl Default for KeyBindingsConfig {
             (
                 KeyBindingAction::SearchUserOnly,
                 KeyBinding(vec![KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL)]),
+            ),
+            (
+                KeyBindingAction::MoveNext,
+                KeyBinding(vec![KeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL)]),
+            ),
+            (
+                KeyBindingAction::MovePrev,
+                KeyBinding(vec![KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL)]),
             ),
             (
                 KeyBindingAction::VariableNext,
