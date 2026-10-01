@@ -281,9 +281,8 @@ impl IntelliShellService {
                 }
             };
 
-            Ok(Box::pin(stream::iter(
-                items.into_iter().map(ImportExportItem::from).map(Ok),
-            )))
+            let items = filter_json_import_items(items, filter, tags);
+            Ok(Box::pin(stream::iter(items.into_iter().map(Ok))))
         } else {
             let content = Cursor::new(res.text().await.map_err(|err| {
                 tracing::error!("Couldn't read api response: {err}");
@@ -428,6 +427,31 @@ impl IntelliShellService {
             Ok(stream)
         }
     }
+}
+
+fn filter_json_import_items(
+    items: Vec<ImportExportItemDto>,
+    filter: Option<Regex>,
+    tags: Vec<String>,
+) -> Vec<ImportExportItem> {
+    items
+        .into_iter()
+        .map(ImportExportItem::from)
+        .filter_map(|item| match item {
+            ImportExportItem::Command(mut command) => {
+                if !tags.is_empty() {
+                    let description = command.description.take().unwrap_or_default();
+                    command = command.with_description(Some(add_tags_to_description(&tags, description)));
+                }
+                if filter.as_ref().is_some_and(|filter| !command.matches(filter)) {
+                    None
+                } else {
+                    Some(ImportExportItem::Command(command))
+                }
+            }
+            completion => Some(completion),
+        })
+        .collect()
 }
 
 /// Lazily parses a stream of text into a [`Stream`] of [`ImportExportItem`].
@@ -716,10 +740,46 @@ mod tests {
     use futures_util::TryStreamExt;
 
     use super::*;
+    use crate::utils::dto::{CommandDto, VariableCompletionDto};
 
     const CMD_1: &str = "cmd number 1";
     const CMD_2: &str = "cmd number 2";
     const CMD_3: &str = "cmd number 3";
+
+    #[test]
+    fn json_import_applies_tags_and_filters_commands_but_keeps_completions() {
+        let items = vec![
+            ImportExportItemDto::Command(CommandDto {
+                id: None,
+                alias: None,
+                cmd: "docker ps".to_string(),
+                description: Some("List containers".to_string()),
+            }),
+            ImportExportItemDto::Command(CommandDto {
+                id: None,
+                alias: None,
+                cmd: "git status".to_string(),
+                description: Some("Show worktree".to_string()),
+            }),
+            ImportExportItemDto::Completion(VariableCompletionDto {
+                command: "git".to_string(),
+                variable: "branch".to_string(),
+                provider: "git branch".to_string(),
+            }),
+        ];
+
+        let items = filter_json_import_items(items, Some(Regex::new("^docker").unwrap()), vec!["#team".to_string()]);
+        assert_eq!(items.len(), 2);
+
+        match &items[0] {
+            ImportExportItem::Command(command) => {
+                assert_eq!(command.cmd, "docker ps");
+                assert_eq!(command.description.as_deref(), Some("List containers #team"));
+            }
+            ImportExportItem::Completion(_) => panic!("Expected a command"),
+        }
+        assert!(matches!(items[1], ImportExportItem::Completion(_)));
+    }
 
     const ALIAS_1: &str = "a1";
     const ALIAS_2: &str = "a2";
