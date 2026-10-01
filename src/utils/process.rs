@@ -507,8 +507,23 @@ pub async fn execute_shell_command_capture(
         }
     }
 
-    // Wait for the process to fully exit to get its final status
-    let status = child.wait().await.wrap_err("Failed to wait for command")?;
+    // Continue observing cancellation after both pipes close: a command can close its output and keep running.
+    let status = if terminated_by_token {
+        child.wait().await.wrap_err("Failed to wait for command")?
+    } else {
+        tokio::select! {
+            biased;
+            _ = cancellation_token.cancelled() => {
+                tracing::info!("Received cancellation signal, terminating child process...");
+                child.kill().await.with_context(|| format!("Failed to kill child process for command: `{command}`"))?;
+                terminated_by_token = true;
+                child.wait().await.wrap_err("Failed to wait for command after cancellation")?
+            },
+            status = child.wait() => {
+                status.wrap_err("Failed to wait for command")?
+            }
+        }
+    };
 
     Ok((status, output_capture, terminated_by_token))
 }
@@ -553,4 +568,37 @@ pub fn prepare_command_execution(
     let mut cmd = tokio::process::Command::new(shell.to_string());
     cmd.arg(shell_arg).arg(command).kill_on_drop(true);
     Ok(cmd)
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio_util::sync::CancellationToken;
+
+    use super::execute_shell_command_capture;
+
+    #[tokio::test]
+    async fn cancellation_is_observed_after_output_pipes_close() {
+        let command = if cfg!(windows) {
+            "[Console]::Out.Close(); [Console]::Error.Close(); Start-Sleep -Seconds 30"
+        } else {
+            "exec >/dev/null 2>&1; sleep 30"
+        };
+        let cancellation_token = CancellationToken::new();
+        let cancellation_signal = cancellation_token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            cancellation_signal.cancel();
+        });
+
+        let (status, _, terminated_by_token) = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            execute_shell_command_capture(command, false, cancellation_token),
+        )
+        .await
+        .expect("command cancellation should not wait for the child to finish")
+        .expect("command execution should complete after cancellation");
+
+        assert!(terminated_by_token);
+        assert!(!status.success());
+    }
 }
