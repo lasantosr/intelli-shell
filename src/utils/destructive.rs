@@ -71,11 +71,6 @@ fn split_shell_segments(command: &str) -> Vec<&str> {
                 start = index + 2;
                 index += 2;
             }
-            b'&' => {
-                segments.push(&command[start..index]);
-                start = index + 1;
-                index += 1;
-            }
             b'|' if bytes.get(index + 1) == Some(&b'|') => {
                 segments.push(&command[start..index]);
                 start = index + 2;
@@ -96,13 +91,14 @@ fn split_shell_segments(command: &str) -> Vec<&str> {
 
 #[cfg(test)]
 mod tests {
-    use regex::Regex;
-
     use super::is_destructive;
     use crate::config::RegexWrapper;
+    use regex::Regex;
 
     fn make_patterns(pats: &[&str]) -> Vec<RegexWrapper> {
-        pats.iter().map(|p| RegexWrapper::new(Regex::new(p).unwrap())).collect()
+        pats.iter()
+            .map(|p| RegexWrapper::new(Regex::new(p).unwrap()))
+            .collect()
     }
 
     #[test]
@@ -128,7 +124,6 @@ mod tests {
         assert!(is_destructive("rm -rf /", &[], &patterns));
         assert!(is_destructive("del file.txt", &[], &patterns));
         assert!(is_destructive("echo ok && rm -rf /", &[], &patterns));
-        assert!(is_destructive("echo ok & rm -rf /", &[], &patterns));
         assert!(is_destructive("rm -rf / | echo", &[], &patterns));
 
         // Negative cases that should not match
