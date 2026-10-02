@@ -126,6 +126,7 @@ IntelliShell uses a dual-layer approach for detecting destructive commands:
 2. **Config-Based Regex Detection:** If the command does not have the `#destructive` tag, its trimmed shell segments are matched against the regular expressions configured under `patterns`.
 
 Segments are separated by unquoted `;`, `&`, `&&`, `|`, `||`, and newline operators. A match in any segment marks the full command as destructive.
+An ampersand in a redirection operator such as `2>&1`, `>&`, or `&>` remains part of its command segment.
 
 > [!WARNING]
 > Regular expression patterns operate on the command text structure. Be careful when writing regex patterns, as overly broad rules might lead to false positive highlights on harmless commands.

@@ -71,6 +71,9 @@ fn split_shell_segments(command: &str) -> Vec<&str> {
                 start = index + 2;
                 index += 2;
             }
+            b'&' if bytes.get(index + 1) == Some(&b'>') || (index > 0 && bytes[index - 1] == b'>') => {
+                index += 1;
+            }
             b'&' => {
                 segments.push(&command[start..index]);
                 start = index + 1;
@@ -98,7 +101,7 @@ fn split_shell_segments(command: &str) -> Vec<&str> {
 mod tests {
     use regex::Regex;
 
-    use super::is_destructive;
+    use super::{is_destructive, split_shell_segments};
     use crate::config::RegexWrapper;
 
     fn make_patterns(pats: &[&str]) -> Vec<RegexWrapper> {
@@ -118,6 +121,14 @@ mod tests {
 
         // If '#destructive' is not present, it should not trigger without patterns
         assert!(!is_destructive("rm -rf /", &["#safe".to_string()], &[]));
+    }
+
+    #[test]
+    fn redirection_ampersands_do_not_split_segments() {
+        for command in ["rm -rf / 2>&1", "rm -rf / &>output", "rm -rf / >&output"] {
+            assert_eq!(split_shell_segments(command), vec![command]);
+        }
+        assert_eq!(split_shell_segments("echo ok & rm -rf / 2>&1"), vec!["echo ok ", " rm -rf / 2>&1"]);
     }
 
     #[test]
