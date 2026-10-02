@@ -419,12 +419,23 @@ mod tests {
         let path = std::env::temp_dir().join(format!("intelli-shell-tldr-{}", Uuid::now_v7()));
         let repo = Repository::init(&path)?;
         let blob_oid = repo.blob(b"tldr test")?;
+        let mut tree_builder = repo.treebuilder(None)?;
+        tree_builder.insert("test.md", blob_oid, 0o100644)?;
+        let tree_oid = tree_builder.write()?;
+        drop(tree_builder);
+        let tree = repo.find_tree(tree_oid)?;
+        let signature = git2::Signature::now("Test", "test@example.invalid")?;
+        let commit_oid = repo.commit(None, &signature, &signature, "test commit", &tree, &[])?;
+        drop(tree);
         let branch_name = "refs/heads/main";
 
         assert_eq!(local_branch_target(&repo, branch_name)?, None);
 
-        update_local_branch(&repo, branch_name, blob_oid, "test branch creation")?;
-        assert_eq!(local_branch_target(&repo, branch_name)?, Some(blob_oid));
+        update_local_branch(&repo, branch_name, commit_oid, "test branch creation")?;
+        assert_eq!(local_branch_target(&repo, branch_name)?, Some(commit_oid));
+        repo.set_head(branch_name)?;
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))?;
+        assert_eq!(fs::read(path.join("test.md"))?, b"tldr test");
 
         drop(repo);
         fs::remove_dir_all(path)?;
