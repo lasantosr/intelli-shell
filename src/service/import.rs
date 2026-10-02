@@ -747,7 +747,8 @@ mod tests {
     const CMD_3: &str = "cmd number 3";
 
     #[test]
-    fn json_import_applies_tags_and_filters_commands_but_keeps_completions() {
+    fn json_import_applies_tags_and_filters_commands_but_keeps_completions()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let items = vec![
             ImportExportItemDto::Command(CommandDto {
                 id: None,
@@ -768,7 +769,7 @@ mod tests {
             }),
         ];
 
-        let items = filter_json_import_items(items, Some(Regex::new("^docker").unwrap()), vec!["#team".to_string()]);
+        let items = filter_json_import_items(items, Some(Regex::new("^docker")?), vec!["#team".to_string()]);
         assert_eq!(items.len(), 2);
 
         match &items[0] {
@@ -776,9 +777,10 @@ mod tests {
                 assert_eq!(command.cmd, "docker ps");
                 assert_eq!(command.description.as_deref(), Some("List containers #team"));
             }
-            ImportExportItem::Completion(_) => panic!("Expected a command"),
+            ImportExportItem::Completion(_) => return Err("Expected a command".into()),
         }
         assert!(matches!(items[1], ImportExportItem::Completion(_)));
+        Ok(())
     }
 
     const ALIAS_1: &str = "a1";
