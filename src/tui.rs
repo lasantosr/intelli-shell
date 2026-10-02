@@ -451,11 +451,13 @@ impl Tui {
 }
 
 fn inline_render_area(frame: Rect, inline: InlineTuiContext) -> Rect {
-    let x = inline.x.min(frame.width);
-    let y = inline.y.min(frame.height);
-    let available_height = frame.height.saturating_sub(y);
-    let height = cmp::max(inline.min_height, available_height);
-    Rect::new(x, y, frame.width.saturating_sub(x), height)
+    if frame.width == 0 || frame.height == 0 {
+        return frame;
+    }
+    let min_height = inline.min_height.max(1).min(frame.height);
+    let x = inline.x.clamp(frame.x, frame.right() - 1);
+    let y = inline.y.clamp(frame.y, frame.bottom() - min_height);
+    Rect::new(x, y, frame.right() - x, frame.bottom() - y)
 }
 
 impl Deref for Tui {
@@ -498,6 +500,19 @@ mod tests {
             restore_cursor_y: 0,
         };
 
-        assert_eq!(inline_render_area(frame, inline), Rect::new(8, 4, 0, 6));
+        assert_eq!(inline_render_area(frame, inline), Rect::new(7, 0, 1, 4));
+        assert_eq!(inline_render_area(Rect::new(0, 0, 0, 0), inline), Rect::new(0, 0, 0, 0));
+    }
+
+    #[test]
+    fn inline_area_fits_minimum_height_and_respects_frame_origin() {
+        let inline = InlineTuiContext {
+            min_height: 3,
+            x: 12,
+            y: 10,
+            restore_cursor_x: 0,
+            restore_cursor_y: 0,
+        };
+        assert_eq!(inline_render_area(Rect::new(2, 3, 8, 4), inline), Rect::new(9, 4, 1, 3));
     }
 }
