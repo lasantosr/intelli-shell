@@ -72,6 +72,8 @@ In `auto` mode, you can exclude results containing a specific word by prefixing 
 `fuzzy` mode provides a powerful syntax for fine-grained matching. All terms in a query are space-separated and treated
 as a logical AND, unless grouped by the `|` (OR) operator.
 
+Empty exact-match markers (`'` or `''`) are ignored until a search term is entered.
+
 | Syntax       | Match Type              | Description                                                                           |
 | :----------- | :---------------------- | :------------------------------------------------------------------------------------ |
 | `text`       | **Fuzzy**               | Characters must appear in order, but not necessarily consecutively                    |
