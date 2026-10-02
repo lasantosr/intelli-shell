@@ -577,7 +577,7 @@ mod tests {
     use super::execute_shell_command_capture;
 
     #[tokio::test]
-    async fn cancellation_is_observed_after_output_pipes_close() {
+    async fn cancellation_is_observed_after_output_pipes_close() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let command = if cfg!(windows) {
             "[Console]::Out.Close(); [Console]::Error.Close(); Start-Sleep -Seconds 30"
         } else {
@@ -594,11 +594,10 @@ mod tests {
             std::time::Duration::from_secs(3),
             execute_shell_command_capture(command, false, cancellation_token),
         )
-        .await
-        .expect("command cancellation should not wait for the child to finish")
-        .expect("command execution should complete after cancellation");
+        .await??;
 
         assert!(terminated_by_token);
         assert!(!status.success());
+        Ok(())
     }
 }
