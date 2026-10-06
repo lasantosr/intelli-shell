@@ -1,0 +1,20 @@
+src/cli.rs
+  h_e5596228a2372c 588-589
+src/component/mod.rs
+  h_e5596228a2372c 23-26
+src/storage/mod.rs
+  h_e5596228a2372c 202
+src/storage/queries.rs
+  h_e5596228a2372c 58,317-318,727-728,766-767,805-806
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a02bfd0a852ee20e35e62cd6c8714df791fef546",
+  "prompts": {},
+  "humans": {
+    "h_e5596228a2372c": {
+      "author": "Luis Alberto Santos <lasantosr.92@gmail.com>"
+    }
+  }
+}
