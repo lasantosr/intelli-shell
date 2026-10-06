@@ -103,7 +103,7 @@ impl SqliteStorage {
                     SELECT tag FROM release_info ORDER BY published_at DESC LIMIT ?1
                 )";
                 tracing::trace!("Pruning releases to keep {keep}:\n{query}");
-                conn.execute(query, params![keep])?;
+                conn.execute(query, params![keep as i64])?;
                 Ok(())
             })
             .await?;

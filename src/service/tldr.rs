@@ -265,7 +265,7 @@ impl IntelliShellService {
                 TldrConnectionMode::Auto => repo
                     .as_ref()
                     .and_then(|repo| repo.find_remote("origin").ok())
-                    .and_then(|remote| remote.url().map(ToOwned::to_owned))
+                    .and_then(|remote| remote.url().ok().map(ToOwned::to_owned))
                     .unwrap_or_else(|| HTTPS_URL.to_owned()),
             };
             // Setup git callbacks to enable cancellation
@@ -306,7 +306,7 @@ impl IntelliShellService {
 
                 // Update 'origin' URL if it doesn't match `repo_url` (no-op in `Auto` mode, which already
                 // derives the URL from the existing remote)
-                let current_url = repo.find_remote("origin")?.url().map(|s| s.to_owned());
+                let current_url = repo.find_remote("origin")?.url().ok().map(|s| s.to_owned());
                 if current_url.as_deref() != Some(repo_url.as_str()) {
                     repo.remote_set_url("origin", &repo_url)
                         .wrap_err("Failed to update remote URL")?;
