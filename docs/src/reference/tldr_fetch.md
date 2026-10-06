@@ -47,9 +47,6 @@ intelli-shell tldr fetch [OPTIONS] [CATEGORY]
   - `https`: always connect over HTTPS. No authentication is required for the public repository.
   - `ssh`: connect over SSH, using your local SSH agent and git configuration.
 
-  When updating an existing local clone, IntelliShell recreates its local `main` branch from upstream if that branch is
-  missing.
-
   In most cases `auto` is all you need. Pass `ssh` explicitly to use SSH for the *first* clone (when there is no
   existing remote to detect), or `https` to force HTTPS regardless of your local git configuration.
 
