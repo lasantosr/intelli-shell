@@ -20,10 +20,6 @@ pub mod variable;
 ///
 /// Components are responsible for rendering themselves, handling user input, and managing their internal state. They
 /// can also perform logic updates periodically via the `tick` method.
-#[expect(
-    clippy::double_must_use,
-    reason = "needed until async_trait updates and stops emitting #[must_use] on methods returning futures"
-)]
 #[async_trait]
 pub trait Component: Send {
     /// Retrieves the component name, for debugging purposes
