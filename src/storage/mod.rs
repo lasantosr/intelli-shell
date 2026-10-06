@@ -18,6 +18,7 @@ use crate::{
 mod client;
 mod migrations;
 mod queries;
+mod sea_query_rusqlite;
 
 mod command;
 mod completion;
@@ -25,6 +26,8 @@ mod import_export;
 mod release;
 mod variable;
 mod version;
+
+pub(crate) use sea_query_rusqlite::RusqliteBinder;
 
 type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
 

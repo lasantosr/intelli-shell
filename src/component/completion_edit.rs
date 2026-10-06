@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use color_eyre::Result;
 use enum_cycling::EnumCycle;
 use itertools::Itertools;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use ratatui::{
     Frame,
     backend::FromCrossterm,
@@ -61,7 +61,7 @@ pub struct EditCompletionComponent {
     /// Global cancellation token
     global_cancellation_token: CancellationToken,
     /// The state of the component
-    state: Arc<RwLock<EditCompletionComponentState<'static>>>,
+    state: Arc<Mutex<EditCompletionComponentState<'static>>>,
 }
 struct EditCompletionComponentState<'a> {
     /// The completion being edited or created
@@ -163,7 +163,7 @@ impl EditCompletionComponent {
             layout,
             mode,
             global_cancellation_token: cancellation_token,
-            state: Arc::new(RwLock::new(EditCompletionComponentState {
+            state: Arc::new(Mutex::new(EditCompletionComponentState {
                 completion,
                 active_field,
                 root_cmd,
@@ -226,7 +226,7 @@ impl Component for EditCompletionComponent {
 
     #[instrument(skip_all)]
     fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
 
         // Split the area according to the layout
         let [root_cmd_area, variable_area, suggestions_provider_area, output_area] = self.layout.areas(area);
@@ -264,7 +264,7 @@ impl Component for EditCompletionComponent {
     }
 
     fn tick(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.error.tick();
         state.root_cmd.tick();
         state.variable.tick();
@@ -306,7 +306,7 @@ impl Component for EditCompletionComponent {
     }
 
     fn move_up(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if !state.active_input().is_ai_loading() {
             state.active_field = state.active_field.up();
             state.update_focus();
@@ -316,7 +316,7 @@ impl Component for EditCompletionComponent {
     }
 
     fn move_down(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if !state.active_input().is_ai_loading() {
             state.active_field = state.active_field.down();
             state.update_focus();
@@ -326,14 +326,14 @@ impl Component for EditCompletionComponent {
     }
 
     fn move_left(&mut self, word: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().move_cursor_left(word);
 
         Ok(Action::NoOp)
     }
 
     fn move_right(&mut self, word: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().move_cursor_right(word);
 
         Ok(Action::NoOp)
@@ -348,21 +348,21 @@ impl Component for EditCompletionComponent {
     }
 
     fn move_home(&mut self, absolute: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().move_home(absolute);
 
         Ok(Action::NoOp)
     }
 
     fn move_end(&mut self, absolute: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().move_end(absolute);
 
         Ok(Action::NoOp)
     }
 
     fn undo(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().undo();
         state.mark_as_dirty();
 
@@ -370,7 +370,7 @@ impl Component for EditCompletionComponent {
     }
 
     fn redo(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().redo();
         state.mark_as_dirty();
 
@@ -378,7 +378,7 @@ impl Component for EditCompletionComponent {
     }
 
     fn insert_text(&mut self, text: String) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().insert_str(text);
         state.mark_as_dirty();
 
@@ -386,7 +386,7 @@ impl Component for EditCompletionComponent {
     }
 
     fn insert_char(&mut self, c: char) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().insert_char(c);
         state.mark_as_dirty();
 
@@ -394,7 +394,7 @@ impl Component for EditCompletionComponent {
     }
 
     fn insert_newline(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().insert_newline();
         state.mark_as_dirty();
 
@@ -402,7 +402,7 @@ impl Component for EditCompletionComponent {
     }
 
     fn delete(&mut self, backspace: bool, word: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().delete(backspace, word);
         state.mark_as_dirty();
 
@@ -412,7 +412,7 @@ impl Component for EditCompletionComponent {
     #[instrument(skip_all)]
     async fn selection_confirm(&mut self) -> Result<Action> {
         let completion = {
-            let mut state = self.state.write();
+            let mut state = self.state.lock();
             if state.active_input().is_ai_loading() {
                 return Ok(Action::NoOp);
             }
@@ -426,9 +426,9 @@ impl Component for EditCompletionComponent {
                 .with_suggestions_provider(state.suggestions_provider.lines_as_string())
         };
 
-        if self.state.read().is_dirty {
+        if self.state.lock().is_dirty {
             self.test_provider_command(&completion).await?;
-            self.state.write().is_dirty = false;
+            self.state.lock().is_dirty = false;
             return Ok(Action::NoOp);
         }
 
@@ -452,7 +452,7 @@ impl Component for EditCompletionComponent {
                     )))),
                     Err(AppError::UserFacing(err)) => {
                         tracing::warn!("{err}");
-                        let mut state = self.state.write();
+                        let mut state = self.state.lock();
                         state.error.set_temp_message(err.to_string());
                         Ok(Action::NoOp)
                     }
@@ -477,7 +477,7 @@ impl Component for EditCompletionComponent {
                     }
                     Err(AppError::UserFacing(err)) => {
                         tracing::warn!("{err}");
-                        let mut state = self.state.write();
+                        let mut state = self.state.lock();
                         state.error.set_temp_message(err.to_string());
                         Ok(Action::NoOp)
                     }
@@ -511,7 +511,7 @@ impl Component for EditCompletionComponent {
     }
 
     async fn prompt_ai(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if state.active_field != ActiveField::SuggestionsCommand || state.active_input().is_ai_loading() {
             return Ok(Action::NoOp);
         }
@@ -528,7 +528,7 @@ impl Component for EditCompletionComponent {
             let res = cloned_service
                 .suggest_completion(&root_cmd, &variable, &suggestions_provider, cloned_token)
                 .await;
-            let mut state = cloned_state.write();
+            let mut state = cloned_state.lock();
             state.suggestions_provider.set_ai_loading(false);
             match res {
                 Ok(s) if s.is_empty() => {
@@ -561,17 +561,17 @@ impl EditCompletionComponent {
     async fn test_provider_command(&mut self, completion: &VariableCompletion) -> Result<bool> {
         match resolve_completion(completion, None).await {
             Ok(suggestions) if suggestions.is_empty() => {
-                let mut state = self.state.write();
+                let mut state = self.state.lock();
                 state.last_output = Some(Ok("... empty output ...".to_string()));
                 Ok(true)
             }
             Ok(suggestions) => {
-                let mut state = self.state.write();
+                let mut state = self.state.lock();
                 state.last_output = Some(Ok(suggestions.iter().join("\n")));
                 Ok(true)
             }
             Err(err) => {
-                let mut state = self.state.write();
+                let mut state = self.state.lock();
                 state.last_output = Some(Err(err));
                 Ok(false)
             }

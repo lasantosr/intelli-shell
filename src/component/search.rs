@@ -1,13 +1,10 @@
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use enum_cycling::EnumCycle;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use ratatui::{
     Frame,
     backend::FromCrossterm,
@@ -60,7 +57,7 @@ pub struct SearchCommandsComponent {
     /// Global cancellation token
     global_cancellation_token: CancellationToken,
     /// The state of the component
-    state: Arc<RwLock<SearchCommandsComponentState<'static>>>,
+    state: Arc<Mutex<SearchCommandsComponentState<'static>>>,
 }
 struct SearchCommandsComponentState<'a> {
     /// The next component initialization must prompt AI
@@ -123,7 +120,7 @@ impl SearchCommandsComponent {
             search_delay: Duration::from_millis(delay),
             refresh_token: Arc::new(Mutex::new(None)),
             global_cancellation_token: cancellation_token,
-            state: Arc::new(RwLock::new(SearchCommandsComponentState {
+            state: Arc::new(Mutex::new(SearchCommandsComponentState {
                 initialize_with_ai,
                 mode,
                 user_only,
@@ -143,7 +140,7 @@ impl SearchCommandsComponent {
 
     /// Updates the search config
     fn update_config(&self, search_mode: Option<SearchMode>, user_only: Option<bool>, ai_mode: Option<bool>) {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if let Some(search_mode) = search_mode {
             state.mode = search_mode;
         }
@@ -182,10 +179,10 @@ impl Component for SearchCommandsComponent {
     #[instrument(skip_all)]
     async fn init_and_peek(&mut self) -> Result<Action> {
         // Check if the component should initialize prompting the AI
-        let initialize_with_ai = self.state.read().initialize_with_ai;
+        let initialize_with_ai = self.state.lock().initialize_with_ai;
         if initialize_with_ai {
             let res = self.prompt_ai().await;
-            self.state.write().initialize_with_ai = false;
+            self.state.lock().initialize_with_ai = false;
             return res;
         }
         // If the storage is empty, quit with a message
@@ -196,7 +193,7 @@ impl Component for SearchCommandsComponent {
         } else {
             // Otherwise initialize the tags or commands based on the current query
             let tags = {
-                let state = self.state.read();
+                let state = self.state.lock();
                 state.query.lines_as_string() == "#"
             };
             if tags {
@@ -205,7 +202,7 @@ impl Component for SearchCommandsComponent {
                 self.refresh_commands().await?;
                 // And peek into the commands to check if we can give a straight answer without the TUI rendered
                 let command = {
-                    let state = self.state.read();
+                    let state = self.state.lock();
                     if state.alias_match && state.commands.len() == 1 {
                         state.commands.selected().cloned()
                     } else {
@@ -226,7 +223,7 @@ impl Component for SearchCommandsComponent {
         // Split the area according to the layout
         let [query_area, suggestions_area] = self.layout.areas(area);
 
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
 
         // Render the query widget
         frame.render_widget(&state.query, query_area);
@@ -246,7 +243,7 @@ impl Component for SearchCommandsComponent {
     }
 
     fn tick(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.query.tick();
         state.error.tick();
         Ok(Action::NoOp)
@@ -254,7 +251,7 @@ impl Component for SearchCommandsComponent {
 
     fn exit(&mut self) -> Result<Action> {
         let (ai_mode, tags) = {
-            let state = self.state.read();
+            let state = self.state.lock();
             (state.ai_mode, state.tags.is_some())
         };
         if ai_mode {
@@ -264,14 +261,14 @@ impl Component for SearchCommandsComponent {
             Ok(Action::NoOp)
         } else if tags {
             tracing::debug!("Closing tag mode: user request");
-            let mut state = self.state.write();
+            let mut state = self.state.lock();
             state.tags = None;
             state.commands.set_focus(true);
             self.schedule_debounced_command_refresh();
             Ok(Action::NoOp)
         } else {
             tracing::info!("User requested to exit");
-            let state = self.state.read();
+            let state = self.state.lock();
             let query = state.query.lines_as_string();
             Ok(Action::Quit(if query.trim().is_empty() {
                 ProcessOutput::success()
@@ -304,7 +301,7 @@ impl Component for SearchCommandsComponent {
     }
 
     fn move_up(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if !state.query.is_ai_loading() {
             if let Some(ref mut tags) = state.tags {
                 tags.select_prev();
@@ -316,7 +313,7 @@ impl Component for SearchCommandsComponent {
     }
 
     fn move_down(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if !state.query.is_ai_loading() {
             if let Some(ref mut tags) = state.tags {
                 tags.select_next();
@@ -328,7 +325,7 @@ impl Component for SearchCommandsComponent {
     }
 
     fn move_left(&mut self, word: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if state.tags.is_none() {
             state.query.move_cursor_left(word);
         }
@@ -336,7 +333,7 @@ impl Component for SearchCommandsComponent {
     }
 
     fn move_right(&mut self, word: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if state.tags.is_none() {
             state.query.move_cursor_right(word);
         }
@@ -352,7 +349,7 @@ impl Component for SearchCommandsComponent {
     }
 
     fn move_home(&mut self, absolute: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if !state.query.is_ai_loading() {
             if let Some(ref mut tags) = state.tags {
                 tags.select_first();
@@ -366,7 +363,7 @@ impl Component for SearchCommandsComponent {
     }
 
     fn move_end(&mut self, absolute: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if !state.query.is_ai_loading() {
             if let Some(ref mut tags) = state.tags {
                 tags.select_last();
@@ -380,7 +377,7 @@ impl Component for SearchCommandsComponent {
     }
 
     fn undo(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if !state.query.is_ai_loading() {
             state.query.undo();
             if state.tags.is_some() {
@@ -393,7 +390,7 @@ impl Component for SearchCommandsComponent {
     }
 
     fn redo(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if !state.query.is_ai_loading() {
             state.query.redo();
             if state.tags.is_some() {
@@ -406,7 +403,7 @@ impl Component for SearchCommandsComponent {
     }
 
     fn insert_text(&mut self, text: String) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.query.insert_str(text);
         if state.tags.is_some() {
             self.debounced_refresh_tags();
@@ -417,7 +414,7 @@ impl Component for SearchCommandsComponent {
     }
 
     fn insert_char(&mut self, c: char) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.query.insert_char(c);
         if c == '#' || state.tags.is_some() {
             self.debounced_refresh_tags();
@@ -428,7 +425,7 @@ impl Component for SearchCommandsComponent {
     }
 
     fn delete(&mut self, backspace: bool, word: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.query.delete(backspace, word);
         if state.tags.is_some() {
             self.debounced_refresh_tags();
@@ -440,7 +437,7 @@ impl Component for SearchCommandsComponent {
 
     fn toggle_search_mode(&mut self) -> Result<Action> {
         let (search_mode, ai_mode, tags) = {
-            let state = self.state.read();
+            let state = self.state.lock();
             if state.query.is_ai_loading() {
                 return Ok(Action::NoOp);
             }
@@ -462,7 +459,7 @@ impl Component for SearchCommandsComponent {
 
     fn toggle_search_user_only(&mut self) -> Result<Action> {
         let (user_only, ai_mode, tags) = {
-            let state = self.state.read();
+            let state = self.state.lock();
             (state.user_only, state.ai_mode, state.tags.is_some())
         };
         if !ai_mode {
@@ -479,7 +476,7 @@ impl Component for SearchCommandsComponent {
     #[instrument(skip_all)]
     async fn selection_delete(&mut self) -> Result<Action> {
         let command = {
-            let mut state = self.state.write();
+            let mut state = self.state.lock();
             if !state.ai_mode
                 && let Some(selected) = state.commands.selected()
             {
@@ -507,7 +504,7 @@ impl Component for SearchCommandsComponent {
     #[instrument(skip_all)]
     async fn selection_update(&mut self) -> Result<Action> {
         let command = {
-            let state = self.state.read();
+            let state = self.state.lock();
             if state.ai_mode {
                 return Ok(Action::NoOp);
             }
@@ -529,7 +526,7 @@ impl Component for SearchCommandsComponent {
                 ))))
             } else {
                 self.state
-                    .write()
+                    .lock()
                     .error
                     .set_temp_message("Workspace commands can't be updated");
                 Ok(Action::NoOp)
@@ -542,7 +539,7 @@ impl Component for SearchCommandsComponent {
     #[instrument(skip_all)]
     async fn selection_confirm(&mut self) -> Result<Action> {
         let (selected_tag, cursor_pos, query, command, ai_mode) = {
-            let state = self.state.read();
+            let state = self.state.lock();
             if state.query.is_ai_loading() {
                 return Ok(Action::NoOp);
             }
@@ -570,7 +567,7 @@ impl Component for SearchCommandsComponent {
     #[instrument(skip_all)]
     async fn selection_execute(&mut self) -> Result<Action> {
         let (command, ai_mode) = {
-            let state = self.state.read();
+            let state = self.state.lock();
             if state.query.is_ai_loading() {
                 return Ok(Action::NoOp);
             }
@@ -585,7 +582,7 @@ impl Component for SearchCommandsComponent {
     }
 
     async fn prompt_ai(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if state.tags.is_some() || state.query.is_ai_loading() {
             return Ok(Action::NoOp);
         }
@@ -600,7 +597,7 @@ impl Component for SearchCommandsComponent {
                     .service
                     .suggest_commands(&query, this.global_cancellation_token.clone())
                     .await;
-                let mut state = this.state.write();
+                let mut state = this.state.lock();
                 let mut commands = match res {
                     Ok(suggestions) => {
                         if !suggestions.is_empty() {
@@ -637,7 +634,7 @@ impl SearchCommandsComponent {
     fn schedule_debounced_command_refresh(&self) {
         let cancellation_token = {
             // Cancel previous token (if any)
-            let mut token_guard = self.refresh_token.lock().unwrap();
+            let mut token_guard = self.refresh_token.lock();
             if let Some(token) = token_guard.take() {
                 token.cancel();
             }
@@ -669,7 +666,7 @@ impl SearchCommandsComponent {
     async fn refresh_commands(&self) -> Result<()> {
         // Retrieve the user query
         let (mode, user_only, ai_mode, query) = {
-            let state = self.state.read();
+            let state = self.state.lock();
             (
                 state.mode,
                 state.user_only,
@@ -687,7 +684,7 @@ impl SearchCommandsComponent {
         let res = self.service.search_commands(mode, user_only, &query).await;
 
         // Update the command list or display an error
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         let mut commands = match res {
             Ok((commands, alias_match)) => {
                 state.error.clear_message();
@@ -724,7 +721,7 @@ impl SearchCommandsComponent {
     async fn refresh_tags(&self) -> Result<()> {
         // Retrieve the user query
         let (mode, user_only, ai_mode, query, cursor_pos) = {
-            let state = self.state.read();
+            let state = self.state.lock();
             (
                 state.mode,
                 state.user_only,
@@ -743,7 +740,7 @@ impl SearchCommandsComponent {
         let res = self.service.search_tags(mode, user_only, &query, cursor_pos).await;
 
         // Update the tags list
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         match res {
             Ok(None) => {
                 tracing::trace!("No editing tags");
@@ -819,7 +816,7 @@ impl SearchCommandsComponent {
         while tag_end < chars.len() && chars[tag_end] != ' ' {
             tag_end += 1;
         }
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if chars[tag_start] == '#' {
             // Replace the partial tag with the selected one
             state.query.select_all();

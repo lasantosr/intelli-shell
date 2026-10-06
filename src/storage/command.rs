@@ -3,11 +3,10 @@ use std::{cmp::Ordering, sync::atomic::Ordering as AtomicOrdering};
 use color_eyre::{Report, eyre::eyre};
 use rusqlite::{Row, fallible_iterator::FallibleIterator, ffi, types::Type};
 use sea_query::SqliteQueryBuilder;
-use sea_query_rusqlite::RusqliteBinder;
 use tracing::instrument;
 use uuid::Uuid;
 
-use super::{SqliteStorage, queries::*};
+use super::{RusqliteBinder, SqliteStorage, queries::*};
 use crate::{
     config::SearchCommandTuning,
     errors::{Result, UserFacingError},
@@ -94,7 +93,7 @@ impl SqliteStorage {
             .conn(move |conn| {
                 conn.prepare(&stmt)?
                     .query(&*values.as_params())?
-                    .and_then(|r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                    .and_then(|r| Ok((r.get(0)?, r.get::<_, i64>(1)? as u64, r.get(2)?)))
                     .collect()
             })
             .await

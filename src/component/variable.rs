@@ -1,15 +1,10 @@
-use std::{
-    cmp::Ordering,
-    collections::HashSet,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{cmp::Ordering, collections::HashSet, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use color_eyre::Result;
 use crossterm::event::{MouseEvent, MouseEventKind};
 use futures_util::StreamExt;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -55,7 +50,7 @@ pub struct VariableReplacementComponent {
     /// Cancellation token for the background completions task
     cancellation_token: Arc<Mutex<Option<CancellationToken>>>,
     /// The state of the component
-    state: Arc<RwLock<VariableReplacementComponentState<'static>>>,
+    state: Arc<Mutex<VariableReplacementComponentState<'static>>>,
 }
 struct VariableReplacementComponentState<'a> {
     /// The command with variables to be replaced
@@ -116,7 +111,7 @@ impl VariableReplacementComponent {
             replace_process,
             cancellation_token: Arc::new(Mutex::new(None)),
             global_cancellation_token: cancellation_token,
-            state: Arc::new(RwLock::new(VariableReplacementComponentState {
+            state: Arc::new(Mutex::new(VariableReplacementComponentState {
                 template: command,
                 current_variable_ctx: (String::new(), true),
                 variable_suggestions: Vec::new(),
@@ -153,7 +148,7 @@ impl Component for VariableReplacementComponent {
         // Split the area according to the layout
         let [cmd_area, suggestions_area] = self.layout.areas(area);
 
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
 
         // Sync the template parts with the current variable values
         let values = state.variable_values.clone();
@@ -195,7 +190,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn tick(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.error.tick();
         if let Some(loading) = &mut state.loading {
             loading.tick();
@@ -206,12 +201,12 @@ impl Component for VariableReplacementComponent {
 
     fn exit(&mut self) -> Result<Action> {
         {
-            let mut token_guard = self.cancellation_token.lock().unwrap();
+            let mut token_guard = self.cancellation_token.lock();
             if let Some(token) = token_guard.take() {
                 token.cancel();
             }
         }
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if let Some(VariableSuggestionItem::Existing { editing, .. }) = state.suggestions.selected_mut()
             && editing.is_some()
         {
@@ -235,7 +230,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn move_up(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         match state.suggestions.selected() {
             Some(VariableSuggestionItem::Existing { editing: Some(_), .. }) => (),
             _ => state.suggestions.select_prev(),
@@ -244,7 +239,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn move_down(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         match state.suggestions.selected() {
             Some(VariableSuggestionItem::Existing { editing: Some(_), .. }) => (),
             _ => state.suggestions.select_next(),
@@ -253,7 +248,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn move_left(&mut self, word: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         match state.suggestions.selected_mut() {
             Some(VariableSuggestionItem::New { textarea, .. }) => {
                 textarea.move_cursor_left(word);
@@ -267,7 +262,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn move_right(&mut self, word: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
 
         // If we are editing a value (New or Existing with edit mode), move the cursor
         if let Some(item) = state.suggestions.selected_mut()
@@ -320,7 +315,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn move_prev_variable(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
 
         // Don't navigate if editing an existing value
         if matches!(
@@ -348,7 +343,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn move_next_variable(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
 
         // Don't navigate if editing an existing value
         if matches!(
@@ -375,7 +370,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn move_home(&mut self, absolute: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         match state.suggestions.selected_mut() {
             Some(VariableSuggestionItem::New { textarea, .. }) => {
                 textarea.move_home(absolute);
@@ -389,7 +384,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn move_end(&mut self, absolute: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         match state.suggestions.selected_mut() {
             Some(VariableSuggestionItem::New { textarea, .. }) => {
                 textarea.move_end(absolute);
@@ -403,7 +398,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn undo(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         match state.suggestions.selected_mut() {
             Some(VariableSuggestionItem::New { textarea, .. }) => {
                 textarea.undo();
@@ -427,7 +422,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn redo(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         match state.suggestions.selected_mut() {
             Some(VariableSuggestionItem::New { textarea, .. }) => {
                 textarea.redo();
@@ -450,7 +445,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn insert_text(&mut self, mut text: String) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         let current_index = state.current_variable_index;
         if let Some(variable) = state.template.variable_at(current_index) {
             text = variable.apply_functions_to(text);
@@ -470,7 +465,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn insert_char(&mut self, c: char) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         let current_index = state.current_variable_index;
         let maybe_replacement = state
             .template
@@ -507,7 +502,7 @@ impl Component for VariableReplacementComponent {
     }
 
     fn delete(&mut self, backspace: bool, word: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         match state.suggestions.selected_mut() {
             Some(VariableSuggestionItem::New { textarea, .. }) => {
                 textarea.delete(backspace, word);
@@ -525,7 +520,7 @@ impl Component for VariableReplacementComponent {
     #[instrument(skip_all)]
     async fn selection_delete(&mut self) -> Result<Action> {
         let deleted_id = {
-            let mut state = self.state.write();
+            let mut state = self.state.lock();
             match state.suggestions.selected_mut() {
                 Some(VariableSuggestionItem::New { .. }) => return Ok(Action::NoOp),
                 Some(VariableSuggestionItem::Existing {
@@ -554,7 +549,7 @@ impl Component for VariableReplacementComponent {
             .map_err(AppError::into_report)?;
 
         self.state
-            .write()
+            .lock()
             .variable_suggestions
             .retain(|s| !matches!(s, VariableSuggestionItem::Existing { value, .. } if value.id == Some(deleted_id)));
 
@@ -563,7 +558,7 @@ impl Component for VariableReplacementComponent {
 
     #[instrument(skip_all)]
     async fn selection_update(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
 
         match state.suggestions.selected_mut() {
             Some(VariableSuggestionItem::New { .. }) => (),
@@ -586,7 +581,7 @@ impl Component for VariableReplacementComponent {
 
     async fn selection_confirm(&mut self) -> Result<Action> {
         {
-            let mut token_guard = self.cancellation_token.lock().unwrap();
+            let mut token_guard = self.cancellation_token.lock();
             if let Some(token) = token_guard.take() {
                 token.cancel();
             }
@@ -603,7 +598,7 @@ impl Component for VariableReplacementComponent {
         }
 
         let next_action = {
-            let mut state = self.state.write();
+            let mut state = self.state.lock();
             let (_, is_secret) = state.current_variable_ctx;
             match state.suggestions.selected_mut() {
                 None => NextAction::NoOp,
@@ -800,7 +795,7 @@ impl VariableReplacementComponent {
     /// Moves to the next variable after confirming a value.
     /// It will wrap around if there are still pending variables.
     fn move_to_next_variable_with_value(&self, value: String) {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
 
         // Store the confirmed value
         let current_index = state.current_variable_index;
@@ -826,14 +821,14 @@ impl VariableReplacementComponent {
     async fn update_variable_context(&self, peek: bool) -> Result<Action> {
         // Sync the template with current variable values before checking variables
         {
-            let mut state = self.state.write();
+            let mut state = self.state.lock();
             let values = state.variable_values.clone();
             state.template.set_variable_values(&values);
         }
 
         // Cancels previous completion task and issue a new one
         let cancellation_token = {
-            let mut token_guard = self.cancellation_token.lock().unwrap();
+            let mut token_guard = self.cancellation_token.lock();
             if let Some(token) = token_guard.take() {
                 token.cancel();
             }
@@ -844,7 +839,7 @@ impl VariableReplacementComponent {
 
         // Retrieves the current variable and its context using the index
         let (flat_root_cmd, previous_values, current_variable, context, current_stored_value) = {
-            let state = self.state.read();
+            let state = self.state.lock();
             let current_index = state.current_variable_index;
 
             match state.template.variable_at(current_index).cloned() {
@@ -875,7 +870,7 @@ impl VariableReplacementComponent {
 
         // Update the context with initial suggestions
         {
-            let mut state = self.state.write();
+            let mut state = self.state.lock();
             let suggestions = initial_suggestions
                 .into_iter()
                 .map(VariableSuggestionItem::from)
@@ -908,12 +903,12 @@ impl VariableReplacementComponent {
                                 // If an error happens while resolving the completion, display the first line
                                 Err(err) => {
                                     if let Some(line) = err.lines().next() {
-                                        self.state.write().error.set_temp_message(line.to_string());
+                                        self.state.lock().error.set_temp_message(line.to_string());
                                     }
                                 }
                                 // Otherwise, merge suggestions
                                 Ok(completion_suggestions) => {
-                                    self.state.write().merge_completions(score_boost, completion_suggestions);
+                                    self.state.lock().merge_completions(score_boost, completion_suggestions);
                                 }
                             }
                         } else {
@@ -935,7 +930,7 @@ impl VariableReplacementComponent {
 
         // Pre-select based on current stored value or first non-derived suggestion
         {
-            let mut state = self.state.write();
+            let mut state = self.state.lock();
 
             // Try to find and select the currently stored value
             let mut selected = false;
@@ -973,7 +968,7 @@ impl VariableReplacementComponent {
             let state_clone = self.state.clone();
 
             // Show the loading spinner
-            self.state.write().loading = Some(LoadingSpinner::new(&self.theme));
+            self.state.lock().loading = Some(LoadingSpinner::new(&self.theme));
 
             // Spawn a background task to wait for them
             tokio::spawn(async move {
@@ -987,18 +982,18 @@ impl VariableReplacementComponent {
                         // If an error happens while resolving the completion, display the first line
                         Err(err) => {
                             if let Some(line) = err.lines().next() {
-                                state_clone.write().error.set_temp_message(line.to_string());
+                                state_clone.lock().error.set_temp_message(line.to_string());
                             }
                         }
                         // Otherwise, merge suggestions
                         Ok(completion_suggestions) => {
                             state_clone
-                                .write()
+                                .lock()
                                 .merge_completions(score_boost, completion_suggestions);
                         }
                     }
                 }
-                state_clone.write().loading = None;
+                state_clone.lock().loading = None;
             });
         }
 
@@ -1016,7 +1011,7 @@ impl VariableReplacementComponent {
     async fn confirm_new_regular_value(&mut self, value: String) -> Result<Action> {
         if !value.trim().is_empty() {
             let variable_value = {
-                let state = self.state.read();
+                let state = self.state.lock();
                 let (flat_variable_name, _) = &state.current_variable_ctx;
                 state.template.new_variable_value_for(flat_variable_name, &value)
             };
@@ -1027,7 +1022,7 @@ impl VariableReplacementComponent {
                 }
                 Err(AppError::UserFacing(err)) => {
                     tracing::warn!("{err}");
-                    self.state.write().error.set_temp_message(err.to_string());
+                    self.state.lock().error.set_temp_message(err.to_string());
                     Ok(Action::NoOp)
                 }
                 Err(AppError::Unexpected(report)) => Err(report),
@@ -1044,7 +1039,7 @@ impl VariableReplacementComponent {
         value.value = new_value;
         match self.service.update_variable_value(value).await {
             Ok(v) => {
-                let mut state = self.state.write();
+                let mut state = self.state.lock();
                 if let VariableSuggestionItem::Existing { value, .. } = state.suggestions.selected_mut().unwrap() {
                     *value = v;
                 };
@@ -1052,7 +1047,7 @@ impl VariableReplacementComponent {
             }
             Err(AppError::UserFacing(err)) => {
                 tracing::warn!("{err}");
-                self.state.write().error.set_temp_message(err.to_string());
+                self.state.lock().error.set_temp_message(err.to_string());
                 Ok(Action::NoOp)
             }
             Err(AppError::Unexpected(report)) => Err(report),
@@ -1072,7 +1067,7 @@ impl VariableReplacementComponent {
                 value.id.expect("just inserted")
             }
         };
-        let context = self.state.read().template.variable_context();
+        let context = self.state.lock().template.variable_context();
         match self
             .service
             .increment_variable_value_usage(value_id, context)
@@ -1094,7 +1089,7 @@ impl VariableReplacementComponent {
     async fn confirm_literal_value(&mut self, value: String, store: bool) -> Result<Action> {
         if store && !value.trim().is_empty() {
             let variable_value = {
-                let state = self.state.read();
+                let state = self.state.lock();
                 let (flat_variable_name, _) = &state.current_variable_ctx;
                 state.template.new_variable_value_for(flat_variable_name, &value)
             };

@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 
+use color_eyre::eyre::eyre;
 use semver::Version;
 use tokio_util::sync::CancellationToken;
 
@@ -100,7 +101,7 @@ impl Process for UpdateProcess {
                         .show_download_progress(true)
                         .no_confirm(true)
                         .current_version(current_version_str)
-                        .target_version_tag(&target_version_tag)
+                        .release_tag(&target_version_tag)
                         .build()?
                         .update()
                 })
@@ -110,8 +111,8 @@ impl Process for UpdateProcess {
 
                 // Provide update feedback
                 match status {
-                    Ok(self_update::Status::UpToDate(_)) => unreachable!(),
-                    Ok(self_update::Status::Updated(_)) => {
+                    Ok(self_update::VersionStatus::UpToDate(_)) => unreachable!(),
+                    Ok(self_update::VersionStatus::Updated(_)) => {
                         // If the current version is not present, there has been a gap
                         let gap =
                             target_version > current_version && !releases.iter().any(|r| r.version == current_version);
@@ -173,6 +174,7 @@ impl Process for UpdateProcess {
                         ));
                         Ok(ProcessOutput::success().stdout(msg))
                     }
+                    Ok(status) => Err(eyre!("Unexpected version status from self_update: {status:?}")),
                     Err(err) => Ok(ProcessOutput::fail().stderr(format!(
                         "❌ Update failed:\n{err}\n\nPlease check your network connection or file permissions.",
                     ))),

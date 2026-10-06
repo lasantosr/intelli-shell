@@ -3,7 +3,7 @@ use std::{mem, sync::Arc};
 use async_trait::async_trait;
 use color_eyre::Result;
 use enum_cycling::EnumCycle;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use ratatui::{
     Frame,
     backend::FromCrossterm,
@@ -58,7 +58,7 @@ pub struct EditCommandComponent {
     /// Global cancellation token
     global_cancellation_token: CancellationToken,
     /// The state of the component
-    state: Arc<RwLock<EditCommandComponentState<'static>>>,
+    state: Arc<Mutex<EditCommandComponentState<'static>>>,
 }
 struct EditCommandComponentState<'a> {
     /// The command being edited or created
@@ -133,7 +133,7 @@ impl EditCommandComponent {
             Layout::vertical([Constraint::Length(3), Constraint::Length(3), Constraint::Min(5)]).margin(1)
         };
 
-        let state = Arc::new(RwLock::new(EditCommandComponentState {
+        let state = Arc::new(Mutex::new(EditCommandComponentState {
             command,
             active_field,
             alias,
@@ -152,7 +152,7 @@ impl EditCommandComponent {
             state,
         };
 
-        ret.state.write().refresh_cmd_style(&ret.theme, &ret.destructive);
+        ret.state.lock().refresh_cmd_style(&ret.theme, &ret.destructive);
         ret
     }
 }
@@ -212,7 +212,7 @@ impl Component for EditCommandComponent {
 
     #[instrument(skip_all)]
     fn render(&mut self, frame: &mut Frame, area: Rect) {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
 
         // Split the area according to the layout
         let [alias_area, cmd_area, description_area] = self.layout.areas(area);
@@ -230,7 +230,7 @@ impl Component for EditCommandComponent {
     }
 
     fn tick(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.error.tick();
         state.alias.tick();
         state.cmd.tick();
@@ -244,7 +244,7 @@ impl Component for EditCommandComponent {
         match &self.mode {
             // Quit the component without saving
             EditCommandComponentMode::New { .. } => {
-                let state = self.state.read();
+                let state = self.state.lock();
                 Ok(Action::Quit(
                     ProcessOutput::success().fileout(state.cmd.lines_as_string()),
                 ))
@@ -277,7 +277,7 @@ impl Component for EditCommandComponent {
     }
 
     fn move_up(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if !state.active_input().is_ai_loading() {
             state.active_field = state.active_field.up();
             state.update_focus();
@@ -287,7 +287,7 @@ impl Component for EditCommandComponent {
     }
 
     fn move_down(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if !state.active_input().is_ai_loading() {
             state.active_field = state.active_field.down();
             state.update_focus();
@@ -297,14 +297,14 @@ impl Component for EditCommandComponent {
     }
 
     fn move_left(&mut self, word: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().move_cursor_left(word);
 
         Ok(Action::NoOp)
     }
 
     fn move_right(&mut self, word: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().move_cursor_right(word);
 
         Ok(Action::NoOp)
@@ -319,21 +319,21 @@ impl Component for EditCommandComponent {
     }
 
     fn move_home(&mut self, absolute: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().move_home(absolute);
 
         Ok(Action::NoOp)
     }
 
     fn move_end(&mut self, absolute: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().move_end(absolute);
 
         Ok(Action::NoOp)
     }
 
     fn undo(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().undo();
         state.refresh_cmd_style(&self.theme, &self.destructive);
 
@@ -341,7 +341,7 @@ impl Component for EditCommandComponent {
     }
 
     fn redo(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().redo();
         state.refresh_cmd_style(&self.theme, &self.destructive);
 
@@ -349,7 +349,7 @@ impl Component for EditCommandComponent {
     }
 
     fn insert_text(&mut self, text: String) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().insert_str(text);
         state.refresh_cmd_style(&self.theme, &self.destructive);
 
@@ -357,7 +357,7 @@ impl Component for EditCommandComponent {
     }
 
     fn insert_char(&mut self, c: char) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().insert_char(c);
         state.refresh_cmd_style(&self.theme, &self.destructive);
 
@@ -365,14 +365,14 @@ impl Component for EditCommandComponent {
     }
 
     fn insert_newline(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().insert_newline();
 
         Ok(Action::NoOp)
     }
 
     fn delete(&mut self, backspace: bool, word: bool) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         state.active_input().delete(backspace, word);
         state.refresh_cmd_style(&self.theme, &self.destructive);
 
@@ -382,7 +382,7 @@ impl Component for EditCommandComponent {
     #[instrument(skip_all)]
     async fn selection_confirm(&mut self) -> Result<Action> {
         let command = {
-            let mut state = self.state.write();
+            let mut state = self.state.lock();
             if state.active_input().is_ai_loading() {
                 return Ok(Action::NoOp);
             }
@@ -411,7 +411,7 @@ impl Component for EditCommandComponent {
                 )),
                 Err(AppError::UserFacing(err)) => {
                     tracing::warn!("{err}");
-                    let mut state = self.state.write();
+                    let mut state = self.state.lock();
                     state.error.set_temp_message(err.to_string());
                     Ok(Action::NoOp)
                 }
@@ -435,7 +435,7 @@ impl Component for EditCommandComponent {
                     }
                     Err(AppError::UserFacing(err)) => {
                         tracing::warn!("{err}");
-                        let mut state = self.state.write();
+                        let mut state = self.state.lock();
                         state.error.set_temp_message(err.to_string());
                         Ok(Action::NoOp)
                     }
@@ -469,7 +469,7 @@ impl Component for EditCommandComponent {
     }
 
     async fn prompt_ai(&mut self) -> Result<Action> {
-        let mut state = self.state.write();
+        let mut state = self.state.lock();
         if state.active_input().is_ai_loading() || state.active_field == ActiveField::Alias {
             return Ok(Action::NoOp);
         }
@@ -489,7 +489,7 @@ impl Component for EditCommandComponent {
         let destructive = self.destructive.clone();
         tokio::spawn(async move {
             let res = cloned_service.suggest_command(&cmd, &description, cloned_token).await;
-            let mut state = cloned_state.write();
+            let mut state = cloned_state.lock();
             match res {
                 Ok(Some(suggestion)) => {
                     state.cmd.set_focus(true);
