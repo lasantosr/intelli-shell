@@ -1,0 +1,14 @@
+AGENTS.md
+  h_e5596228a2372c 9-14,77-85,113,119-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5ef38bed6aabfe02159eea9a4f78f3819ecb82f1",
+  "prompts": {},
+  "humans": {
+    "h_e5596228a2372c": {
+      "author": "Luis Alberto Santos <lasantosr.92@gmail.com>"
+    }
+  }
+}
