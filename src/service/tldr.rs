@@ -333,7 +333,7 @@ impl IntelliShellService {
 
                 // Get the OID of the current commit on the local branch
                 let local_ref_name = format!("refs/heads/{BRANCH}");
-                let local_commit_oid = repo.find_reference(&local_ref_name)?.target();
+                let local_commit_oid = local_branch_target(&repo, &local_ref_name)?;
 
                 // If the commit OIDs are the same, the repo is already up-to-date
                 if Some(fetch_commit_oid) == local_commit_oid {
@@ -345,11 +345,10 @@ impl IntelliShellService {
                 tracing::info!("Updating to the latest version ...");
                 send_progress(RepoStatus::Updating);
 
-                // Find the local branch reference
-                let mut local_ref = repo.find_reference(&local_ref_name)?;
-                // Update the local branch to point directly to the newly fetched commit
+                // Create the local branch when an older or incomplete clone has none; otherwise
+                // advance it to the fetched commit.
                 let msg = format!("Resetting to latest commit {fetch_commit_oid}");
-                local_ref.set_target(fetch_commit_oid, &msg)?;
+                update_local_branch(&repo, &local_ref_name, fetch_commit_oid, &msg)?;
 
                 // Point HEAD to the updated local branch
                 repo.set_head(&local_ref_name)?;
@@ -385,5 +384,61 @@ impl IntelliShellService {
         })
         .await
         .wrap_err("tldr repository task failed")?
+    }
+}
+
+fn update_local_branch(
+    repo: &Repository,
+    local_ref_name: &str,
+    commit_oid: git2::Oid,
+    message: &str,
+) -> std::result::Result<(), git2::Error> {
+    repo.reference(local_ref_name, commit_oid, true, message)?;
+    Ok(())
+}
+
+fn local_branch_target(repo: &Repository, local_ref_name: &str) -> std::result::Result<Option<git2::Oid>, git2::Error> {
+    match repo.find_reference(local_ref_name) {
+        Ok(local_ref) => Ok(local_ref.target()),
+        Err(err) if err.code() == git2::ErrorCode::NotFound => Ok(None),
+        Err(err) => Err(err),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{error::Error, fs};
+
+    use git2::Repository;
+    use uuid::Uuid;
+
+    use super::{local_branch_target, update_local_branch};
+
+    #[test]
+    fn setup_can_create_a_missing_local_main_branch() -> Result<(), Box<dyn Error>> {
+        let path = std::env::temp_dir().join(format!("intelli-shell-tldr-{}", Uuid::now_v7()));
+        let repo = Repository::init(&path)?;
+        let blob_oid = repo.blob(b"tldr test")?;
+        let mut tree_builder = repo.treebuilder(None)?;
+        tree_builder.insert("test.md", blob_oid, 0o100644)?;
+        let tree_oid = tree_builder.write()?;
+        drop(tree_builder);
+        let tree = repo.find_tree(tree_oid)?;
+        let signature = git2::Signature::now("Test", "test@example.invalid")?;
+        let commit_oid = repo.commit(None, &signature, &signature, "test commit", &tree, &[])?;
+        drop(tree);
+        let branch_name = "refs/heads/main";
+
+        assert_eq!(local_branch_target(&repo, branch_name)?, None);
+
+        update_local_branch(&repo, branch_name, commit_oid, "test branch creation")?;
+        assert_eq!(local_branch_target(&repo, branch_name)?, Some(commit_oid));
+        repo.set_head(branch_name)?;
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))?;
+        assert_eq!(fs::read(path.join("test.md"))?, b"tldr test");
+
+        drop(repo);
+        fs::remove_dir_all(path)?;
+        Ok(())
     }
 }
