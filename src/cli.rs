@@ -585,7 +585,8 @@ fn style_after_long_help(
                 } else {
                     line.to_string()
                 }
-            }).join("\n");
+            })
+            .join("\n");
         command = command.after_long_help(modified_help_text);
     }
     for subcommand_ref in command.get_subcommands_mut() {

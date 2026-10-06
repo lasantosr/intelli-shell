@@ -199,7 +199,7 @@ impl SqliteStorage {
                                             r#"('[^']*'|"[^"]*"|\S+)"#
                                         };
                                         Some(String::from(placeholder_regex))
-                                    },
+                                    }
                                 })
                                 // Join them by any number of whitespaces
                                 .join(r"\s+");

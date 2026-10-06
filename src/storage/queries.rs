@@ -55,7 +55,7 @@ pub fn query_find_tags(
         // Add an exact_match column
         .apply(|s| {
             if let Some(prefix) = tag_prefix {
-                // If there's a tag prefix, filter by it 
+                // If there's a tag prefix, filter by it
                 s.and_where(
                     Expr::col((t, "value")).like(LikeExpr::new(format!("{}%", escape_like(&prefix))).escape('\\')),
                 )
@@ -314,7 +314,8 @@ fn query_commands_filtered(
         .expr_window_as(
             CustomFunc::row_number(),
             WindowStatement::partition_by_custom(r#"TRIM("cmd")"#)
-                .order_by(IS_WORKSPACE, Order::Asc).take(),
+                .order_by(IS_WORKSPACE, Order::Asc)
+                .take(),
             dedup_rank_col,
         )
         // Count cmd occurences: 2 if global and workspace
@@ -723,7 +724,8 @@ fn query_commands_auto(
 
             let fts1_cte = CommonTableExpression::new()
                 .table_name(fts1)
-                // fts cte must be materialized to avoid query planner optimizations, bm25 can't be used in those contexts
+                // fts cte must be materialized to avoid query planner optimizations, bm25 can't be used in those
+                // contexts
                 .materialized(true)
                 .query(fts1_query)
                 .to_owned();
@@ -761,7 +763,8 @@ fn query_commands_auto(
 
             let fts2_cte = CommonTableExpression::new()
                 .table_name(fts2)
-                // fts cte must be materialized to avoid query planner optimizations, bm25 can't be used in those contexts
+                // fts cte must be materialized to avoid query planner optimizations, bm25 can't be used in those
+                // contexts
                 .materialized(true)
                 .query(fts2_query)
                 .to_owned();
@@ -799,7 +802,8 @@ fn query_commands_auto(
 
             let fts3_cte = CommonTableExpression::new()
                 .table_name(fts3)
-                // fts cte must be materialized to avoid query planner optimizations, bm25 can't be used in those contexts
+                // fts cte must be materialized to avoid query planner optimizations, bm25 can't be used in those
+                // contexts
                 .materialized(true)
                 .query(fts3_query)
                 .to_owned();
