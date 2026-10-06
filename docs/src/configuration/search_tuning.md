@@ -14,7 +14,7 @@ The final score for a searched command is a weighted sum of points from three so
 query, how often the command has been used, and the directory where it was last used.
 
 ```toml
-{{#include ../../../default_config.toml:223:256}}
+{{#include ../../../default_config.toml:242:275}}
 ```
 
 ### Command Scoring Parameters
@@ -50,7 +50,7 @@ is determined by a score calculated from two sources: the context of other varia
 the value was used. Total usage count is used as a tie-breaker.
 
 ```toml
-{{#include ../../../default_config.toml:201:221}}
+{{#include ../../../default_config.toml:220:240}}
 ```
 
 ### Variable Scoring Parameters

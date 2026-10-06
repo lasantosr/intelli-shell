@@ -108,20 +108,12 @@ end
 function _intelli_shell_bindings --description "Setup IntelliShell key bindings"
   set -l fish_major_version (string split . -- $version)[1]
 
-  # Use defaults if environment variables are not set
-  set -l search_key '-k nul'
-  set -l bookmark_key \cb
-  set -l variable_key \cl
-  set -l fix_key \cx
+  # Define key bindings, populated from configuration or environment overrides
+  set -l search_key '{{SEARCH_HOTKEY}}'
+  set -l bookmark_key '{{BOOKMARK_HOTKEY}}'
+  set -l variable_key '{{VARIABLE_HOTKEY}}'
+  set -l fix_key '{{FIX_HOTKEY}}'
 
-  if test -n "$fish_major_version" -a "$fish_major_version" -ge 4
-      set search_key ctrl-space
-      set bookmark_key ctrl-b
-      set variable_key ctrl-l
-      set fix_key ctrl-x
-  end
-
-  # Override defaults if environment variables are set
   if set -q INTELLI_SEARCH_HOTKEY; and test -n "$INTELLI_SEARCH_HOTKEY"
     set search_key $INTELLI_SEARCH_HOTKEY
   end
@@ -140,19 +132,37 @@ function _intelli_shell_bindings --description "Setup IntelliShell key bindings"
     bind --preset \e kill-whole-line
   end
 
-  # Bind the keys to the action functions
-  if contains -- $search_key '\c@' '-k nul' 'ctrl-space'
-      if test -n "$fish_major_version" -a "$fish_major_version" -ge 4
-          bind ctrl-space _intelli_search
+  # Helper function to bind keys cleanly across Fish 3.x and 4.x
+  function _intelli_bind_key --argument-names key target_func fish_ver
+    if test "$key" = "ctrl-space" -o "$key" = "\c@" -o "$key" = "-k nul"
+      if test -n "$fish_ver" -a "$fish_ver" -ge 4
+        bind ctrl-space $target_func
       else
-          bind -k nul _intelli_search
+        bind -k nul $target_func
       end
-  else
-    bind $search_key _intelli_search
+    else if string match -q "ctrl-*" -- "$key"
+      if test -n "$fish_ver" -a "$fish_ver" -ge 4
+        bind $key $target_func
+      else
+        set -l char (string sub -s 6 -- "$key")
+        bind \c$char $target_func
+      end
+    else if string match -q "alt-*" -- "$key"
+      if test -n "$fish_ver" -a "$fish_ver" -ge 4
+        bind $key $target_func
+      else
+        set -l char (string sub -s 5 -- "$key")
+        bind \e$char $target_func
+      end
+    else
+      bind $key $target_func
+    end
   end
-  bind $bookmark_key _intelli_save
-  bind $variable_key _intelli_replace
-  bind $fix_key _intelli_fix
+
+  _intelli_bind_key $search_key _intelli_search $fish_major_version
+  _intelli_bind_key $bookmark_key _intelli_save $fish_major_version
+  _intelli_bind_key $variable_key _intelli_replace $fish_major_version
+  _intelli_bind_key $fix_key _intelli_fix $fish_major_version
 
 end
 

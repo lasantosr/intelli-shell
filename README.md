@@ -91,7 +91,7 @@ These hotkeys work directly in your terminal line:
 - **`ctrl+x`**: Diagnose and try to fix a failing command (requires AI to be enabled)
 - **`esc`**: Clean the current line, this binding can be skipped by setting `INTELLI_SKIP_ESC_BIND=1`
 
-_These keybindings can be changed, see [Customizing Keybindings](https://lasantosr.github.io/intelli-shell/guide/installation.html#customizing-keybindings)
+_These hotkeys can be changed, see [Shell Hotkeys](https://lasantosr.github.io/intelli-shell/configuration/hotkeys.html)
 for details._
 
 ### Inside the Application

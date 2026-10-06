@@ -34,9 +34,10 @@ If hotkeys like <kbd>Ctrl</kbd>+<kbd>Space</kbd> or <kbd>Ctrl</kbd>+<kbd>B</kbd>
      by many terminals.
 
    - **Solution**: If you cannot configure your environment or IDE to forward the keys, simply change the conflicting
-     hotkey in IntelliShell. Set the appropriate environment variable in your shell profile _before_ the IntelliShell
-     `init` line. See the [Installation Guide](./guide/installation.md#customizing-keybindings) for integration variables
-     or the [Keybindings Configuration](./configuration/keybindings.md) for in-app bindings.
+     hotkey in IntelliShell. You can update the `[hotkeys]` section in your `config.toml`
+     (see [**Shell Hotkeys**](./configuration/hotkeys.md)), or set an override environment variable in your shell
+     profile _before_ the IntelliShell `init` line.
+     For in-app TUI shortcuts, see [Keybindings Configuration](./configuration/keybindings.md).
 
 ## Installation and Command Issues
 

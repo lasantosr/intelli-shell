@@ -113,6 +113,11 @@ async fn main() -> Result<()> {
                         if include_completions {
                             output.push('\n');
                         }
+                        let search_hk = config.hotkeys.search.format_key_for_shell(init.shell);
+                        let bookmark_hk = config.hotkeys.bookmark.format_key_for_shell(init.shell);
+                        let var_hk = config.hotkeys.variable.format_key_for_shell(init.shell);
+                        let fix_hk = config.hotkeys.fix.format_key_for_shell(init.shell);
+
                         let script = match init.shell {
                             Shell::Bash => BASH_INIT,
                             Shell::Zsh => ZSH_INIT,
@@ -120,7 +125,12 @@ async fn main() -> Result<()> {
                             Shell::Nushell => NUSHELL_INIT,
                             Shell::Powershell => POWERSHELL_INIT,
                         };
-                        output.push_str(script);
+                        let rendered_script = script
+                            .replace("{{SEARCH_HOTKEY}}", &search_hk)
+                            .replace("{{BOOKMARK_HOTKEY}}", &bookmark_hk)
+                            .replace("{{VARIABLE_HOTKEY}}", &var_hk)
+                            .replace("{{FIX_HOTKEY}}", &fix_hk);
+                        output.push_str(&rendered_script);
                     }
 
                     let output_info = OutputInfo {
