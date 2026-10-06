@@ -59,9 +59,6 @@ a compact, inline view or an immersive, full-screen experience.
 - **`inline = false`**: The TUI takes over the entire terminal window, providing a more focused, full-screen
     experience.
 
-When the terminal shrinks, inline rendering keeps the saved origin inside the visible frame and fits the
-minimum height where space permits. A frame smaller than that minimum uses only the available rows.
-
 ```toml
 {{#include ../../../default_config.toml:26:29}}
 ```
