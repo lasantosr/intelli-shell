@@ -1,0 +1,50 @@
+README.md
+  h_e5596228a2372c 94
+default_config.toml
+  h_e5596228a2372c 109-127
+docs/src/SUMMARY.md
+  h_e5596228a2372c 26
+docs/src/configuration/ai.md
+  h_e5596228a2372c 14,42,51,175
+docs/src/configuration/general.md
+  h_e5596228a2372c 140
+docs/src/configuration/hotkeys.md
+  h_e5596228a2372c 1-73
+docs/src/configuration/index.md
+  h_e5596228a2372c 3-5,11,40-42
+docs/src/configuration/keybindings.md
+  h_e5596228a2372c 42
+docs/src/configuration/search_tuning.md
+  h_e5596228a2372c 17,53
+docs/src/configuration/theming.md
+  h_e5596228a2372c 56
+docs/src/guide/key_concepts.md
+  h_e5596228a2372c 42-43
+docs/src/troubleshooting.md
+  h_e5596228a2372c 37-40
+src/_shell/intelli-shell.bash
+  h_e5596228a2372c 5-8
+src/_shell/intelli-shell.fish
+  h_e5596228a2372c 111-115,135-145,147-148,150-159,161-165
+src/_shell/intelli-shell.nu
+  h_e5596228a2372c 5-9
+src/_shell/intelli-shell.ps1
+  h_e5596228a2372c 24-33
+src/_shell/intelli-shell.zsh
+  h_e5596228a2372c 6-9
+src/config.rs
+  h_e5596228a2372c 24,47-48,130-176,677-765,927,961-982,1444,1717-1794
+src/main.rs
+  h_e5596228a2372c 116-120,128-133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "41682e371f4b0390db1276df1a52ada39c4ee803",
+  "prompts": {},
+  "humans": {
+    "h_e5596228a2372c": {
+      "author": "Luis Alberto Santos <lasantosr.92@gmail.com>"
+    }
+  }
+}
