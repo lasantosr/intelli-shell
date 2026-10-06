@@ -235,14 +235,7 @@ impl Tui {
         self.terminal.draw(|frame| {
             let area = match state {
                 State::FullScreen(_) => frame.area(),
-                State::Inline(_, inline) => {
-                    let frame = frame.area();
-                    let min_height = cmp::min(frame.height, inline.min_height);
-                    let available_height = frame.height - inline.y;
-                    let height = cmp::max(min_height, available_height);
-                    let width = frame.width - inline.x;
-                    Rect::new(inline.x, inline.y, width, height)
-                }
+                State::Inline(_, inline) => inline_render_area(frame.area(), inline),
             };
 
             render_callback(frame, area);
@@ -457,6 +450,16 @@ impl Tui {
     }
 }
 
+fn inline_render_area(frame: Rect, inline: InlineTuiContext) -> Rect {
+    if frame.width == 0 || frame.height == 0 {
+        return frame;
+    }
+    let min_height = inline.min_height.max(1).min(frame.height);
+    let x = inline.x.clamp(frame.x, frame.right() - 1);
+    let y = inline.y.clamp(frame.y, frame.bottom() - min_height);
+    Rect::new(x, y, frame.right() - x, frame.bottom() - y)
+}
+
 impl Deref for Tui {
     type Target = Terminal<Backend<Stdout>>;
 
@@ -477,5 +480,39 @@ impl Drop for Tui {
         if let Err(err) = self.restore_terminal() {
             tracing::error!("Failed to restore terminal state: {err:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::layout::Rect;
+
+    use super::{InlineTuiContext, inline_render_area};
+
+    #[test]
+    fn inline_area_stays_inside_a_shrunken_terminal() {
+        let frame = Rect::new(0, 0, 8, 4);
+        let inline = InlineTuiContext {
+            min_height: 6,
+            x: 12,
+            y: 6,
+            restore_cursor_x: 0,
+            restore_cursor_y: 0,
+        };
+
+        assert_eq!(inline_render_area(frame, inline), Rect::new(7, 0, 1, 4));
+        assert_eq!(inline_render_area(Rect::new(0, 0, 0, 0), inline), Rect::new(0, 0, 0, 0));
+    }
+
+    #[test]
+    fn inline_area_fits_minimum_height_and_respects_frame_origin() {
+        let inline = InlineTuiContext {
+            min_height: 3,
+            x: 12,
+            y: 10,
+            restore_cursor_x: 0,
+            restore_cursor_y: 0,
+        };
+        assert_eq!(inline_render_area(Rect::new(2, 3, 8, 4), inline), Rect::new(9, 4, 1, 3));
     }
 }
