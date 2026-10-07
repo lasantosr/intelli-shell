@@ -1,0 +1,16 @@
+docs/src/configuration/hotkeys.md
+  h_e5596228a2372c 65
+src/main.rs
+  h_e5596228a2372c 116-129,392-430
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "670e497f4738e95257cd856632cd5b7a6e83782b",
+  "prompts": {},
+  "humans": {
+    "h_e5596228a2372c": {
+      "author": "Luis Alberto Santos <lasantosr.92@gmail.com>"
+    }
+  }
+}
