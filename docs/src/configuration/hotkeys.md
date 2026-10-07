@@ -62,7 +62,7 @@ terminal escape codes or terminal emulator chords) not directly expressible in `
 
 > 💡 **Tip**: For keybinding syntax when using environment variables, refer to your shell's documentation (`bindkey`
 > for Zsh, `bind` for Bash). For example, to change the search hotkey in Bash using an environment variable, add
-> `export INTELLI_SEARCH_HOTKEY=\C-t` to your `.bashrc`.
+> `export INTELLI_SEARCH_HOTKEY='\C-t'` to your `.bashrc`.
 >
 > **Note for Fish users**: When overriding via environment variables, Fish 3.x uses escaped sequences (e.g., `\cb`),
 > whereas Fish 4.x and newer require named keys (e.g., `ctrl-b` or `ctrl-l`).
