@@ -158,11 +158,13 @@ fn parse_individual_term(token_str: &str) -> Option<FuzzyTerm<'_>> {
             kind: FuzzyTermKind::InverseSuffixExact,
             term: &token_str[1..(token_str.len() - 1)],
         }
-    } else if token_str.starts_with('\'') && token_str.ends_with('\'') {
+    } else if let Some(term) = token_str.strip_prefix('\'')
+        && let Some(term) = term.strip_suffix('\'')
+    {
         // Handles "'term'"
         FuzzyTerm {
             kind: FuzzyTermKind::ExactBoundary,
-            term: &token_str[1..(token_str.len() - 1)],
+            term,
         }
     } else if let Some(term) = token_str.strip_prefix('\'') {
         // Handles "'term"
@@ -197,4 +199,22 @@ fn parse_individual_term(token_str: &str) -> Option<FuzzyTerm<'_>> {
     };
     // Skip empty terms
     if fuzzy.term.is_empty() { None } else { Some(fuzzy) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FuzzyMatch, FuzzyTerm, FuzzyTermKind, parse_fuzzy_query};
+
+    #[test]
+    fn incomplete_exact_boundary_marker_is_ignored() {
+        assert!(parse_fuzzy_query("'").is_empty());
+        assert!(parse_fuzzy_query("''").is_empty());
+        assert_eq!(
+            parse_fuzzy_query("'word'"),
+            vec![FuzzyMatch::Term(FuzzyTerm {
+                kind: FuzzyTermKind::ExactBoundary,
+                term: "word",
+            })]
+        );
+    }
 }
