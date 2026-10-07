@@ -773,7 +773,8 @@ mod tests {
         let items: ImportExportStream = Box::pin(items);
         let items = filter_import_stream(items, Some(Regex::new("^docker")?))
             .try_collect::<Vec<_>>()
-            .await?;
+            .await
+            .map_err(AppError::into_report)?;
         assert_eq!(items.len(), 2);
 
         match &items[0] {
