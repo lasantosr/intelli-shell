@@ -101,8 +101,8 @@ impl SqliteStorage {
 
     /// Finds and retrieves commands from the database.
     ///
-    /// When a search term is present, if there's a command which alias exactly match the term, that'll be the only one
-    /// returned.
+    /// When a search term is present and no category, source, or tag filters are active, an exact alias match is
+    /// returned exclusively. Filtered searches use the filter-aware query instead.
     #[instrument(skip_all)]
     pub async fn find_commands(
         &self,
@@ -115,7 +115,11 @@ impl SqliteStorage {
 
         // When there's a search term
         let mut query_alias = None;
-        if let Some(ref term) = cleaned_filter.search_term {
+        if let Some(ref term) = cleaned_filter.search_term
+            && cleaned_filter.category.is_none()
+            && cleaned_filter.source.is_none()
+            && cleaned_filter.tags.is_none()
+        {
             // Try to find a command matching the alias exactly
             let (query, params) = if workspace_tables_loaded {
                 (
@@ -782,6 +786,33 @@ mod tests {
                 "Expected correct alias command for mode {mode:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_find_commands_alias_shortcut_respects_filters() -> Result<()> {
+        let storage = setup_ranking_storage().await;
+        let user_only_filter = SearchCommandsFilter {
+            category: Some(vec![CATEGORY_USER.to_string()]),
+            search_term: Some("gc".to_string()),
+            ..Default::default()
+        };
+        let (user_commands, alias_match) = storage
+            .find_commands(user_only_filter, "/some/path", &SearchCommandTuning::default())
+            .await?;
+        assert!(!alias_match);
+        assert!(user_commands.iter().all(|command| command.category == CATEGORY_USER));
+
+        let tag_filter = SearchCommandsFilter {
+            tags: Some(vec!["#missing".to_string()]),
+            search_term: Some("gc".to_string()),
+            ..Default::default()
+        };
+        let (tagged_commands, alias_match) = storage
+            .find_commands(tag_filter, "/some/path", &SearchCommandTuning::default())
+            .await?;
+        assert!(!alias_match);
+        assert!(tagged_commands.is_empty());
+        Ok(())
     }
 
     #[tokio::test]
