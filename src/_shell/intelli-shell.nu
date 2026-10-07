@@ -2,13 +2,11 @@
 # https://www.nushell.sh/commands/docs/commandline.html
 # https://www.nushell.sh/book/line_editor.html#keybindings
 
-# Define key bindings, using defaults if environment variables are not set.
-# NOTE: The format can be "modifier keycode" (e.g., "control char_b") or just a keycode for keys without modifiers.
-#       See `keybindings list` for available modifiers and keycodes or `keybindings listen` to check.
-let intelli_search_key = ($env.INTELLI_SEARCH_HOTKEY? | default "control space")
-let intelli_bookmark_key = ($env.INTELLI_BOOKMARK_HOTKEY? | default "control char_b")
-let intelli_variable_key = ($env.INTELLI_VARIABLE_HOTKEY? | default "control char_l")
-let intelli_fix_key = ($env.INTELLI_FIX_HOTKEY? | default "control char_x")
+# Define key bindings, populated from configuration or environment overrides
+let intelli_search_key = ($env.INTELLI_SEARCH_HOTKEY? | default "{{SEARCH_HOTKEY}}")
+let intelli_bookmark_key = ($env.INTELLI_BOOKMARK_HOTKEY? | default "{{BOOKMARK_HOTKEY}}")
+let intelli_variable_key = ($env.INTELLI_VARIABLE_HOTKEY? | default "{{VARIABLE_HOTKEY}}")
+let intelli_fix_key = ($env.INTELLI_FIX_HOTKEY? | default "{{FIX_HOTKEY}}")
 
 # Helper function to execute intelli-shell and update the command line buffer.
 def _intelli_exec [

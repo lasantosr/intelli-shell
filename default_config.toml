@@ -107,6 +107,25 @@ filter = "info"
 patterns = []
 
 # --------------------------------------------------------------
+#   Shell Hotkeys
+# --------------------------------------------------------------
+
+# Configuration for shell integration hotkeys.
+# These hotkeys trigger Intelli-Shell features directly from your shell command line.
+#
+# Unlike TUI keybindings, shell hotkeys must be a single key combination
+# in the format `ctrl-<char>` or `alt-<char>` (e.g., "ctrl-space", "alt-s").
+[hotkeys]
+# Trigger search mode to find and execute stored commands
+search = "ctrl-space"
+# Bookmark the current command line buffer
+bookmark = "ctrl-b"
+# Trigger variable replacement mode for templates in the buffer
+variable = "ctrl-l"
+# Trigger AI fix mode for the command currently in the input buffer
+fix = "ctrl-x"
+
+# --------------------------------------------------------------
 #   Key Bindings
 # --------------------------------------------------------------
 

@@ -2,10 +2,10 @@
 # https://www.gnu.org/software/bash/manual/html_node/Bash-Builtins.html#index-bind
 
 # Define key bindings, using defaults if environment variables are not set
-intelli_search_key="${INTELLI_SEARCH_HOTKEY:-\C-@}"
-intelli_bookmark_key="${INTELLI_BOOKMARK_HOTKEY:-\C-b}"
-intelli_variable_key="${INTELLI_VARIABLE_HOTKEY:-\C-l}"
-intelli_fix_key="${INTELLI_FIX_HOTKEY:-\C-x}"
+intelli_search_key="${INTELLI_SEARCH_HOTKEY:-{{SEARCH_HOTKEY}}}"
+intelli_bookmark_key="${INTELLI_BOOKMARK_HOTKEY:-{{BOOKMARK_HOTKEY}}}"
+intelli_variable_key="${INTELLI_VARIABLE_HOTKEY:-{{VARIABLE_HOTKEY}}}"
+intelli_fix_key="${INTELLI_FIX_HOTKEY:-{{FIX_HOTKEY}}}"
 
 # Helper function to execute intelli-shell and update the Readline buffer
 function _intelli_exec {

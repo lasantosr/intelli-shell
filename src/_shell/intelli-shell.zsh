@@ -3,10 +3,10 @@
 # https://zsh.sourceforge.io/Doc/Release/Zsh-Line-Editor.html
 
 # Define key bindings, using defaults if environment variables are not set
-intelli_search_key="${INTELLI_SEARCH_HOTKEY:-^@}"
-intelli_bookmark_key="${INTELLI_BOOKMARK_HOTKEY:-^b}"
-intelli_variable_key="${INTELLI_VARIABLE_HOTKEY:-^l}"
-intelli_fix_key="${INTELLI_FIX_HOTKEY:-^x}"
+intelli_search_key="${INTELLI_SEARCH_HOTKEY:-{{SEARCH_HOTKEY}}}"
+intelli_bookmark_key="${INTELLI_BOOKMARK_HOTKEY:-{{BOOKMARK_HOTKEY}}}"
+intelli_variable_key="${INTELLI_VARIABLE_HOTKEY:-{{VARIABLE_HOTKEY}}}"
+intelli_fix_key="${INTELLI_FIX_HOTKEY:-{{FIX_HOTKEY}}}"
 
 # Helper function to execute intelli-shell and update the ZLE buffer
 function _intelli_exec {

@@ -113,6 +113,21 @@ async fn main() -> Result<()> {
                         if include_completions {
                             output.push('\n');
                         }
+                        let search_hk = escape_hotkey_for_shell(
+                            &config.hotkeys.search.format_key_for_shell(init.shell),
+                            init.shell,
+                        );
+                        let bookmark_hk = escape_hotkey_for_shell(
+                            &config.hotkeys.bookmark.format_key_for_shell(init.shell),
+                            init.shell,
+                        );
+                        let var_hk = escape_hotkey_for_shell(
+                            &config.hotkeys.variable.format_key_for_shell(init.shell),
+                            init.shell,
+                        );
+                        let fix_hk =
+                            escape_hotkey_for_shell(&config.hotkeys.fix.format_key_for_shell(init.shell), init.shell);
+
                         let script = match init.shell {
                             Shell::Bash => BASH_INIT,
                             Shell::Zsh => ZSH_INIT,
@@ -120,7 +135,12 @@ async fn main() -> Result<()> {
                             Shell::Nushell => NUSHELL_INIT,
                             Shell::Powershell => POWERSHELL_INIT,
                         };
-                        output.push_str(script);
+                        let rendered_script = script
+                            .replace("{{SEARCH_HOTKEY}}", &search_hk)
+                            .replace("{{BOOKMARK_HOTKEY}}", &bookmark_hk)
+                            .replace("{{VARIABLE_HOTKEY}}", &var_hk)
+                            .replace("{{FIX_HOTKEY}}", &fix_hk);
+                        output.push_str(&rendered_script);
                     }
 
                     let output_info = OutputInfo {
@@ -368,4 +388,43 @@ fn should_use_color(stream_is_tty: bool) -> bool {
 
     // 4. TTY status (default if no strong opinions from env vars)
     stream_is_tty
+}
+
+/// Escapes a formatted hotkey string so that it can be safely injected into the respective shell's
+/// init script template without breaking string literal quoting.
+fn escape_hotkey_for_shell(hotkey: &str, shell: Shell) -> String {
+    let mut escaped = String::with_capacity(hotkey.len());
+    for ch in hotkey.chars() {
+        match (shell, ch) {
+            (Shell::Powershell, '\'') => escaped.push_str("''"),
+            (Shell::Fish, '\\') => escaped.push_str("\\\\"),
+            (Shell::Fish, '\'') => escaped.push_str("\\'"),
+            (Shell::Nushell, '\\') => escaped.push_str("\\\\"),
+            (Shell::Nushell, '"') => escaped.push_str("\\\""),
+            (Shell::Bash | Shell::Zsh, '"') => escaped.push_str("\\\""),
+            (_, c) => escaped.push(c),
+        }
+    }
+    escaped
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_escape_hotkey_for_shell() {
+        assert_eq!(escape_hotkey_for_shell("Ctrl+'", Shell::Powershell), "Ctrl+''");
+        assert_eq!(
+            escape_hotkey_for_shell("Ctrl+Spacebar", Shell::Powershell),
+            "Ctrl+Spacebar"
+        );
+        assert_eq!(escape_hotkey_for_shell("ctrl-'", Shell::Fish), "ctrl-\\'");
+        assert_eq!(
+            escape_hotkey_for_shell("control char_\"", Shell::Nushell),
+            "control char_\\\""
+        );
+        assert_eq!(escape_hotkey_for_shell("\\C-\"", Shell::Bash), "\\C-\\\"");
+        assert_eq!(escape_hotkey_for_shell("^\"", Shell::Zsh), "^\\\"");
+    }
 }

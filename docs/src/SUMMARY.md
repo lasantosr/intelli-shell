@@ -23,6 +23,7 @@
 
 - [Configuration](./configuration/index.md)
   - [General](./configuration/general.md)
+  - [Shell Hotkeys](./configuration/hotkeys.md)
   - [Key Bindings](./configuration/keybindings.md)
   - [Theming](./configuration/theming.md)
   - [Search Tuning](./configuration/search_tuning.md)

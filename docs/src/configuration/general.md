@@ -137,4 +137,4 @@ IntelliShell uses a dual-layer approach for detecting destructive commands:
 ---
 
 Now that you've configured the application's basic behavior, you can tailor how you interact with it. Let's move on to
-customizing the [**Key Bindings**](./keybindings.md).
+customizing the [**Shell Hotkeys**](./hotkeys.md).

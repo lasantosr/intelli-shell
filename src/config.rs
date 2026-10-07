@@ -21,6 +21,7 @@ use serde::{
 
 use crate::{
     ai::{AiClient, AiProviderBase},
+    cli::Shell,
     model::SearchMode,
 };
 
@@ -43,6 +44,8 @@ pub struct Config {
     pub logs: LogsConfig,
     /// Configuration for identifying destructive commands
     pub destructive: DestructiveConfig,
+    /// Configuration for the shell integration hotkeys
+    pub hotkeys: ShellHotkeys,
     /// Configuration for the key bindings used within the TUI
     pub keybindings: KeyBindingsConfig,
     /// Configuration for the visual theme of the TUI
@@ -122,6 +125,53 @@ impl<'de> Deserialize<'de> for RegexWrapper {
         let re = regex::Regex::new(&s).map_err(Error::custom)?;
         Ok(RegexWrapper::new(re))
     }
+}
+
+/// Configuration for the shell integration hotkeys
+#[derive(Clone, Deserialize)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+#[cfg_attr(not(test), serde(default))]
+pub struct ShellHotkeys {
+    /// Hotkey to trigger search mode
+    pub search: ShellBinding,
+    /// Hotkey to trigger bookmark mode
+    pub bookmark: ShellBinding,
+    /// Hotkey to trigger variable replacement mode
+    pub variable: ShellBinding,
+    /// Hotkey to trigger fix mode
+    pub fix: ShellBinding,
+}
+
+/// A valid shell key binding representation.
+///
+/// Guaranteed at deserialization time to contain only key combinations simple enough
+/// to be represented cleanly across all supported shells without fallback defaults:
+/// exactly one modifier ([`ShellModifier::Ctrl`] or [`ShellModifier::Alt`]) and an ASCII character
+/// (or space).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ShellBinding {
+    /// The modifier key pressed with the character
+    pub modifier: ShellModifier,
+    /// The key or character pressed with the modifier
+    pub key: ShellKey,
+}
+
+/// Supported modifiers for shell hotkeys
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ShellModifier {
+    /// The Control modifier key (`Ctrl`)
+    Ctrl,
+    /// The Alt / Option modifier key (`Alt`)
+    Alt,
+}
+
+/// A supported key representation for shell hotkeys
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ShellKey {
+    /// The Space key
+    Space,
+    /// An ASCII character
+    Char(char),
 }
 
 /// Configuration for the key bindings used in the Terminal User Interface (TUI).
@@ -624,6 +674,95 @@ impl Config {
     }
 }
 
+impl ShellBinding {
+    /// Constructs a new [`ShellBinding`] if the [`KeyEvent`] meets the representation invariant
+    pub fn new(event: KeyEvent) -> Result<Self, String> {
+        let modifier = if event.modifiers == KeyModifiers::CONTROL {
+            ShellModifier::Ctrl
+        } else if event.modifiers == KeyModifiers::ALT {
+            ShellModifier::Alt
+        } else {
+            return Err(format!(
+                "Invalid shell hotkey: '{event:?}'. Shell hotkeys must be Ctrl+<char> or Alt+<char>."
+            ));
+        };
+
+        let key = match event.code {
+            KeyCode::Char(' ' | '@') if modifier == ShellModifier::Ctrl => ShellKey::Space,
+            KeyCode::Char(' ') => ShellKey::Space,
+            KeyCode::Char(c) if c.is_ascii() && !c.is_ascii_control() => ShellKey::Char(c.to_ascii_lowercase()),
+            _ => {
+                return Err(format!(
+                    "Invalid shell hotkey: '{event:?}'. Shell hotkeys must be Ctrl+<char> or Alt+<char>."
+                ));
+            }
+        };
+
+        Ok(Self { modifier, key })
+    }
+
+    /// Converts this binding into a crossterm [`KeyEvent`].
+    pub fn to_key_event(&self) -> KeyEvent {
+        KeyEvent::from(*self)
+    }
+
+    /// Formats the key binding for a specific shell dialect
+    pub fn format_key_for_shell(&self, shell: Shell) -> String {
+        match (shell, self.modifier, self.key) {
+            (Shell::Bash, ShellModifier::Ctrl, ShellKey::Space) => "\\C-@".to_string(),
+            (Shell::Bash, ShellModifier::Ctrl, ShellKey::Char(c)) => format!("\\C-{c}"),
+            (Shell::Bash, ShellModifier::Alt, ShellKey::Space) => "\\e\\x20".to_string(),
+            (Shell::Bash, ShellModifier::Alt, ShellKey::Char(c)) => format!("\\e{c}"),
+
+            (Shell::Zsh, ShellModifier::Ctrl, ShellKey::Space) => "^@".to_string(),
+            (Shell::Zsh, ShellModifier::Ctrl, ShellKey::Char(c)) => format!("^{c}"),
+            (Shell::Zsh, ShellModifier::Alt, ShellKey::Space) => "^[ ".to_string(),
+            (Shell::Zsh, ShellModifier::Alt, ShellKey::Char(c)) => format!("^[{}", c),
+
+            (Shell::Fish, ShellModifier::Ctrl, ShellKey::Space) => "ctrl-space".to_string(),
+            (Shell::Fish, ShellModifier::Ctrl, ShellKey::Char(c)) => format!("ctrl-{c}"),
+            (Shell::Fish, ShellModifier::Alt, ShellKey::Space) => "alt-space".to_string(),
+            (Shell::Fish, ShellModifier::Alt, ShellKey::Char(c)) => format!("alt-{c}"),
+
+            (Shell::Nushell, ShellModifier::Ctrl, ShellKey::Space) => "control space".to_string(),
+            (Shell::Nushell, ShellModifier::Ctrl, ShellKey::Char(c)) => {
+                format!("control char_{c}")
+            }
+            (Shell::Nushell, ShellModifier::Alt, ShellKey::Space) => "alt space".to_string(),
+            (Shell::Nushell, ShellModifier::Alt, ShellKey::Char(c)) => format!("alt char_{c}"),
+
+            (Shell::Powershell, ShellModifier::Ctrl, ShellKey::Space) => "Ctrl+Spacebar".to_string(),
+            (Shell::Powershell, ShellModifier::Ctrl, ShellKey::Char(c)) => format!("Ctrl+{c}"),
+            (Shell::Powershell, ShellModifier::Alt, ShellKey::Space) => "Alt+Spacebar".to_string(),
+            (Shell::Powershell, ShellModifier::Alt, ShellKey::Char(c)) => format!("Alt+{c}"),
+        }
+    }
+}
+
+impl From<ShellBinding> for KeyEvent {
+    fn from(binding: ShellBinding) -> Self {
+        let modifiers = match binding.modifier {
+            ShellModifier::Ctrl => KeyModifiers::CONTROL,
+            ShellModifier::Alt => KeyModifiers::ALT,
+        };
+        let code = match binding.key {
+            ShellKey::Space => KeyCode::Char(' '),
+            ShellKey::Char(c) => KeyCode::Char(c),
+        };
+        KeyEvent::new(code, modifiers)
+    }
+}
+impl<'de> Deserialize<'de> for ShellBinding {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        let event = parse_key_event(&raw).map_err(D::Error::custom)?;
+        ShellBinding::new(event).map_err(D::Error::custom)
+    }
+}
+
 impl KeyBindingsConfig {
     /// Retrieves the [KeyBinding] for a specific action
     pub fn get(&self, action: &KeyBindingAction) -> &KeyBinding {
@@ -785,6 +924,7 @@ impl Default for Config {
             search: SearchConfig::default(),
             logs: LogsConfig::default(),
             destructive: DestructiveConfig::default(),
+            hotkeys: ShellHotkeys::default(),
             keybindings: KeyBindingsConfig::default(),
             theme: Theme::default(),
             gist: GistConfig::default(),
@@ -815,6 +955,28 @@ impl Default for LogsConfig {
         Self {
             enabled: false,
             filter: String::from("info"),
+        }
+    }
+}
+impl Default for ShellHotkeys {
+    fn default() -> Self {
+        Self {
+            search: ShellBinding {
+                modifier: ShellModifier::Ctrl,
+                key: ShellKey::Space,
+            },
+            bookmark: ShellBinding {
+                modifier: ShellModifier::Ctrl,
+                key: ShellKey::Char('b'),
+            },
+            variable: ShellBinding {
+                modifier: ShellModifier::Ctrl,
+                key: ShellKey::Char('l'),
+            },
+            fix: ShellBinding {
+                modifier: ShellModifier::Ctrl,
+                key: ShellKey::Char('x'),
+            },
         }
     }
 }
@@ -1279,7 +1441,7 @@ where
 /// Parses a string representation of a key event into a [`KeyEvent`].
 ///
 /// Supports modifiers like `ctrl-`, `alt-`, `shift-` and standard key names/characters.
-fn parse_key_event(raw: &str) -> Result<KeyEvent, String> {
+pub fn parse_key_event(raw: &str) -> Result<KeyEvent, String> {
     let raw_lower = raw.to_ascii_lowercase();
     let (remaining, modifiers) = extract_key_modifiers(&raw_lower);
     parse_key_code_with_modifiers(remaining, modifiers)
@@ -1550,6 +1712,84 @@ mod tests {
 
         let conflicts = config.find_conflicts();
         assert_eq!(conflicts.len(), 0, "Key binding conflicts: {conflicts:?}");
+    }
+
+    #[test]
+    fn test_shell_binding_formatting_and_validation() {
+        let valid_event = parse_key_event("ctrl-space").unwrap();
+        let binding = ShellBinding::new(valid_event).unwrap();
+        assert_eq!(binding.format_key_for_shell(crate::cli::Shell::Bash), "\\C-@");
+        assert_eq!(binding.format_key_for_shell(crate::cli::Shell::Zsh), "^@");
+        assert_eq!(binding.format_key_for_shell(crate::cli::Shell::Fish), "ctrl-space");
+        assert_eq!(
+            binding.format_key_for_shell(crate::cli::Shell::Nushell),
+            "control space"
+        );
+        assert_eq!(
+            binding.format_key_for_shell(crate::cli::Shell::Powershell),
+            "Ctrl+Spacebar"
+        );
+
+        assert_eq!(binding.modifier, ShellModifier::Ctrl);
+        assert_eq!(binding.key, ShellKey::Space);
+        assert_eq!(binding.to_key_event(), valid_event);
+
+        let valid_char_event = parse_key_event("ctrl-b").unwrap();
+        let binding_b = ShellBinding::new(valid_char_event).unwrap();
+        assert_eq!(binding_b.modifier, ShellModifier::Ctrl);
+        assert_eq!(binding_b.key, ShellKey::Char('b'));
+        assert_eq!(binding_b.to_key_event(), valid_char_event);
+        assert_eq!(binding_b.format_key_for_shell(crate::cli::Shell::Bash), "\\C-b");
+        assert_eq!(binding_b.format_key_for_shell(crate::cli::Shell::Zsh), "^b");
+
+        let valid_alt_event = parse_key_event("alt-b").unwrap();
+        let binding_alt = ShellBinding::new(valid_alt_event).unwrap();
+        assert_eq!(binding_alt.modifier, ShellModifier::Alt);
+        assert_eq!(binding_alt.key, ShellKey::Char('b'));
+        assert_eq!(binding_alt.to_key_event(), valid_alt_event);
+        assert_eq!(binding_alt.format_key_for_shell(crate::cli::Shell::Bash), "\\eb");
+        assert_eq!(binding_alt.format_key_for_shell(crate::cli::Shell::Zsh), "^[b");
+        assert_eq!(binding_alt.format_key_for_shell(crate::cli::Shell::Fish), "alt-b");
+        assert_eq!(
+            binding_alt.format_key_for_shell(crate::cli::Shell::Nushell),
+            "alt char_b"
+        );
+        assert_eq!(binding_alt.format_key_for_shell(crate::cli::Shell::Powershell), "Alt+b");
+
+        let valid_alt_space = parse_key_event("alt-space").unwrap();
+        let binding_alt_space = ShellBinding::new(valid_alt_space).unwrap();
+        assert_eq!(binding_alt_space.modifier, ShellModifier::Alt);
+        assert_eq!(binding_alt_space.key, ShellKey::Space);
+        assert_eq!(binding_alt_space.to_key_event(), valid_alt_space);
+        assert_eq!(
+            binding_alt_space.format_key_for_shell(crate::cli::Shell::Bash),
+            "\\e\\x20"
+        );
+        assert_eq!(binding_alt_space.format_key_for_shell(crate::cli::Shell::Zsh), "^[ ");
+        assert_eq!(
+            binding_alt_space.format_key_for_shell(crate::cli::Shell::Fish),
+            "alt-space"
+        );
+        assert_eq!(
+            binding_alt_space.format_key_for_shell(crate::cli::Shell::Nushell),
+            "alt space"
+        );
+        assert_eq!(
+            binding_alt_space.format_key_for_shell(crate::cli::Shell::Powershell),
+            "Alt+Spacebar"
+        );
+
+        let invalid_shift = parse_key_event("shift-b").unwrap();
+        assert!(ShellBinding::new(invalid_shift).is_err());
+
+        let invalid_ctrl_alt = parse_key_event("ctrl-alt-b").unwrap();
+        assert!(ShellBinding::new(invalid_ctrl_alt).is_err());
+
+        let invalid_no_modifier = parse_key_event("b").unwrap();
+        assert!(ShellBinding::new(invalid_no_modifier).is_err());
+
+        let invalid_enter = parse_key_event("ctrl-enter").unwrap();
+        assert!(ShellBinding::new(invalid_enter).is_err());
     }
 
     #[test]

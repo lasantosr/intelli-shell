@@ -53,7 +53,7 @@ Here is a breakdown of each available key in the `[theme]` section.
 ### Default Configuration
 
 ```toml
-{{#include ../../../default_config.toml:152:195}}
+{{#include ../../../default_config.toml:171:214}}
 ```
 
 ## Sample Themes

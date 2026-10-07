@@ -39,8 +39,8 @@ command line.
 - **Variable Replace** <kbd>Ctrl</kbd>+<kbd>L</kbd>: Opens the variable replacement UI for the command
 - **Clear Line** <kbd>Esc</kbd>: A convenience hotkey to clear the entire command line
 
-> 💡 **Note**: These shell hotkeys are fully customizable. See the [**Installation**](./installation.md#customizing-keybindings)
-> chapter for details on how to change them.
+> 💡 **Note**: These shell hotkeys are fully customizable. See the [**Shell Hotkeys**](../configuration/hotkeys.md)
+> configuration chapter for details on how to change them.
 
 ## The Building Blocks
 

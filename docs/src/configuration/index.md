@@ -1,14 +1,14 @@
 # Configuration
 
-IntelliShell is designed to be highly adaptable to your personal workflow and aesthetic preferences. Most of the
-customization is handled through a single `config.toml` file, while shell-specific hotkeys are configured using
-environment variables.
+IntelliShell is designed to be highly adaptable to your personal workflow and aesthetic preferences.
+Customization is handled through a single `config.toml` file, configuring everything from UI appearance and search
+tuning to shell triggering hotkeys and TUI key bindings.
 
 This section will guide you through all the available options to help you make IntelliShell truly your own.
 
 ## The Configuration File
 
-All settings related to the application's behavior, appearance, and search algorithms are stored in a file named
+All settings related to the application's behavior, appearance, hotkeys, and search algorithms are stored in a file named
 `config.toml`.
 
 ### Configuration File Location
@@ -37,6 +37,9 @@ This section is broken down into the following chapters:
 - **[General](./general.md)**: A detailed look at the `config.toml` file structure and its general settings,
   including data directory, Gist integration, and logging
 
+- **[Shell Hotkeys](./hotkeys.md)**: Configure the keyboard shortcuts used to launch IntelliShell actions directly from
+  your shell command line
+
 - **[Key Bindings](./keybindings.md)**: Learn how to customize the keyboard shortcuts used to navigate and interact with
   the TUI
 
@@ -48,12 +51,6 @@ This section is broken down into the following chapters:
 - **[AI Integration](./ai.md)**: Learn how to connect IntelliShell to AI providers like OpenAI or local Ollama models.
   This chapter covers setting up API keys, choosing models, and customizing prompts to power features like command
   generation and error fixing.
-
-## Shell Hotkey Configuration
-
-The primary hotkeys that trigger IntelliShell from your command line (e.g., <kbd>Ctrl</kbd>+<kbd>Space</kbd>) are
-configured separately via environment variables in your shell's profile (e.g., `~/.bashrc`, `~/.zshrc`). This is
-covered in detail in the [**Installation**](../guide/installation.md#customizing-keybindings) chapter.
 
 ---
 
