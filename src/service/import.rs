@@ -281,9 +281,13 @@ impl IntelliShellService {
                 }
             };
 
-            Ok(Box::pin(stream::iter(
-                items.into_iter().map(ImportExportItem::from).map(Ok),
-            )))
+            let items = stream::iter(
+                items
+                    .into_iter()
+                    .map(move |item| Ok::<_, AppError>(tag_import_item(ImportExportItem::from(item), &tags))),
+            );
+            let items: ImportExportStream = Box::pin(items);
+            Ok(filter_import_stream(items, filter))
         } else {
             let content = Cursor::new(res.text().await.map_err(|err| {
                 tracing::error!("Couldn't read api response: {err}");
@@ -416,17 +420,32 @@ impl IntelliShellService {
             Box::pin(parse_import_items(content, tags, CATEGORY_USER, SOURCE_IMPORT))
         };
 
-        if let Some(filter) = filter {
-            Ok(Box::pin(stream.try_filter(move |item| {
-                let pass = match item {
-                    ImportExportItem::Command(c) => c.matches(&filter),
-                    ImportExportItem::Completion(_) => true,
-                };
-                async move { pass }
-            })))
-        } else {
-            Ok(stream)
+        Ok(filter_import_stream(stream, filter))
+    }
+}
+
+fn tag_import_item(item: ImportExportItem, tags: &[String]) -> ImportExportItem {
+    match item {
+        ImportExportItem::Command(mut command) if !tags.is_empty() => {
+            let description = command.description.take().unwrap_or_default();
+            command = command.with_description(Some(add_tags_to_description(tags, description)));
+            ImportExportItem::Command(command)
         }
+        item => item,
+    }
+}
+
+fn filter_import_stream(stream: ImportExportStream, filter: Option<Regex>) -> ImportExportStream {
+    if let Some(filter) = filter {
+        Box::pin(stream.try_filter(move |item| {
+            let pass = match item {
+                ImportExportItem::Command(command) => command.matches(&filter),
+                ImportExportItem::Completion(_) => true,
+            };
+            async move { pass }
+        }))
+    } else {
+        stream
     }
 }
 
@@ -716,10 +735,58 @@ mod tests {
     use futures_util::TryStreamExt;
 
     use super::*;
+    use crate::utils::dto::{CommandDto, VariableCompletionDto};
 
     const CMD_1: &str = "cmd number 1";
     const CMD_2: &str = "cmd number 2";
     const CMD_3: &str = "cmd number 3";
+
+    #[tokio::test]
+    async fn json_import_applies_tags_and_filters_commands_but_keeps_completions()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let items = vec![
+            ImportExportItemDto::Command(CommandDto {
+                id: None,
+                alias: None,
+                cmd: "docker ps".to_string(),
+                description: Some("List containers".to_string()),
+            }),
+            ImportExportItemDto::Command(CommandDto {
+                id: None,
+                alias: None,
+                cmd: "git status".to_string(),
+                description: Some("Show worktree".to_string()),
+            }),
+            ImportExportItemDto::Completion(VariableCompletionDto {
+                command: "git".to_string(),
+                variable: "branch".to_string(),
+                provider: "git branch".to_string(),
+            }),
+        ];
+
+        let tags = vec!["#team".to_string()];
+        let items = stream::iter(
+            items
+                .into_iter()
+                .map(move |item| Ok::<_, AppError>(tag_import_item(ImportExportItem::from(item), &tags))),
+        );
+        let items: ImportExportStream = Box::pin(items);
+        let items = filter_import_stream(items, Some(Regex::new("^docker")?))
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(AppError::into_report)?;
+        assert_eq!(items.len(), 2);
+
+        match &items[0] {
+            ImportExportItem::Command(command) => {
+                assert_eq!(command.cmd, "docker ps");
+                assert_eq!(command.description.as_deref(), Some("List containers #team"));
+            }
+            ImportExportItem::Completion(_) => return Err("Expected a command".into()),
+        }
+        assert!(matches!(items[1], ImportExportItem::Completion(_)));
+        Ok(())
+    }
 
     const ALIAS_1: &str = "a1";
     const ALIAS_2: &str = "a2";
