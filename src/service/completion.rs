@@ -1,6 +1,4 @@
-use std::sync::LazyLock;
-
-use regex::Regex;
+use lazy_regex::{Lazy, Regex, lazy_regex};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -11,8 +9,8 @@ use crate::{
     utils::{flatten_str, flatten_variable_name},
 };
 
-pub static FORBIDDEN_COMPLETION_ROOT_CMD_CHARS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^\w-]").unwrap());
-pub static FORBIDDEN_COMPLETION_VARIABLE_CHARS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[:|{}]").unwrap());
+pub static FORBIDDEN_COMPLETION_ROOT_CMD_CHARS: Lazy<Regex> = lazy_regex!(r"[^\w-]");
+pub static FORBIDDEN_COMPLETION_VARIABLE_CHARS: Lazy<Regex> = lazy_regex!(r"[:|{}]");
 
 impl IntelliShellService {
     /// Lists all unique root commands for variable completions

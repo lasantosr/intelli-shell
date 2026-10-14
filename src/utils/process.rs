@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 
-use color_eyre::eyre::Context;
+use color_eyre::eyre::{Context, eyre};
 use ignore::WalkBuilder;
 use os_info::Info;
 use sysinfo::{Pid, System};
@@ -73,8 +73,7 @@ static PARENT_SHELL_INFO: LazyLock<ShellInfo> = LazyLock::new(|| {
 
     let parent_process = sys
         .process(Pid::from_u32(process::id()))
-        .expect("Couldn't retrieve current process from pid")
-        .parent()
+        .and_then(|p| p.parent())
         .and_then(|parent_pid| sys.process(parent_pid));
 
     let Some(parent) = parent_process else {
@@ -85,12 +84,14 @@ static PARENT_SHELL_INFO: LazyLock<ShellInfo> = LazyLock::new(|| {
         };
     };
 
-    let parent_name = parent
-        .name()
-        .to_str()
-        .expect("Invalid parent shell name")
-        .trim()
-        .to_lowercase();
+    let Some(parent_str) = parent.name().to_str() else {
+        tracing::warn!("Invalid parent shell name encoding, assuming {default}");
+        return ShellInfo {
+            kind: default,
+            version: None,
+        };
+    };
+    let parent_name = parent_str.trim().to_lowercase();
 
     let kind = if parent_name == "cargo" || parent_name == "cargo.exe" {
         tracing::warn!("Executed through cargo, assuming {default}");
@@ -452,9 +453,18 @@ pub async fn execute_shell_command_capture(
         .spawn()
         .with_context(|| format!("Failed to spawn command: `{command}`"))?;
 
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| eyre!("child stdout stream was not piped"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| eyre!("child stderr stream was not piped"))?;
+
     // Create buffered readers for the child's output streams
-    let mut stdout_reader = BufReader::new(child.stdout.take().unwrap()).lines();
-    let mut stderr_reader = BufReader::new(child.stderr.take().unwrap()).lines();
+    let mut stdout_reader = BufReader::new(stdout).lines();
+    let mut stderr_reader = BufReader::new(stderr).lines();
 
     let mut output_capture = String::new();
 

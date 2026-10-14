@@ -30,8 +30,9 @@ impl IntelliShellService {
     /// will consistently return the cached result.
     #[instrument(skip_all)]
     pub fn poll_new_version(&self) -> Option<Version> {
-        // Lock the state to check the current status of the version check
-        let mut state = self.version_check_state.lock().expect("poisoned lock");
+        let Ok(mut state) = self.version_check_state.lock() else {
+            return None;
+        };
 
         match &*state {
             // If the check has already finished, return the cached result
@@ -60,8 +61,9 @@ impl IntelliShellService {
                     async move {
                         let result = fetch_latest_version(&storage).await;
 
-                        // Once the check is done, lock the state and update it with the result
-                        let mut state = state_clone.lock().expect("poisoned lock");
+                        let Ok(mut state) = state_clone.lock() else {
+                            return;
+                        };
                         match result {
                             Ok(version) => {
                                 if let Some(ref v) = version {

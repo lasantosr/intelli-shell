@@ -8,10 +8,18 @@ use ratatui::{
     widgets::{Clear, Paragraph},
 };
 
+use color_eyre::Result;
+use indicatif::ProgressStyle;
+
 use crate::config::Theme;
 
 /// The characters for the spinner animation
 pub const SPINNER_CHARS: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/// Default progress style for CLI spinners
+pub fn spinner_progress_style() -> Result<ProgressStyle> {
+    Ok(ProgressStyle::with_template("{spinner:.blue} {wide_msg}")?.tick_strings(&SPINNER_CHARS))
+}
 
 /// A widget to display a centered loading spinner and message as an overlay
 pub struct LoadingSpinner<'a> {

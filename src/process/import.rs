@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use color_eyre::Result;
 use futures_util::StreamExt;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use tokio_util::sync::CancellationToken;
 
 use super::{Process, ProcessOutput};
@@ -17,7 +17,7 @@ use crate::{
     format_error,
     process::InteractiveProcess,
     service::IntelliShellService,
-    widgets::SPINNER_CHARS,
+    widgets::spinner_progress_style,
 };
 
 impl Process for ImportItemsProcess {
@@ -33,11 +33,7 @@ impl Process for ImportItemsProcess {
         let res = if self.ai {
             // Setup the progress bar
             let pb = ProgressBar::new_spinner();
-            pb.set_style(
-                ProgressStyle::with_template("{spinner:.blue} {wide_msg}")
-                    .unwrap()
-                    .tick_strings(&SPINNER_CHARS),
-            );
+            pb.set_style(spinner_progress_style()?);
             pb.enable_steady_tick(Duration::from_millis(100));
             pb.set_message("Thinking ...");
 

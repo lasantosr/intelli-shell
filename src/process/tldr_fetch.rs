@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use color_eyre::eyre::Context;
+use color_eyre::{Result, eyre::Context};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -51,15 +51,15 @@ impl Process for TldrFetchProcess {
 
         let m = MultiProgress::new();
         let pb1 = m.add(ProgressBar::new_spinner());
-        pb1.set_style(style_active());
+        pb1.set_style(style_active()?);
         pb1.set_prefix("[1/3]");
         pb1.enable_steady_tick(Duration::from_millis(100));
 
         let pb2 = m.add(ProgressBar::new_spinner());
-        pb2.set_style(style_active());
+        pb2.set_style(style_active()?);
 
         let pb3 = m.add(ProgressBar::new(0));
-        let spinner_style = ProgressStyle::with_template("      {spinner:.dim.white} {msg}").unwrap();
+        let spinner_style = ProgressStyle::with_template("      {spinner:.dim.white} {msg}")?;
         let mut file_spinners: HashMap<String, ProgressBar> = HashMap::new();
 
         while let Some(progress) = rx.recv().await {
@@ -75,7 +75,7 @@ impl Process for TldrFetchProcess {
                     };
                     pb1.set_message(msg);
                     if done {
-                        pb1.set_style(style_done());
+                        pb1.set_style(style_done()?);
                         pb1.finish();
                     }
                 }
@@ -85,15 +85,16 @@ impl Process for TldrFetchProcess {
                     pb2.enable_steady_tick(Duration::from_millis(100));
                 }
                 TldrFetchProgress::FilesLocated(count) => {
-                    pb2.set_style(style_done());
+                    pb2.set_style(style_done()?);
                     pb2.finish_with_message(format!("Found {count} files"));
                 }
                 TldrFetchProgress::ProcessingStart(total) => {
                     pb3.set_length(total);
                     pb3.set_style(
-                        ProgressStyle::with_template("{prefix:.blue.bold} [{bar:40.cyan/blue}] {pos}/{len} {wide_msg}")
-                            .unwrap()
-                            .progress_chars("##-"),
+                        ProgressStyle::with_template(
+                            "{prefix:.blue.bold} [{bar:40.cyan/blue}] {pos}/{len} {wide_msg}",
+                        )?
+                        .progress_chars("##-"),
                     );
                     pb3.set_prefix("[3/3]");
                     pb3.set_message("Processing files ...");
@@ -113,7 +114,7 @@ impl Process for TldrFetchProcess {
             }
         }
 
-        pb3.set_style(style_done());
+        pb3.set_style(style_done()?);
         pb3.finish_with_message("Done processing files");
 
         match service_handle.await? {
@@ -124,12 +125,10 @@ impl Process for TldrFetchProcess {
     }
 }
 
-fn style_active() -> ProgressStyle {
-    ProgressStyle::with_template("{prefix:.blue.bold} {spinner} {wide_msg}")
-        .unwrap()
-        .tick_strings(&SPINNER_CHARS)
+fn style_active() -> Result<ProgressStyle> {
+    Ok(ProgressStyle::with_template("{prefix:.blue.bold} {spinner} {wide_msg}")?.tick_strings(&SPINNER_CHARS))
 }
 
-fn style_done() -> ProgressStyle {
-    ProgressStyle::with_template("{prefix:.green.bold} {wide_msg}").unwrap()
+fn style_done() -> Result<ProgressStyle> {
+    Ok(ProgressStyle::with_template("{prefix:.green.bold} {wide_msg}")?)
 }

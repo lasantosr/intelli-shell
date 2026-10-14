@@ -1,6 +1,6 @@
-use std::{collections::HashSet, sync::LazyLock};
+use std::collections::HashSet;
 
-use regex::Regex;
+use lazy_regex::{Lazy, Regex, lazy_regex};
 use unicode_width::UnicodeWidthChar;
 
 /// Characters to be trimmed from the raw tag body
@@ -17,7 +17,7 @@ pub fn extract_tags_from_description(description: Option<&str>) -> Option<Vec<St
 /// The cleaned text has all hashtag occurrences (including the preceding space, if any) removed.
 pub fn extract_tags_and_cleaned_text(text: &str) -> Option<(Vec<String>, String)> {
     let output = process_text_for_tags(text, true, None)?;
-    Some((output.all_tags, output.cleaned_text.unwrap()))
+    Some((output.all_tags, output.cleaned_text?))
 }
 
 /// Extracts hashtags from a string and returns the tag where the cursor is placed, other tags found on the text and the
@@ -29,8 +29,7 @@ pub fn extract_tags_with_editing_and_cleaned_text(
     cursor_pos: usize,
 ) -> Option<(String, Vec<String>, String)> {
     let output = process_text_for_tags(text, true, Some(cursor_pos))?;
-    let editing_tag = output.editing_tag?;
-    Some((editing_tag, output.all_tags, output.cleaned_text.unwrap()))
+    Some((output.editing_tag?, output.all_tags, output.cleaned_text?))
 }
 
 /// Holds all possible outputs from the core tag processing logic
@@ -55,7 +54,7 @@ fn process_text_for_tags(text: &str, clean_text: bool, cursor_pos: Option<usize>
     /// - The hashtag itself, which is defined as a '#' followed by one or more non-whitespace characters
     ///
     /// The regex uses a named capture group `raw_body` to extract the content of the hashtag.
-    static HASHTAG_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?:^|\s)#(?P<raw_body>[^\s]*)").unwrap());
+    static HASHTAG_REGEX: Lazy<Regex> = lazy_regex!(r"(?:^|\s)#(?P<raw_body>[^\s]*)");
 
     let mut all_tags = HashSet::new();
     let mut editing_tag: Option<String> = None;
@@ -65,8 +64,9 @@ fn process_text_for_tags(text: &str, clean_text: bool, cursor_pos: Option<usize>
     let byte_cursor_idx = cursor_pos.map(|width_idx| width_to_byte_offset(text, width_idx));
 
     for captures in HASHTAG_REGEX.captures_iter(text) {
-        let full_match = captures.get(0).unwrap();
-        let raw_body_capture = captures.name("raw_body").unwrap();
+        let (Some(full_match), Some(raw_body_capture)) = (captures.get(0), captures.name("raw_body")) else {
+            continue;
+        };
         let raw_body_str = raw_body_capture.as_str();
 
         let mut editing = false;

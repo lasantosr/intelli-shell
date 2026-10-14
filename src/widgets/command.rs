@@ -92,7 +92,8 @@ impl<'a> CommandWidget<'a> {
             .map(|e| match e {
                 SplitItem::Unmatched(t) => Span::styled(t, Style::from_crossterm(cmd_style)),
                 SplitItem::Captured(l) => {
-                    Span::styled(l.get(0).unwrap().as_str(), Style::from_crossterm(cmd_secondary_style))
+                    let text = l.get(0).map(|m| m.as_str()).unwrap_or_default();
+                    Span::styled(text, Style::from_crossterm(cmd_secondary_style))
                 }
             })
             .collect::<Vec<_>>();

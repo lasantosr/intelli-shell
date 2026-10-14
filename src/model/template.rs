@@ -39,7 +39,12 @@ impl CommandTemplate {
             .map(|e| match e {
                 SplitItem::Unmatched(t) => TemplatePart::Text(t.to_owned()),
                 SplitItem::Captured(c) => {
-                    TemplatePart::Variable(Variable::parse(c.get(1).or(c.get(2)).unwrap().as_str()))
+                    let var_str = c
+                        .get(1)
+                        .or_else(|| c.get(2))
+                        .map(|m| m.as_str())
+                        .unwrap_or_default();
+                    TemplatePart::Variable(Variable::parse(var_str))
                 }
             })
             .collect::<Vec<_>>();
