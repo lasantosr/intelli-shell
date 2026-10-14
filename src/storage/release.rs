@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{Error, OptionalExtension, params, types::Type};
 use semver::Version;
 use tracing::instrument;
 
@@ -54,9 +54,12 @@ impl SqliteStorage {
                 Ok(conn
                     .prepare(query)?
                     .query_map([], |row| {
+                        let ver_str: String = row.get(1)?;
+                        let version = Version::parse(&ver_str)
+                            .map_err(|e| Error::FromSqlConversionFailure(1, Type::Text, Box::new(e)))?;
                         Ok(IntelliShellRelease {
                             tag: row.get(0)?,
-                            version: Version::parse(&row.get::<_, String>(1)?).expect("valid version"),
+                            version,
                             title: row.get(2)?,
                             body: row.get(3)?,
                             published_at: row.get(4)?,
@@ -84,10 +87,10 @@ impl SqliteStorage {
                 tracing::trace!("Checking latest release version:\n{query}");
                 Ok(conn
                     .query_row(query, [], |row| {
-                        Ok((
-                            Version::parse(&row.get::<_, String>(0)?).expect("valid version"),
-                            row.get(1)?,
-                        ))
+                        let ver_str: String = row.get(0)?;
+                        let version = Version::parse(&ver_str)
+                            .map_err(|e| Error::FromSqlConversionFailure(0, Type::Text, Box::new(e)))?;
+                        Ok((version, row.get(1)?))
                     })
                     .optional()?)
             })

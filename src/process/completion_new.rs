@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use color_eyre::Result;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use tokio_util::sync::CancellationToken;
 
 use super::{InteractiveProcess, Process, ProcessOutput};
@@ -16,7 +16,7 @@ use crate::{
     format_error, format_msg,
     model::{SOURCE_USER, VariableCompletion},
     service::IntelliShellService,
-    widgets::SPINNER_CHARS,
+    widgets::spinner_progress_style,
 };
 
 impl Process for CompletionNewProcess {
@@ -42,11 +42,7 @@ impl Process for CompletionNewProcess {
         if self.ai {
             // Setup the progress bar
             let pb = ProgressBar::new_spinner();
-            pb.set_style(
-                ProgressStyle::with_template("{spinner:.blue} {wide_msg}")
-                    .unwrap()
-                    .tick_strings(&SPINNER_CHARS),
-            );
+            pb.set_style(spinner_progress_style()?);
             pb.enable_steady_tick(Duration::from_millis(100));
             pb.set_message("Thinking ...");
 

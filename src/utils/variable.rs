@@ -8,16 +8,22 @@ const VARIABLE_REGEX: &str = r"\{\{((?:\{[^}]+\}|[^}]+))\}\}";
 const ALT_VARIABLE_REGEX: &str = r"<([\w.*-]+)>";
 
 // Regex to match exclusively variables in the alternative syntax `<name>`
-static ALT_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(ALT_VARIABLE_REGEX).unwrap());
+#[expect(clippy::expect_used, reason = "ALT_VARIABLE_REGEX is a verified constant regex pattern")]
+static ALT_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(ALT_VARIABLE_REGEX).expect("valid ALT_VARIABLE_REGEX"));
 
 /// Regex to match variables from a command, with a capturing group for the name
-pub static COMMAND_VARIABLE_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(VARIABLE_REGEX).unwrap());
+#[expect(clippy::expect_used, reason = "VARIABLE_REGEX is a verified constant regex pattern")]
+pub static COMMAND_VARIABLE_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(VARIABLE_REGEX).expect("valid VARIABLE_REGEX"));
 
 /// Regex to match variables from a command, with two capturing groups for the name
 /// - Group 1: Will exist if intelli-shell's variable syntax like `{{name}}` is matched
 /// - Group 2: Will exist if an alternative syntax like `<name>` is matched
-pub static COMMAND_VARIABLE_REGEX_ALT: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r#"{VARIABLE_REGEX}|{ALT_VARIABLE_REGEX}"#)).unwrap());
+#[expect(clippy::expect_used, reason = "composed from verified constant regex patterns")]
+pub static COMMAND_VARIABLE_REGEX_ALT: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!("{VARIABLE_REGEX}|{ALT_VARIABLE_REGEX}")).expect("valid COMMAND_VARIABLE_REGEX_ALT")
+});
 
 /// Regex to match variables from a command, with a capturing group for the name.
 ///
@@ -25,8 +31,11 @@ pub static COMMAND_VARIABLE_REGEX_ALT: LazyLock<Regex> =
 /// - Group 1: Will exist if a single-quoted placeholder like '{{name}}' is matched
 /// - Group 2: Will exist if a double-quoted placeholder like "{{name}}" is matched
 /// - Group 3: Will exist if an unquoted placeholder like {{name}} is matched
-pub static COMMAND_VARIABLE_REGEX_QUOTES: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(&format!(r#"'{VARIABLE_REGEX}'|"{VARIABLE_REGEX}"|{VARIABLE_REGEX}"#)).unwrap());
+#[expect(clippy::expect_used, reason = "composed from verified constant regex patterns")]
+pub static COMMAND_VARIABLE_REGEX_QUOTES: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!("'{VARIABLE_REGEX}'|\"{VARIABLE_REGEX}\"|{VARIABLE_REGEX}"))
+        .expect("valid COMMAND_VARIABLE_REGEX_QUOTES")
+});
 
 /// Converts alternative variable syntax `<var>` to the regular `{{var}}` syntax
 pub fn convert_alt_to_regular(command: &str) -> String {
@@ -141,7 +150,7 @@ impl<'t> Iterator for SplitCaptures<'_, 't> {
             // A match was found
             Some(caps) => {
                 // Get the match bounds
-                let m = caps.get(0).unwrap();
+                let m = caps.get(0)?;
                 // Extract the text between the end of the last item and the start of this match
                 let unmatched = &self.text[self.last..m.start()];
                 // Update the position to the end of the current match

@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use rusqlite::{Error, types::Type};
 use semver::Version;
 use tracing::instrument;
 
@@ -14,10 +15,10 @@ impl SqliteStorage {
                 let query = "SELECT latest_version, last_checked_at FROM version_info LIMIT 1";
                 tracing::trace!("Checking version info:\n{query}");
                 Ok(conn.query_one(query, [], |r| {
-                    Ok((
-                        Version::parse(&r.get::<_, String>(0)?).expect("valid version"),
-                        r.get(1)?,
-                    ))
+                    let ver_str: String = r.get(0)?;
+                    let version = Version::parse(&ver_str)
+                        .map_err(|e| Error::FromSqlConversionFailure(0, Type::Text, Box::new(e)))?;
+                    Ok((version, r.get(1)?))
                 })?)
             })
             .await

@@ -8,10 +8,9 @@ These rules are non-negotiable. Violating them breaks the CI pipeline.
 2. **Strict Linting:** Code must pass `cargo clippy --all-features -- -Dwarnings`. No warnings allowed.
 3. **Sync Colocated Tests:** If you change behavior or logic, you MUST update or add corresponding colocated tests (`#[test]`).
 4. **Keep Public Docs in Sync (User-Facing Only):** The `docs/src/` tree is the source for the public user-facing book. It MUST remain accurate and up-to-date whenever user-facing behavior changes (CLI commands, arguments, config options, default values, keybindings, workflows). Do NOT let user documentation fall out of date, but do NOT leak internal implementation details, refactors, or non-user-facing code changes into the book.
-5. **No `unwrap()`:** In `src/`, strictly avoid `.unwrap()` or `.expect()`. Use `?` propagation with the `AppError` type (test code in `#[cfg(test)]` is exempt).
-6. **Compile-Time Verification:** Leverage the type system to make invalid states unrepresentable. Prefer parsing into strong types over validating loose types.
-7. **Atomic Commits:** When asked to implement a feature, keep changes minimal and focused. Do not refactor unrelated code unless explicitly asked to.
-8. **Semantic Commits & PRs:** You MUST format all Pull Request titles and commit messages following the Conventional Commits specification. Use standard prefixes: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, or `style:`.
+5. **Compile-Time Verification:** Leverage the type system to make invalid states unrepresentable. Prefer parsing into strong types over validating loose types.
+6. **Atomic Commits:** When asked to implement a feature, keep changes minimal and focused. Do not refactor unrelated code unless explicitly asked to.
+7. **Semantic Commits & PRs:** You MUST format all Pull Request titles and commit messages following the Conventional Commits specification. Use standard prefixes: `feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`, or `style:`.
 
 ## 1. Project Identity
 
@@ -69,6 +68,7 @@ Reusable UI parts (pure rendering logic) reside in `src/widgets/`.
 - **Variants:**
   - `UserFacing(UserFacingError)`: For expected logic errors (e.g., "Item not found"). Displayed cleanly.
   - `Unexpected(color_eyre::Report)`: For system failures. Generates stack traces.
+- **Propagation:** Strictly avoid `.unwrap()` or `.expect()` in non-test code (`unwrap_used` and `expect_used` clippy lints are enforced). Always use `?` propagation with the `AppError` type.
 
 ## 3. Workflows & Commands
 

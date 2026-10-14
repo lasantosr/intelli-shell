@@ -1,14 +1,11 @@
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, LazyLock},
-    time::Duration,
-};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use futures_util::{
     Stream,
     stream::{self, StreamExt},
 };
-use regex::{Captures, Regex};
+use lazy_regex::{Lazy, Regex, lazy_regex};
+use regex::Captures;
 use tracing::instrument;
 
 use crate::{
@@ -63,7 +60,10 @@ pub async fn resolve_completion(
         );
     }
 
-    let mut cmd = prepare_command_execution(&command, false, false).expect("infallible");
+    let mut cmd = match prepare_command_execution(&command, false, false) {
+        Ok(c) => c,
+        Err(err) => return Err(format!("Failed to prepare command execution: {err}")),
+    };
     Ok(match tokio::time::timeout(COMMAND_TIMEOUT, cmd.output()).await {
         Err(_) => {
             tracing::warn!("Timeout executing dynamic completion command: '{command}'");
@@ -95,8 +95,8 @@ pub async fn resolve_completion(
 /// Resolves a command with implicit conditional blocks
 fn resolve_suggestions_provider(suggestions_provider: &str, context: Option<&BTreeMap<String, String>>) -> String {
     /// Regex to find the outer conditional blocks
-    static OUTER_CONDITIONAL_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"\{\{((?:[^{}]*\{\{[^}]*\}\})+[^{}]*)\}\}").unwrap());
+    static OUTER_CONDITIONAL_REGEX: Lazy<Regex> =
+        lazy_regex!(r"\{\{((?:[^{}]*\{\{[^}]*\}\})+[^{}]*)\}\}");
 
     OUTER_CONDITIONAL_REGEX
         .replace_all(suggestions_provider, |caps: &Captures| {

@@ -6,3 +6,5 @@
 # the complete list of lints.
 
 too-many-arguments-threshold = 10
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

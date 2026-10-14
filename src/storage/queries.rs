@@ -1,3 +1,4 @@
+use color_eyre::eyre::eyre;
 use itertools::Itertools;
 use regex::Regex;
 use sea_query::{
@@ -377,7 +378,7 @@ fn query_commands_with_text_search(
     } = cleaned_filter;
 
     // This function must be called with a search term
-    let term = search_term.expect("search_term should not be None here");
+    let term = search_term.ok_or_else(|| eyre!("search_term should not be None in query_commands_with_text_search"))?;
 
     // Query commands with given filters
     let base_query = query_commands_filtered_by(category, source, tags, command_table, workspace_tables);
@@ -812,7 +813,9 @@ fn query_commands_auto(
         }
 
         // 4. Template (Command-Like) Match
-        if words.len() > 1 {
+        if let Some(&first_word) = words.first()
+            && words.len() > 1
+        {
             let template_select = Query::select()
                 .expr(Expr::col((c, Asterisk)))
                 .apply_if(rank_field_name, |s, rank_field| {
@@ -823,7 +826,7 @@ fn query_commands_auto(
                 // Pre-filter commands starting with the first word, to avoid custom function call on every row
                 .and_where(
                     Expr::col((c, Command::Cmd))
-                        .like(LikeExpr::new(format!("{}%", escape_like(words.first().unwrap()))).escape('\\')),
+                        .like(LikeExpr::new(format!("{}%", escape_like(first_word))).escape('\\')),
                 )
                 // The original search term (excluding negated terms) matches a regex of the command
                 .and_where(Expr::val(words.join(" ")).regexp(CustomFunc::cmd_to_regex(Expr::col((c, Command::Cmd)))))
@@ -844,16 +847,10 @@ fn query_commands_auto(
         }
 
         // Now, build the final SELECT that unions, groups, and ranks the results from the CTEs
-        let query = if union_selects.is_empty() {
-            // This is a fallback case; if no words matched, return nothing from the filtered table
-            Query::select().expr(Expr::col(Asterisk)).from(base_from_table).take()
-        } else {
-            // Union all of the CTEs
-            let union_query = union_selects
-                .into_iter()
-                .reduce(|mut acc, s| acc.union(UnionType::All, s).take())
-                .expect("not empty");
-
+        let query = if let Some(union_query) = union_selects
+            .into_iter()
+            .reduce(|mut acc, s| acc.union(UnionType::All, s).take())
+        {
             let u = "u";
             Query::select()
                 .apply(|s| {
@@ -869,9 +866,11 @@ fn query_commands_auto(
                 })
                 .apply_if(rank_field_name, |s, rank_field| {
                     // Add the rank field if set
-                    let like_word = format!("{} %", escape_like(words.first().unwrap()));
-                    let like_term = format!("{}%", escape_like(words.first().unwrap()));
-                    s.expr_as(
+                    let rank_expr = if let Some(&first_word) = words.first()
+                        && !first_word.is_empty()
+                    {
+                        let like_word = format!("{} %", escape_like(first_word));
+                        let like_term = format!("{}%", escape_like(first_word));
                         Expr::max(
                             Expr::col((u, rank_field)).mul(
                                 Expr::case(
@@ -884,12 +883,17 @@ fn query_commands_auto(
                                 )
                                 .finally(1.0),
                             ),
-                        ),
-                        rank_field,
-                    );
+                        )
+                    } else {
+                        Expr::max(Expr::col((u, rank_field)))
+                    };
+                    s.expr_as(rank_expr, rank_field);
                 })
                 .from_subquery(union_query, u)
                 .take()
+        } else {
+            // This is a fallback case; if no words matched, return nothing from the filtered table
+            Query::select().expr(Expr::col(Asterisk)).from(base_from_table).take()
         };
 
         (ctes, query, has_rank)
@@ -1063,4 +1067,37 @@ pub enum WorkspaceCommandFuzzyFts {
 #[derive(Copy, Clone, Iden)]
 pub enum WorkspaceCommandFts {
     Table,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::errors::AppError;
+
+    #[test]
+    fn test_query_commands_with_text_search_fails_when_search_term_is_none() {
+        let filter = SearchCommandsFilter {
+            search_term: None,
+            ..Default::default()
+        };
+        let res = query_commands_with_text_search(
+            filter,
+            None,
+            &SearchCommandTuning::default(),
+            Command::Table,
+            CommandFts::Table,
+            CommandFuzzyFts::Table,
+            false,
+        );
+        match res.unwrap_err() {
+            AppError::Unexpected(report) => {
+                assert!(
+                    report
+                        .to_string()
+                        .contains("search_term should not be None in query_commands_with_text_search")
+                );
+            }
+            AppError::UserFacing(err) => panic!("Expected unexpected error, got: {err}"),
+        }
+    }
 }

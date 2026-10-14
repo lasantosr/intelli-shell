@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, collections::HashSet, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use color_eyre::Result;
+use color_eyre::{Result, eyre::eyre};
 use crossterm::event::{MouseEvent, MouseEventKind};
 use futures_util::StreamExt;
 use parking_lot::Mutex;
@@ -1040,9 +1040,9 @@ impl VariableReplacementComponent {
         match self.service.update_variable_value(value).await {
             Ok(v) => {
                 let mut state = self.state.lock();
-                if let VariableSuggestionItem::Existing { value, .. } = state.suggestions.selected_mut().unwrap() {
+                if let Some(VariableSuggestionItem::Existing { value, .. }) = state.suggestions.selected_mut() {
                     *value = v;
-                };
+                }
                 Ok(Action::NoOp)
             }
             Err(AppError::UserFacing(err)) => {
@@ -1064,7 +1064,9 @@ impl VariableReplacementComponent {
                     .insert_variable_value(value)
                     .await
                     .map_err(AppError::into_report)?;
-                value.id.expect("just inserted")
+                value
+                    .id
+                    .ok_or_else(|| eyre!("Variable value missing ID after insertion"))?
             }
         };
         let context = self.state.lock().template.variable_context();

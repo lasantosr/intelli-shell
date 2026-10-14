@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use tokio_util::sync::CancellationToken;
 
 use super::{Process, ProcessOutput};
@@ -11,7 +11,7 @@ use crate::{
     errors::AppError,
     format_error,
     service::{AiFixProgress, IntelliShellService},
-    widgets::SPINNER_CHARS,
+    widgets::spinner_progress_style,
 };
 
 impl Process for CommandFixProcess {
@@ -23,11 +23,7 @@ impl Process for CommandFixProcess {
     ) -> color_eyre::Result<ProcessOutput> {
         // Setup the progress bar
         let pb = ProgressBar::new_spinner();
-        pb.set_style(
-            ProgressStyle::with_template("{spinner:.blue} {wide_msg}")
-                .unwrap()
-                .tick_strings(&SPINNER_CHARS),
-        );
+        pb.set_style(spinner_progress_style()?);
 
         // Setup callback for progress updates
         let on_progress = |progress: AiFixProgress| match progress {

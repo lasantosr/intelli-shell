@@ -1,8 +1,7 @@
-use std::{fmt::Write, sync::LazyLock};
-
 use futures_util::{Stream, stream};
 use itertools::Itertools;
-use regex::{Captures, Regex};
+use lazy_regex::{Lazy, Regex, lazy_regex};
+use regex::Captures;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
@@ -259,28 +258,22 @@ impl IntelliShellService {
         // Prepare prompts and call the AI provider
         let sys_prompt = replace_prompt_placeholders(&self.ai.prompts.completion, None, None);
         let mut user_prompt = String::new();
-        writeln!(
-            user_prompt,
-            "Write a shell command that generates completion suggestions for the `{variable}` variable."
-        )
-        .unwrap();
+        user_prompt.push_str(&format!(
+            "Write a shell command that generates completion suggestions for the `{variable}` variable.\n"
+        ));
         if let Some(rc) = root_cmd {
-            writeln!(
-                user_prompt,
-                "This completion will be used only for commands starting with `{rc}`."
-            )
-            .unwrap();
+            user_prompt.push_str(&format!(
+                "This completion will be used only for commands starting with `{rc}`.\n"
+            ));
         }
         if !commands_str.is_empty() {
-            writeln!(
-                user_prompt,
+            user_prompt.push_str(&format!(
                 "\nFor context, here are some existing command templates that use this \
-                 variable:\n---\n{commands_str}\n---"
-            )
-            .unwrap();
+                 variable:\n---\n{commands_str}\n---\n"
+            ));
         }
         if let Some(d) = description {
-            writeln!(user_prompt, "\n{d}").unwrap();
+            user_prompt.push_str(&format!("\n{d}\n"));
         }
 
         tracing::trace!("System Prompt:\n{sys_prompt}");
@@ -300,7 +293,7 @@ impl IntelliShellService {
 /// Replace placeholders present on the prompt for its value
 fn replace_prompt_placeholders(prompt: &str, root_cmd: Option<&str>, history: Option<&str>) -> String {
     // Regex to find placeholders like ##VAR_NAME##
-    static PROMPT_PLACEHOLDER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"##([A-Z_]+)##").unwrap());
+    static PROMPT_PLACEHOLDER_RE: Lazy<Regex> = lazy_regex!(r"##([A-Z_]+)##");
 
     PROMPT_PLACEHOLDER_RE
         .replace_all(prompt, |caps: &Captures| match &caps[1] {

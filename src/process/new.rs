@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::ProgressBar;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
@@ -16,7 +16,7 @@ use crate::{
     format_error, format_msg,
     model::{CATEGORY_USER, Command, SOURCE_USER},
     service::IntelliShellService,
-    widgets::SPINNER_CHARS,
+    widgets::spinner_progress_style,
 };
 
 impl Process for BookmarkCommandProcess {
@@ -49,11 +49,7 @@ impl Process for BookmarkCommandProcess {
 
             // Setup the progress bar
             let pb = ProgressBar::new_spinner();
-            pb.set_style(
-                ProgressStyle::with_template("{spinner:.blue} {wide_msg}")
-                    .unwrap()
-                    .tick_strings(&SPINNER_CHARS),
-            );
+            pb.set_style(spinner_progress_style()?);
             pb.enable_steady_tick(Duration::from_millis(100));
             pb.set_message("Thinking ...");
 

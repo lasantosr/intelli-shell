@@ -1,6 +1,4 @@
-use std::sync::LazyLock;
-
-use regex::Regex;
+use lazy_regex::{Lazy, Regex, lazy_regex};
 use unidecode::unidecode;
 
 /// Converts all types of newline sequences (`\r`, `\n`, `\r\n`) in a string to a single newline character (`\n`).
@@ -18,7 +16,7 @@ use unidecode::unidecode;
 /// ```
 pub fn unify_newlines(str: impl AsRef<str>) -> String {
     /// Regex to match various newline sequences (`\r`, `\n`, `\r\n`)
-    static NEW_LINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\r\n|\r|\n"#).unwrap());
+    static NEW_LINES: Lazy<Regex> = lazy_regex!(r#"\r\n|\r|\n"#);
 
     NEW_LINES.replace_all(str.as_ref(), "\n").to_string()
 }
@@ -46,7 +44,7 @@ pub fn remove_newlines(str: impl AsRef<str>) -> String {
     ///
     /// It also handles an optional backslash (`\`) preceding the newline, which might indicate an escaped newline in
     /// shell contexts.
-    static NEW_LINE_AND_SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"\s*(\\)?(\r\n|\r|\n)\s*"#).unwrap());
+    static NEW_LINE_AND_SPACES: Lazy<Regex> = lazy_regex!(r#"\s*(\\)?(\r\n|\r|\n)\s*"#);
 
     NEW_LINE_AND_SPACES.replace_all(str.as_ref(), " ").to_string()
 }
@@ -67,7 +65,7 @@ pub fn remove_newlines(str: impl AsRef<str>) -> String {
 /// ```
 pub fn flatten_str(s: impl AsRef<str>) -> String {
     /// Regex to match any non-allowed character on the flattened version
-    static FLAT_STRING_FORBIDDEN_CHARS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^a-z0-9\s-]").unwrap());
+    static FLAT_STRING_FORBIDDEN_CHARS: Lazy<Regex> = lazy_regex!(r"[^a-z0-9\s-]");
 
     flatten(s, &FLAT_STRING_FORBIDDEN_CHARS)
 }
@@ -88,7 +86,7 @@ pub fn flatten_str(s: impl AsRef<str>) -> String {
 /// ```
 pub fn flatten_variable_name(variable_name: impl AsRef<str>) -> String {
     /// Regex to match any non-allowed character on the flattened version of a variable
-    static VARIABLE_FORBIDDEN_CHARS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^a-z0-9\s_:-]").unwrap());
+    static VARIABLE_FORBIDDEN_CHARS: Lazy<Regex> = lazy_regex!(r"[^a-z0-9\s_:-]");
 
     flatten(variable_name, &VARIABLE_FORBIDDEN_CHARS)
 }
@@ -101,7 +99,7 @@ fn flatten(s: impl AsRef<str>, forbidden_chars: &Regex) -> String {
     let flattened = forbidden_chars.replace_all(&decoded, "");
 
     /// Regex to match consecutive whitespaces
-    static FLATTEN_COLLAPSE_WHITESPACE_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
+    static FLATTEN_COLLAPSE_WHITESPACE_REGEX: Lazy<Regex> = lazy_regex!(r"\s+");
 
     // Remove consecutive whitespaces
     FLATTEN_COLLAPSE_WHITESPACE_REGEX

@@ -53,6 +53,7 @@ heck                  = "0.5"
 ignore                = "0.4"
 indicatif             = "0.18"
 itertools             = "0.15"
+lazy-regex            = "3"
 os_info               = "3"
 parking_lot           = "0.12"
 percent-encoding      = "2"
@@ -112,3 +113,7 @@ version = "1"
 
 [dev-dependencies]
 pretty_assertions = "1"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"

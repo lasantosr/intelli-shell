@@ -19,6 +19,10 @@ pub(super) const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) const FETCH_INTERVAL: chrono::Duration = chrono::Duration::hours(16);
 
 /// The current version of the application
+#[expect(
+    clippy::expect_used,
+    reason = "CARGO_PKG_VERSION is guaranteed to be valid SemVer by cargo"
+)]
 pub(crate) static CURRENT_VERSION: LazyLock<Version> =
     LazyLock::new(|| Version::parse(env!("CARGO_PKG_VERSION")).expect("valid version"));
 

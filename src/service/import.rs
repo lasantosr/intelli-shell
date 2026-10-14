@@ -1,12 +1,9 @@
-use std::{
-    io::{Cursor, ErrorKind},
-    sync::LazyLock,
-};
+use std::io::{Cursor, ErrorKind};
 
 use color_eyre::{Report, eyre::Context};
 use futures_util::{TryStreamExt, stream};
 use itertools::Itertools;
-use regex::Regex;
+use lazy_regex::{Lazy, Regex, lazy_regex};
 use reqwest::{
     Url,
     header::{self, HeaderName, HeaderValue},
@@ -570,10 +567,8 @@ pub(super) fn parse_import_items(
             if trimmed_line.starts_with('$') {
                 // Regex for completions, with an optional command part
                 // It matches both `$ (cmd) var: provider` and `$ var: provider`
-                static COMPLETION_RE: LazyLock<Regex> = LazyLock::new(|| {
-                    Regex::new(r"^\$\s*(?:\((?P<cmd>[\w./\\:~-]+)\)\s*)?(?P<var>[^:|{}]+):\s*(?P<provider>.+)$")
-                        .unwrap()
-                });
+                static COMPLETION_RE: Lazy<Regex> =
+                    lazy_regex!(r"^\$\s*(?:\((?P<cmd>[\w./\\:~-]+)\)\s*)?(?P<var>[^:|{}]+):\s*(?P<provider>.+)$");
 
                 let item = if let Some(caps) = COMPLETION_RE.captures(trimmed_line) {
                     let cmd = caps.name("cmd").map_or("", |m| m.as_str()).trim();
@@ -713,10 +708,9 @@ pub(super) fn parse_import_items(
 ///
 /// It returns a tuple containing an `Option<String>` for the alias and the cleaned description.
 fn extract_alias(description: String) -> (Option<String>, String) {
-    /// Regex to find an alias at the very start or very end of the string
-    /// Group 2 captures the alias from the start, Group 4 from the end
-    static ALIAS_RE: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"(?s)(?:\A\s*\[alias:([^\]]+)\]\s*)|(?:\s*\[alias:([^\]]+)\]\s*\z)").unwrap());
+    // Regex to find an alias at the very start or very end of the string
+    // Group 2 captures the alias from the start, Group 4 from the end
+    static ALIAS_RE: Lazy<Regex> = lazy_regex!(r"(?s)(?:\A\s*\[alias:([^\]]+)\]\s*)|(?:\s*\[alias:([^\]]+)\]\s*\z)");
 
     let mut alias = None;
 

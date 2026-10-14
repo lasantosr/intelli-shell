@@ -765,8 +765,8 @@ impl<'de> Deserialize<'de> for ShellBinding {
 
 impl KeyBindingsConfig {
     /// Retrieves the [KeyBinding] for a specific action
-    pub fn get(&self, action: &KeyBindingAction) -> &KeyBinding {
-        self.0.get(action).unwrap()
+    pub fn get(&self, action: &KeyBindingAction) -> Option<&KeyBinding> {
+        self.0.get(action)
     }
 
     /// Finds the [KeyBindingAction] associated with the given [KeyEvent], if any
@@ -865,9 +865,13 @@ impl Theme {
 impl AiConfig {
     /// Retrieves a client configured for the `suggest` action
     pub fn suggest_client(&self) -> crate::errors::Result<AiClient<'_>> {
+        let model = self
+            .catalog
+            .get(&self.models.suggest)
+            .ok_or_else(|| eyre!("Model `{}` not found in catalog", self.models.suggest))?;
         AiClient::new(
             &self.models.suggest,
-            self.catalog.get(&self.models.suggest).unwrap(),
+            model,
             &self.models.fallback,
             self.catalog.get(&self.models.fallback),
         )
@@ -875,9 +879,13 @@ impl AiConfig {
 
     /// Retrieves a client configured for the `fix` action
     pub fn fix_client(&self) -> crate::errors::Result<AiClient<'_>> {
+        let model = self
+            .catalog
+            .get(&self.models.fix)
+            .ok_or_else(|| eyre!("Model `{}` not found in catalog", self.models.fix))?;
         AiClient::new(
             &self.models.fix,
-            self.catalog.get(&self.models.fix).unwrap(),
+            model,
             &self.models.fallback,
             self.catalog.get(&self.models.fallback),
         )
@@ -885,9 +893,13 @@ impl AiConfig {
 
     /// Retrieves a client configured for the `import` action
     pub fn import_client(&self) -> crate::errors::Result<AiClient<'_>> {
+        let model = self
+            .catalog
+            .get(&self.models.import)
+            .ok_or_else(|| eyre!("Model `{}` not found in catalog", self.models.import))?;
         AiClient::new(
             &self.models.import,
-            self.catalog.get(&self.models.import).unwrap(),
+            model,
             &self.models.fallback,
             self.catalog.get(&self.models.fallback),
         )
@@ -895,9 +907,13 @@ impl AiConfig {
 
     /// Retrieves a client configured for the `completion` action
     pub fn completion_client(&self) -> crate::errors::Result<AiClient<'_>> {
+        let model = self
+            .catalog
+            .get(&self.models.completion)
+            .ok_or_else(|| eyre!("Model `{}` not found in catalog", self.models.completion))?;
         AiClient::new(
             &self.models.completion,
-            self.catalog.get(&self.models.completion).unwrap(),
+            model,
             &self.models.fallback,
             self.catalog.get(&self.models.fallback),
         )
@@ -1512,7 +1528,10 @@ fn parse_key_code_with_modifiers(raw: &str, mut modifiers: KeyModifiers) -> Resu
         "minus" => KeyCode::Char('-'),
         "tab" => KeyCode::Tab,
         c if c.len() == 1 => {
-            let mut c = c.chars().next().expect("just checked");
+            let mut c = c
+                .chars()
+                .next()
+                .ok_or_else(|| format!("Unable to parse key binding: {raw}"))?;
             if modifiers.contains(KeyModifiers::SHIFT) {
                 c = c.to_ascii_uppercase();
             }
