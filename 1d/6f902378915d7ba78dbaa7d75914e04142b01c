@@ -1,0 +1,68 @@
+src/utils/tags.rs
+  h_e5596228a2372c 1,3,20,32,57,67-69
+.clippy.toml
+  h_e5596228a2372c 9-10
+AGENTS.md
+  h_e5596228a2372c 11-13,71
+Cargo.lock
+  h_e5596228a2372c 1756,1931-1953
+Cargo.toml
+  h_e5596228a2372c 56,116-119
+src/component/variable.rs
+  h_e5596228a2372c 4,1043,1045,1067-1069
+src/config.rs
+  h_e5596228a2372c 768-769,868-871,874,882-885,888,896-899,902,910-913,916,1531-1534
+src/model/template.rs
+  h_e5596228a2372c 42-47
+src/process/completion_new.rs
+  h_e5596228a2372c 4,19,45
+src/process/fix.rs
+  h_e5596228a2372c 3,14,26
+src/process/import.rs
+  h_e5596228a2372c 5,20,36
+src/process/new.rs
+  h_e5596228a2372c 3,19,52
+src/process/search.rs
+  h_e5596228a2372c 3,16,41
+src/process/tldr_fetch.rs
+  h_e5596228a2372c 7,54,59,62,78,88,94-97,117,128-129,132-133
+src/service/ai.rs
+  h_e5596228a2372c 3-4,261-263,265-267,270,272-273,276,296
+src/service/completion.rs
+  h_e5596228a2372c 1,12-13
+src/service/import.rs
+  h_e5596228a2372c 1,6,570-571,711-713
+src/service/mod.rs
+  h_e5596228a2372c 22-25
+src/service/version.rs
+  h_e5596228a2372c 33-35,64-66
+src/storage/queries.rs
+  h_e5596228a2372c 1,381,816-818,829,850-853,869-873,886-890,894-896,1071-1103
+src/storage/release.rs
+  h_e5596228a2372c 3,57-59,62,90-93
+src/storage/version.rs
+  h_e5596228a2372c 2,18-21
+src/utils/completion.rs
+  h_e5596228a2372c 1,7-8,63-66,98-99
+src/utils/process.rs
+  h_e5596228a2372c 15,76,87-94,456-464,466-467
+src/utils/string.rs
+  h_e5596228a2372c 1,19,47,68,89,102
+src/utils/variable.rs
+  h_e5596228a2372c 11-13,16-18,23-26,34-38,153
+src/widgets/command.rs
+  h_e5596228a2372c 95-96
+src/widgets/loading.rs
+  h_e5596228a2372c 11-13,19-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1d6f902378915d7ba78dbaa7d75914e04142b01c",
+  "prompts": {},
+  "humans": {
+    "h_e5596228a2372c": {
+      "author": "Luis Alberto Santos <lasantosr.92@gmail.com>"
+    }
+  }
+}
