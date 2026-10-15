@@ -18,7 +18,7 @@ If you leave this setting as an empty string (`""`), IntelliShell will use the d
 You can specify a custom path to store your data in a different location, such as a synced cloud folder.
 
 ```toml
-{{#include ../../../default_config.toml:16:21}}
+{{#include ../../../default_config.toml:data_dir}}
 ```
 
 ### Overriding with `INTELLI_STORAGE`
@@ -45,7 +45,7 @@ ensure you are always using the latest version with the newest features and bug 
 - **`check_updates = false`**: Disables the automatic update check.
 
 ```toml
-{{#include ../../../default_config.toml:23:24}}
+{{#include ../../../default_config.toml:check_updates}}
 ```
 
 ## UI Rendering Mode
@@ -60,7 +60,7 @@ a compact, inline view or an immersive, full-screen experience.
     experience.
 
 ```toml
-{{#include ../../../default_config.toml:26:29}}
+{{#include ../../../default_config.toml:inline}}
 ```
 
 ## TUI Settings
@@ -72,7 +72,7 @@ The `[tui]` section configures the underlying interactive Terminal User Interfac
   - On other platforms, it defaults to `true`.
 
 ```toml
-{{#include ../../../default_config.toml:35:46}}
+{{#include ../../../default_config.toml:tui}}
 ```
 
 ## Gist Integration
@@ -85,7 +85,7 @@ This is useful if you frequently use the same Gist to back up or share your comm
     Gists.
 
 ```toml
-{{#include ../../../default_config.toml:52:58}}
+{{#include ../../../default_config.toml:gist}}
 ```
 
 ## Search
@@ -101,7 +101,7 @@ The `[search]` section lets you fine-tune the default behavior of the interactiv
 These settings can be toggled on-the-fly within the search UI using the default keybindings `ctrl+s` and `ctrl+o`.
 
 ```toml
-{{#include ../../../default_config.toml:64:79}}
+{{#include ../../../default_config.toml:search}}
 ```
 
 ## Logging
@@ -113,7 +113,7 @@ Note that if the `INTELLI_LOG` environment variable is set, it will override the
 - **`filter`**: Controls the verbosity of the logs using `tracing-subscriber` syntax
 
 ```toml
-{{#include ../../../default_config.toml:85:97}}
+{{#include ../../../default_config.toml:logs}}
 ```
 
 ## Destructive Commands
@@ -131,7 +131,7 @@ IntelliShell uses a dual-layer approach for detecting destructive commands:
 - **`patterns`**: A list of regular expressions (strings) used to match against the trimmed command. For example, `["^rm -rf", "^dd if="]`.
 
 ```toml
-{{#include ../../../default_config.toml:103:107}}
+{{#include ../../../default_config.toml:destructive}}
 ```
 
 ---

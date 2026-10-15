@@ -10,8 +10,8 @@
 # 2. Take 'patch', 'minor', or 'major' as an argument to determine the version bump
 # 3. Read the current version from Cargo.toml
 # 4. Increment the version number
-# 5. Update the version in Cargo.toml
-# 6. Commit the change to Cargo.toml and Cargo.lock
+# 5. Update the version in Cargo.toml and documentation links
+# 6. Commit the change to Cargo.toml, Cargo.lock, and documentation
 # 7. Create a git tag for the new version
 # 8. Push the commit and the tag to the remote repository
 #
@@ -85,9 +85,38 @@ awk -v new_ver="$new_version" '
 cargo update -p intelli-shell
 echo "✅ Updated Cargo.toml to version $new_version"
 
-# Add the modified Cargo.toml and the updated Cargo.lock to git
-git add Cargo.toml Cargo.lock
-echo "✅ Staged Cargo.toml and Cargo.lock"
+# Update version in documentation links
+docs_files=(
+    "docs/src/configuration/ai.md"
+    "docs/src/configuration/index.md"
+)
+for doc_file in "${docs_files[@]}"; do
+    if [ ! -f "$doc_file" ]; then
+        echo "Error: Documentation file not found: $doc_file" >&2
+        exit 1
+    fi
+
+    if ! grep -q "/blob/v$current_version/default_config.toml" "$doc_file"; then
+        echo "Error: Could not find '/blob/v$current_version/default_config.toml' in $doc_file" >&2
+        exit 1
+    fi
+
+    sed "s|/blob/v$current_version/default_config.toml|/blob/v$new_version/default_config.toml|g" "$doc_file" > "$doc_file.tmp" && mv "$doc_file.tmp" "$doc_file"
+
+    if ! grep -q "/blob/v$new_version/default_config.toml" "$doc_file"; then
+        echo "Error: Failed to update version link in $doc_file" >&2
+        exit 1
+    fi
+done
+echo "✅ Updated documentation links to version $new_version"
+
+# Verify all anchors and docs links match before committing
+cargo test test_docs_configuration_anchors
+echo "✅ Verified documentation links and anchors"
+
+# Add the modified Cargo.toml, the updated Cargo.lock, and documentation to git
+git add Cargo.toml Cargo.lock "${docs_files[@]}"
+echo "✅ Staged Cargo.toml, Cargo.lock, and documentation files"
 
 # Commit the changes
 commit_message="chore(release): v$new_version"

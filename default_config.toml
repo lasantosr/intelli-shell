@@ -13,25 +13,32 @@
 #   General
 # --------------------------------------------------------------
 
+# ANCHOR: data_dir
 # The default directory for application data, such as the stored commands database.
 # If this value is left empty, the application will use the system's default data directory:
 # - ~/.local/share/intelli-shell (on Linux, unless overridden by XDG_DATA_HOME)
 # - ~/Library/Application Support/org.IntelliShell.Intelli-Shell (on macOS)
 # - %APPDATA%\IntelliShell\Intelli-Shell\data (on Windows)
 data_dir = ""
+# ANCHOR_END: data_dir
 
+# ANCHOR: check_updates
 # Whether to check for updates on application startup
 check_updates = true
+# ANCHOR_END: check_updates
 
+# ANCHOR: inline
 # Determines the rendering mode for the Terminal User Interface (TUI).
 # - If `true`, the TUI will appear directly below the shell prompt, integrating seamlessly
 # - If `false`, the TUI will take over the entire terminal screen
 inline = true
+# ANCHOR_END: inline
 
 # --------------------------------------------------------------
 #   TUI
 # --------------------------------------------------------------
 
+# ANCHOR: tui
 [tui]
 # Whether to request the terminal for advanced keyboard events.
 #
@@ -44,11 +51,13 @@ inline = true
 #
 # It defaults to `false` on macOS, and `true` otherwise.
 keyboard_enhancement = true
+# ANCHOR_END: tui
 
 # --------------------------------------------------------------
 #   Gist Integration
 # --------------------------------------------------------------
 
+# ANCHOR: gist
 # Configuration for the default gist to use when importing or exporting (if no other is explicitly set)
 [gist]
 # The id of the gist, you can get it from the url after the username
@@ -56,11 +65,13 @@ id = ""
 # Token to authenticate the API call to GH when exporting
 # GIST_TOKEN env variable will take precedence over the config value
 token = ""
+# ANCHOR_END: gist
 
 # --------------------------------------------------------------
 #   Search Command
 # --------------------------------------------------------------
 
+# ANCHOR: search
 # Configuration for the search command
 [search]
 # The delay (in ms) to wait and accumulate type events before triggering the query
@@ -77,11 +88,13 @@ mode = "auto"
 user_only = false
 # Whether to directly execute the command if it matches an alias exactly, instead of just selecting
 exec_on_alias_match = false
+# ANCHOR_END: search
 
 # --------------------------------------------------------------
 #   Logs
 # --------------------------------------------------------------
 
+# ANCHOR: logs
 # Configuration settings for application logging.
 #
 # If an `INTELLI_LOG` environment variable exists, it will override the filter and enable logging.
@@ -95,21 +108,25 @@ enabled = false
 # - "info" enables info log level (and above: warn and error)
 # - "warn,intelli_shell=debug" enables debug for `intelli_shell` and warn for the rest
 filter = "info"
+# ANCHOR_END: logs
 
 # --------------------------------------------------------------
 #   Destructive Commands Detection
 # --------------------------------------------------------------
 
+# ANCHOR: destructive
 # Configuration for identifying destructive commands.
 # You can define a list of regular expressions to automatically identify dangerous commands.
 [destructive]
 # A list of regular expressions to identify destructive commands
 patterns = []
+# ANCHOR_END: destructive
 
 # --------------------------------------------------------------
 #   Shell Hotkeys
 # --------------------------------------------------------------
 
+# ANCHOR: hotkeys
 # Configuration for shell integration hotkeys.
 # These hotkeys trigger Intelli-Shell features directly from your shell command line.
 #
@@ -124,11 +141,13 @@ bookmark = "ctrl-b"
 variable = "ctrl-l"
 # Trigger AI fix mode for the command currently in the input buffer
 fix = "ctrl-x"
+# ANCHOR_END: hotkeys
 
 # --------------------------------------------------------------
 #   Key Bindings
 # --------------------------------------------------------------
 
+# ANCHOR: keybindings
 # Configuration for the key bindings used to interact with the Terminal User Interface (TUI).
 # Key bindings map an action within the application to one or more key press combinations.
 #
@@ -163,11 +182,13 @@ move_prev = "ctrl-k"
 variable_next = "ctrl-tab"
 # Move to the previous variable when replacing variables
 variable_prev = ["shift-tab", "shift-backtab"]
+# ANCHOR_END: keybindings
 
 # --------------------------------------------------------------
 #   Theme
 # --------------------------------------------------------------
 
+# ANCHOR: theme
 # Configuration for the visual theme of the Terminal User Interface (TUI).
 #
 # Styles are defined using a string that can consist of one or more optional modifiers
@@ -212,11 +233,13 @@ highlight_comment = "italic green"
 highlight_destructive = "red"
 # The secondary destructive style applied specifically to a highlighted item
 highlight_destructive_secondary = "dim red"
+# ANCHOR_END: theme
 
 # --------------------------------------------------------------
 #   Search Tuning
 # --------------------------------------------------------------
 
+# ANCHOR: tuning_variables
 # Configuration to tune the variables suggestion ranking algorithm.
 #
 # The final score for a variable suggestion is a weighted sum of points from three sources:
@@ -238,7 +261,9 @@ path.exact = 1.0
 path.ancestor = 0.5
 path.descendant = 0.25
 path.unrelated = 0.1
+# ANCHOR_END: tuning_variables
 
+# ANCHOR: tuning_commands
 # Configuration to tune the command search ranking algorithm.
 #
 # The final score for a command is a weighted sum of points from three sources:
@@ -273,6 +298,7 @@ text.auto.fuzzy = 1.0
 text.auto.relaxed = 0.5
 # A boost multiplier to add when the search term matches the start of a command
 text.auto.root = 2.0
+# ANCHOR_END: tuning_commands
 
 # --------------------------------------------------------------
 #   AI Integration
@@ -284,11 +310,14 @@ text.auto.root = 2.0
 # 1. Task Assignment: Assign a model alias to a specific task, like `suggest` or `fix`
 # 2. Model Catalog: Define the details for each model alias used in the task assignment
 # 3. Custom Prompts: Fine-tune the instruction templates sent to the AI for each task
+# ANCHOR: ai
 [ai]
 # A global switch to enable or disable all AI-powered functionality
 enabled = false
+# ANCHOR_END: ai
 
 # --- Task Assignment ---
+# ANCHOR: ai_models
 # Assign models to tasks by their alias (which must be defined in the Model Catalog below)
 [ai.models]
 # The alias of the model to use for generating command templates from natural language
@@ -301,6 +330,7 @@ import = "main"
 completion = "main"
 # The alias of a model to use as a fallback if the primary model fails due to rate limits
 fallback = "fallback"
+# ANCHOR_END: ai_models
 
 # --- Model Catalog ---
 # This is where you define the specific configuration for each AI model alias used above.
@@ -311,6 +341,7 @@ fallback = "fallback"
 # - "anthropic": ANTHROPIC_API_KEY
 # - "ollama":    OLLAMA_API_KEY (often not required for local instances)
 
+# ANCHOR: ai_catalog
 [ai.catalog.main]
 provider = "gemini"
 model = "gemini-flash-latest"
@@ -318,6 +349,7 @@ model = "gemini-flash-latest"
 [ai.catalog.fallback]
 provider = "gemini"
 model = "gemini-flash-lite-latest"
+# ANCHOR_END: ai_catalog
 
 # --- AI Prompts ---
 # This section allows for the customization of the prompts sent to the AI for different tasks.

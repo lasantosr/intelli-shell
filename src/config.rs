@@ -1993,4 +1993,163 @@ mod tests {
         expected_attributes.set(Attribute::Dim);
         assert_eq!(style.attributes, expected_attributes);
     }
+
+    #[test]
+    fn test_docs_configuration_anchors() -> Result<()> {
+        let config_str = fs::read_to_string("default_config.toml").wrap_err("Couldn't read default config file")?;
+
+        let anchor_start_re =
+            regex::Regex::new(r"(?m)^\s*#\s*ANCHOR:\s*([\w_-]+)\s*$").wrap_err("Invalid anchor start regex")?;
+        let anchor_end_re =
+            regex::Regex::new(r"(?m)^\s*#\s*ANCHOR_END:\s*([\w_-]+)\s*$").wrap_err("Invalid anchor end regex")?;
+
+        let mut defined_anchors = std::collections::HashSet::new();
+        for cap in anchor_start_re.captures_iter(&config_str) {
+            let anchor_name = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
+            assert!(
+                defined_anchors.insert(anchor_name.to_string()),
+                "Duplicate anchor definition in default_config.toml: {anchor_name}"
+            );
+        }
+
+        for anchor in &defined_anchors {
+            let start_pattern = format!(r"(?m)^\s*#\s*ANCHOR:\s*{anchor}\s*$");
+            let end_pattern = format!(r"(?m)^\s*#\s*ANCHOR_END:\s*{anchor}\s*$");
+
+            let start_matches: Vec<_> = regex::Regex::new(&start_pattern)
+                .wrap_err("Failed to compile anchor start regex")?
+                .find_iter(&config_str)
+                .collect();
+            let end_matches: Vec<_> = regex::Regex::new(&end_pattern)
+                .wrap_err("Failed to compile anchor end regex")?
+                .find_iter(&config_str)
+                .collect();
+
+            assert_eq!(
+                start_matches.len(),
+                1,
+                "Expected exactly one # ANCHOR: {anchor} in default_config.toml"
+            );
+            assert_eq!(
+                end_matches.len(),
+                1,
+                "Expected exactly one # ANCHOR_END: {anchor} in default_config.toml"
+            );
+
+            let start_match = start_matches[0];
+            let end_match = end_matches[0];
+
+            assert!(
+                start_match.end() < end_match.start(),
+                "Anchor '{anchor}' has its # ANCHOR_END before or overlapping its # ANCHOR in default_config.toml"
+            );
+
+            let content_between = &config_str[start_match.end()..end_match.start()];
+            assert!(
+                !content_between.trim().is_empty(),
+                "Anchor '{anchor}' in default_config.toml has no content between ANCHOR and ANCHOR_END"
+            );
+        }
+
+        for cap in anchor_end_re.captures_iter(&config_str) {
+            let anchor_name = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
+            assert!(
+                defined_anchors.contains(anchor_name),
+                "Found # ANCHOR_END for '{anchor_name}' without a matching # ANCHOR in default_config.toml"
+            );
+        }
+
+        let include_re = regex::Regex::new(r"\{\{#include\s+([^\s:}]+)(?::([^\s}]+))?\}\}")
+            .wrap_err("Failed to compile include regex")?;
+
+        let mut referenced_anchors = std::collections::HashSet::new();
+
+        for entry in walkdir::WalkDir::new("docs/src") {
+            let entry = entry.wrap_err("Failed to read dir entry in docs/src")?;
+            if entry.path().extension().is_some_and(|ext| ext == "md") {
+                let doc_content = fs::read_to_string(entry.path())
+                    .wrap_err_with(|| format!("Failed to read {}", entry.path().display()))?;
+
+                for cap in include_re.captures_iter(&doc_content) {
+                    let file_target = cap.get(1).map(|m| m.as_str()).unwrap_or_default();
+                    let anchor_or_range = cap.get(2).map(|m| m.as_str());
+
+                    if file_target.ends_with("default_config.toml") {
+                        let anchor = anchor_or_range.unwrap_or_else(|| {
+                            panic!(
+                                "Include of default_config.toml in {} must specify an anchor",
+                                entry.path().display()
+                            )
+                        });
+
+                        assert!(
+                            !anchor.chars().all(|c| c.is_ascii_digit() || c == ':'),
+                            "Brittle line-number include '{anchor}' found in {}. Use named anchors instead.",
+                            entry.path().display()
+                        );
+
+                        assert!(
+                            defined_anchors.contains(anchor),
+                            "Anchor '{anchor}' referenced in {} was not found in default_config.toml",
+                            entry.path().display()
+                        );
+
+                        referenced_anchors.insert(anchor.to_string());
+                    }
+                }
+            }
+        }
+
+        for anchor in &defined_anchors {
+            assert!(
+                referenced_anchors.contains(anchor),
+                "Anchor '{anchor}' is defined in default_config.toml but never referenced in docs"
+            );
+        }
+
+        // Verify GitHub links to default_config.toml match current package version and line
+        let prompts_line = config_str
+            .lines()
+            .position(|line| line.trim() == "# --- AI Prompts ---")
+            .map(|idx| idx + 1)
+            .ok_or_else(|| eyre!("Could not find '# --- AI Prompts ---' in default_config.toml"))?;
+
+        let expected_version = format!("v{}", env!("CARGO_PKG_VERSION"));
+
+        let ai_doc = fs::read_to_string("docs/src/configuration/ai.md")
+            .wrap_err("Failed to read docs/src/configuration/ai.md")?;
+
+        let github_line_link_re =
+            regex::Regex::new(r"github\.com/[^/]+/[^/]+/blob/([^/]+)/default_config\.toml#L(\d+)")
+                .wrap_err("Invalid github link regex")?;
+
+        let link_match = github_line_link_re
+            .captures(&ai_doc)
+            .ok_or_else(|| eyre!("Could not find default_config.toml line link in ai.md"))?;
+
+        let found_version = &link_match[1];
+        assert_eq!(
+            found_version, expected_version,
+            "Outdated version in docs/src/configuration/ai.md GitHub link. Expected {expected_version}, found \
+             {found_version}"
+        );
+
+        let found_line: usize = link_match[2].parse().wrap_err("Invalid line number in link")?;
+        assert_eq!(
+            found_line, prompts_line,
+            "Outdated line number in docs/src/configuration/ai.md GitHub link. Expected #L{prompts_line}, found \
+             #L{found_line}"
+        );
+
+        let index_doc = fs::read_to_string("docs/src/configuration/index.md")
+            .wrap_err("Failed to read docs/src/configuration/index.md")?;
+        let expected_index_link =
+            format!("https://github.com/lasantosr/intelli-shell/blob/{expected_version}/default_config.toml");
+        assert!(
+            index_doc.contains(&expected_index_link),
+            "docs/src/configuration/index.md should contain versioned link: {expected_index_link}"
+        );
+
+        Ok(())
+    }
 }
