@@ -2013,11 +2013,41 @@ mod tests {
         }
 
         for anchor in &defined_anchors {
+            let start_pattern = format!(r"(?m)^\s*#\s*ANCHOR:\s*{anchor}\s*$");
             let end_pattern = format!(r"(?m)^\s*#\s*ANCHOR_END:\s*{anchor}\s*$");
-            let end_re = regex::Regex::new(&end_pattern).wrap_err("Failed to compile anchor end regex")?;
+
+            let start_matches: Vec<_> = regex::Regex::new(&start_pattern)
+                .wrap_err("Failed to compile anchor start regex")?
+                .find_iter(&config_str)
+                .collect();
+            let end_matches: Vec<_> = regex::Regex::new(&end_pattern)
+                .wrap_err("Failed to compile anchor end regex")?
+                .find_iter(&config_str)
+                .collect();
+
+            assert_eq!(
+                start_matches.len(),
+                1,
+                "Expected exactly one # ANCHOR: {anchor} in default_config.toml"
+            );
+            assert_eq!(
+                end_matches.len(),
+                1,
+                "Expected exactly one # ANCHOR_END: {anchor} in default_config.toml"
+            );
+
+            let start_match = start_matches[0];
+            let end_match = end_matches[0];
+
             assert!(
-                end_re.is_match(&config_str),
-                "Anchor '{anchor}' in default_config.toml is missing its closing # ANCHOR_END: {anchor}"
+                start_match.end() < end_match.start(),
+                "Anchor '{anchor}' has its # ANCHOR_END before or overlapping its # ANCHOR in default_config.toml"
+            );
+
+            let content_between = &config_str[start_match.end()..end_match.start()];
+            assert!(
+                !content_between.trim().is_empty(),
+                "Anchor '{anchor}' in default_config.toml has no content between ANCHOR and ANCHOR_END"
             );
         }
 
