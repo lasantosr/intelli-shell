@@ -22,7 +22,7 @@ The `[hotkeys]` section in your `config.toml` allows configuring the following a
 You can customize these hotkeys in the `[hotkeys]` block of your `config.toml`:
 
 ```toml
-{{#include ../../../default_config.toml:113:126}}
+{{#include ../../../default_config.toml:hotkeys}}
 ```
 
 ### Syntax and Validation Rules
