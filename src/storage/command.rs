@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, sync::atomic::Ordering as AtomicOrdering};
 
 use color_eyre::{Report, eyre::eyre};
-use rusqlite::{Row, fallible_iterator::FallibleIterator, ffi, types::Type};
+use rusqlite::{Row, ffi, types::Type};
 use sea_query::SqliteQueryBuilder;
 use tracing::instrument;
 use uuid::Uuid;
@@ -101,8 +101,9 @@ impl SqliteStorage {
 
     /// Finds and retrieves commands from the database.
     ///
-    /// When a search term is present and no category, source, or tag filters are active, an exact alias match is
-    /// returned exclusively. Filtered searches use the filter-aware query instead.
+    /// When a search term is present and no tag filters are active, an exact alias match that satisfies any active
+    /// category or source filters is returned exclusively. If no alias matches or tag filters are present, the search
+    /// falls back to the general query.
     #[instrument(skip_all)]
     pub async fn find_commands(
         &self,
@@ -113,46 +114,9 @@ impl SqliteStorage {
         let workspace_tables_loaded = self.workspace_tables_loaded.load(AtomicOrdering::SeqCst);
         let cleaned_filter = filter.cleaned();
 
-        // When there's a search term
-        let mut query_alias = None;
-        if let Some(ref term) = cleaned_filter.search_term
-            && cleaned_filter.category.is_none()
-            && cleaned_filter.source.is_none()
-            && cleaned_filter.tags.is_none()
-        {
-            // Try to find a command matching the alias exactly
-            let (query, params) = if workspace_tables_loaded {
-                (
-                    format!(
-                        r#"WITH commands_unified AS (
-                            SELECT rowid, *, 0 AS is_workspace FROM command
-                            UNION ALL
-                            SELECT rowid, *, 1 AS is_workspace FROM workspace_command
-                        ),
-                        commands_ranked AS (
-                            SELECT *, ROW_NUMBER() OVER (PARTITION BY alias ORDER BY is_workspace ASC) as _rank
-                            FROM commands_unified
-                        )
-                        SELECT *
-                        FROM commands_ranked
-                        WHERE alias IS NOT NULL AND alias = ?1 AND _rank = 1
-                        LIMIT {QUERY_LIMIT}"#
-                    ),
-                    (term.clone(),),
-                )
-            } else {
-                (
-                    format!(
-                        r#"SELECT c.rowid, c.*
-                        FROM command c
-                        WHERE c.alias IS NOT NULL AND c.alias = ?1
-                        LIMIT {QUERY_LIMIT}"#
-                    ),
-                    (term.clone(),),
-                )
-            };
-            query_alias = Some((query, params));
-        }
+        // When there's a search term, try to find a command matching the alias exactly
+        let query_alias = query_find_command_by_alias(&cleaned_filter, workspace_tables_loaded)
+            .map(|q| q.build_rusqlite(SqliteQueryBuilder));
 
         // Build the commands query when no alias is matched
         let query = query_find_commands(cleaned_filter, working_path, tuning, workspace_tables_loaded)?;
@@ -168,14 +132,14 @@ impl SqliteStorage {
         self.client
             .conn(move |conn| {
                 // If there's a query to find the command by alias
-                if let Some((query_alias, a_params)) = query_alias {
+                if let Some((query_alias, a_values)) = query_alias {
                     tracing::trace!("Querying aliased commands:\n{query_alias}");
                     // Run the query
                     let rows = conn
                         .prepare(&query_alias)?
-                        .query(a_params)?
-                        .map(|r| Command::try_from(r))
-                        .collect::<Vec<_>>()?;
+                        .query(&*a_values.as_params())?
+                        .and_then(|r| Command::try_from(r))
+                        .collect::<Result<Vec<_>, _>>()?;
                     // Return the rows if there's a match
                     if !rows.is_empty() {
                         return Ok((rows, true));
@@ -515,7 +479,7 @@ mod tests {
     use super::*;
     use crate::{
         errors::AppError,
-        model::{CATEGORY_USER, ImportExportItem, SOURCE_IMPORT, SOURCE_USER, SearchMode},
+        model::{CATEGORY_USER, CATEGORY_WORKSPACE, ImportExportItem, SOURCE_IMPORT, SOURCE_USER, SearchMode},
     };
 
     const PROJ_A_PATH: &str = "/home/user/project-a";
@@ -812,6 +776,39 @@ mod tests {
             .await?;
         assert!(!alias_match);
         assert!(tagged_commands.is_empty());
+
+        let user_gco_filter = SearchCommandsFilter {
+            category: Some(vec![CATEGORY_USER.to_string()]),
+            search_term: Some("gco".to_string()),
+            ..Default::default()
+        };
+        let (gco_commands, alias_match) = storage
+            .find_commands(user_gco_filter, "/some/path", &SearchCommandTuning::default())
+            .await?;
+        assert!(alias_match);
+        assert_eq!(gco_commands.len(), 1);
+        assert_eq!(gco_commands[0].cmd, "git checkout main");
+
+        let tag_gco_filter = SearchCommandsFilter {
+            tags: Some(vec!["#git".to_string()]),
+            search_term: Some("gco".to_string()),
+            ..Default::default()
+        };
+        let (_tagged_gco_commands, alias_match) = storage
+            .find_commands(tag_gco_filter, "/some/path", &SearchCommandTuning::default())
+            .await?;
+        assert!(!alias_match);
+
+        let tag_checkout_filter = SearchCommandsFilter {
+            tags: Some(vec!["#git".to_string()]),
+            search_term: Some("checkout".to_string()),
+            ..Default::default()
+        };
+        let (tagged_checkout_commands, alias_match) = storage
+            .find_commands(tag_checkout_filter, "/some/path", &SearchCommandTuning::default())
+            .await?;
+        assert!(!alias_match);
+        assert!(!tagged_checkout_commands.is_empty());
         Ok(())
     }
 
@@ -1078,6 +1075,58 @@ mod tests {
                 .iter()
                 .any(|c| c.cmd == "git checkout -b feature/{{name:kebab}}")
         );
+    }
+
+    #[tokio::test]
+    async fn test_find_commands_alias_including_workspace() {
+        let storage = setup_ranking_storage().await;
+
+        storage.setup_workspace_storage().await.unwrap();
+        let commands_to_import = vec![ImportExportItem::Command(Command {
+            id: Uuid::now_v7(),
+            category: CATEGORY_WORKSPACE.to_string(),
+            alias: Some("gcb".to_string()),
+            cmd: "git checkout -b feature/{{name:kebab}}".to_string(),
+            ..Default::default()
+        })];
+        let stream = iter(commands_to_import.clone().into_iter().map(Ok));
+        storage.import_items(stream, false, true).await.unwrap();
+
+        let filter = SearchCommandsFilter {
+            search_term: Some("gcb".to_string()),
+            ..Default::default()
+        };
+
+        let (commands, alias_match) = storage
+            .find_commands(filter, "/some/path", &SearchCommandTuning::default())
+            .await
+            .unwrap();
+        assert!(alias_match);
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0].cmd, "git checkout -b feature/{{name:kebab}}");
+
+        // If an alias exists in both global and workspace, global takes precedence (rank 1)
+        let duplicate_alias_import = vec![ImportExportItem::Command(Command {
+            id: Uuid::now_v7(),
+            category: CATEGORY_WORKSPACE.to_string(),
+            alias: Some("gco".to_string()),
+            cmd: "git checkout workspace-override".to_string(),
+            ..Default::default()
+        })];
+        let stream2 = iter(duplicate_alias_import.into_iter().map(Ok));
+        storage.import_items(stream2, false, true).await.unwrap();
+
+        let filter_gco = SearchCommandsFilter {
+            search_term: Some("gco".to_string()),
+            ..Default::default()
+        };
+        let (commands_gco, alias_match) = storage
+            .find_commands(filter_gco, "/some/path", &SearchCommandTuning::default())
+            .await
+            .unwrap();
+        assert!(alias_match);
+        assert_eq!(commands_gco.len(), 1);
+        assert_eq!(commands_gco[0].cmd, "git checkout main");
     }
 
     #[tokio::test]
