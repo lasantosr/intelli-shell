@@ -212,6 +212,86 @@ pub fn query_find_commands(
         .take())
 }
 
+/// Builds a query to find a command matching an alias exactly while respecting any category or source filters.
+///
+/// If any tag filters are active, returns `None` so that search proceeds through standard filter-aware text search.
+pub fn query_find_command_by_alias(
+    filter: &SearchCommandsFilter,
+    workspace_tables_loaded: bool,
+) -> Option<SelectStatement> {
+    if filter.tags.is_some() {
+        return None;
+    }
+    let term = filter.search_term.as_deref()?;
+
+    let mut global_query = query_commands_filtered_by(
+        filter.category.clone(),
+        filter.source.clone(),
+        None,
+        Command::Table,
+        false,
+    );
+    global_query
+        .and_where(Expr::col(("c", Command::Alias)).is_not_null())
+        .and_where(Expr::col(("c", Command::Alias)).eq(term));
+
+    if !workspace_tables_loaded {
+        return Some(global_query.limit(QUERY_LIMIT).take());
+    }
+
+    let mut workspace_query = query_commands_filtered_by(
+        filter.category.clone(),
+        filter.source.clone(),
+        None,
+        WorkspaceCommand::Table,
+        true,
+    );
+    workspace_query
+        .and_where(Expr::col(("c", Command::Alias)).is_not_null())
+        .and_where(Expr::col(("c", Command::Alias)).eq(term));
+
+    let union_query = global_query.union(UnionType::All, workspace_query).take();
+
+    let union_cte_name = "commands_unified";
+    let union_cte = CommonTableExpression::new()
+        .table_name(union_cte_name)
+        .query(union_query)
+        .to_owned();
+
+    let ranked_cte_name = "commands_ranked";
+    let ranked_query = Query::select()
+        .expr(Expr::col(Asterisk))
+        .expr_window_as(
+            CustomFunc::row_number(),
+            WindowStatement::partition_by(Command::Alias)
+                .order_by(IS_WORKSPACE, Order::Asc)
+                .take(),
+            "_rank",
+        )
+        .from(union_cte_name)
+        .take();
+    let ranked_cte = CommonTableExpression::new()
+        .table_name(ranked_cte_name)
+        .query(ranked_query)
+        .to_owned();
+
+    let mut with = WithClause::new();
+    with.cte(union_cte);
+    with.cte(ranked_cte);
+
+    Some(
+        Query::select()
+            .expr(Expr::col(Asterisk))
+            .from(ranked_cte_name)
+            .and_where(Expr::col(Command::Alias).is_not_null())
+            .and_where(Expr::col(Command::Alias).eq(term))
+            .and_where(Expr::col(Alias::new("_rank")).eq(1))
+            .limit(QUERY_LIMIT)
+            .with_cte(with)
+            .take(),
+    )
+}
+
 /// Builds a query to select commands based on the provided filter.
 ///
 /// The returned query selects all fields from the `command` table, plus an optional rank field if provided.
