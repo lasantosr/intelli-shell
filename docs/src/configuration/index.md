@@ -27,7 +27,7 @@ If the environment variable is not set, IntelliShell falls back to searching in 
 > with `intelli-shell config --path`.
 
 If no configuration file is found, IntelliShell will use its built-in default settings. To get started with
-customization, you can copy a section from the [default configuration file](https://github.com/lasantosr/intelli-shell/blob/v3.4.6/default_config.toml)
+customization, you can copy a section from the [default configuration file](https://github.com/lasantosr/intelli-shell/blob/v3.4.7/default_config.toml)
 and modify it to your liking. Any setting you don't explicitly define will automatically use its default value.
 
 ### Configuration Topics
