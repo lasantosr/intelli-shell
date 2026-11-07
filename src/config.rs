@@ -1707,8 +1707,15 @@ mod tests {
     fn test_default_config() -> Result<()> {
         let config_str = fs::read_to_string("default_config.toml").wrap_err("Couldn't read default config file")?;
         let config: Config = toml::from_str(&config_str).wrap_err("Couldn't parse default config file")?;
+        let mut expected = Config::default();
 
-        assert_eq!(Config::default(), config);
+        if cfg!(target_os = "macos") {
+            // Keyboard enhancement defaults to false on macOS to preserve Option-key composition,
+            // whereas default_config.toml specifies the non-macOS default (true).
+            expected.tui.keyboard_enhancement = config.tui.keyboard_enhancement;
+        }
+
+        assert_eq!(expected, config);
 
         Ok(())
     }
