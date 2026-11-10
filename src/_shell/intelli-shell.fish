@@ -145,14 +145,14 @@ function _intelli_shell_bindings --description "Setup IntelliShell key bindings"
         bind $key $target_func
       else
         set -l char (string sub -s 6 -- "$key")
-        bind \c$char $target_func
+        bind (string unescape "\c$char") $target_func
       end
     else if string match -q "alt-*" -- "$key"
       if test -n "$fish_ver" -a "$fish_ver" -ge 4
         bind $key $target_func
       else
         set -l char (string sub -s 5 -- "$key")
-        bind \e$char $target_func
+        bind (string unescape "\e$char") $target_func
       end
     else
       bind $key $target_func
